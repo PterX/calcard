@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser() {
+    fn test_tokenizer() {
         for (input, expected, disable_stop) in [
             (
                 concat!(
