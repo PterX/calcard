@@ -31,16 +31,6 @@ impl<'x> Parser<'x> {
         self.unquote = true;
     }
 
-    pub(crate) fn expect_qp_value(&mut self) {
-        self.stop_colon = false;
-        self.stop_comma = false;
-        self.stop_equal = false;
-        self.stop_slash = false;
-        self.unquote = false;
-        self.unfold_qp = true;
-        self.stop_semicolon = true;
-    }
-
     pub(crate) fn expect_single_value(&mut self) {
         self.stop_colon = false;
         self.stop_comma = false;
@@ -135,7 +125,7 @@ impl<'x> Parser<'x> {
                         if buf.is_empty() && offset_start != usize::MAX {
                             buf.extend_from_slice(&self.input[offset_start..=offset_end]);
                         }
-                    } else if offset_start != usize::MAX {
+                    } else {
                         stop_char = StopChar::Lf;
                         break;
                     }
@@ -295,9 +285,19 @@ impl<'x> Parser<'x> {
     }
 }
 
-impl Token<'_> {
+impl<'x> Token<'x> {
+    pub fn new(text: Cow<'x, [u8]>) -> Self {
+        Self {
+            text,
+            start: 0,
+            end: 0,
+            stop_char: StopChar::Lf,
+        }
+    }
+
     pub fn into_string(self) -> String {
-        String::from_utf8(self.text.into_owned()).unwrap_or_default()
+        String::from_utf8(self.text.into_owned())
+            .unwrap_or_else(|err| String::from_utf8_lossy(&err.into_bytes()).into_owned())
     }
 }
 
@@ -542,6 +542,8 @@ mod tests {
                 vec![
                     (TextOwner::Borrowed("SUMMARY"), StopChar::Colon),
                     (TextOwner::Borrowed("Meeting"), StopChar::Lf),
+                    (TextOwner::Borrowed(""), StopChar::Lf),
+                    (TextOwner::Borrowed(""), StopChar::Lf),
                     (TextOwner::Borrowed("BEGIN"), StopChar::Colon),
                     (TextOwner::Borrowed("VALARM"), StopChar::Lf),
                 ],
@@ -616,6 +618,17 @@ mod tests {
                 vec![(TextOwner::Owned("\nhello".into()), StopChar::Lf)],
                 b"".as_slice(),
             ),
+            (
+                concat!(";;\nEND:VCARD\n"),
+                vec![
+                    (TextOwner::Borrowed(""), StopChar::Semicolon),
+                    (TextOwner::Borrowed(""), StopChar::Semicolon),
+                    (TextOwner::Borrowed(""), StopChar::Lf),
+                    (TextOwner::Borrowed("END"), StopChar::Colon),
+                    (TextOwner::Borrowed("VCARD"), StopChar::Lf),
+                ],
+                b"".as_slice(),
+            ),
             (concat!(""), vec![], b"".as_slice()),
         ] {
             let mut parser = Parser::new(input.as_bytes());
@@ -634,7 +647,13 @@ mod tests {
 
             while let Some(token) = parser.token() {
                 if token.text.eq_ignore_ascii_case(b"quoted-printable") {
-                    parser.expect_qp_value();
+                    parser.stop_colon = false;
+                    parser.stop_comma = false;
+                    parser.stop_equal = false;
+                    parser.stop_slash = false;
+                    parser.unquote = false;
+                    parser.unfold_qp = true;
+                    parser.stop_semicolon = true;
                 }
                 let text = match token.text {
                     Cow::Borrowed(text) => TextOwner::Borrowed(std::str::from_utf8(text).unwrap()),
@@ -642,7 +661,7 @@ mod tests {
                 };
                 tokens.push((text, token.stop_char));
             }
-            assert_eq!(tokens, expected);
+            assert_eq!(tokens, expected, "failed for input: {:?}", input);
         }
     }
 }
