@@ -1,0 +1,65 @@
+BEGIN:VCARD
+VERSION:4.0
+FN:Thies-Tillman Jacobsen
+N:Jacobsen;Thies-Tillman;;;
+BDAY:19081025
+CATEGORIES:Sportverein
+TZ:+0100
+NOTE:Lieblingsfarbe: Violett
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+FN:Lenn Biernoth
+N:Biernoth;Lenn;;;
+X-MAIDENNAME:Iser
+BDAY:19511122
+BIRTHPLACE:Hörstel
+TITLE:Strassenreiniger
+CATEGORIES:Familie
+TZ:+0100
+EMAIL;TYPE=INTERNET,HOME,PREF:lenn@lbi.net
+NOTE:Interessen: Internet trollen\, Kekse backen\, Videos schneiden\nLieblin
+ gsessen: Chillibrot mit Kartoffelpuffer
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+FN:Ludwig-Götz Graßl
+N:Graßl;Ludwig-Götz;;;
+X-MAIDENNAME:Schoen
+BDAY:19430207
+BIRTHPLACE:Kaltennordheim
+TITLE:Rentner
+CATEGORIES:Piratenpartei
+TZ:+0100
+EMAIL;TYPE=INTERNET,HOME,PREF:ludwig-goetz@ludwig-goetz-grassl.org
+NOTE:Interessen: Stofftiere\, Basketball\nLieblingsessen: Reiberouladen
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+FN:Marita Kreutzer
+N:Kreutzer;Marita;;;
+NICKNAME:mkr
+X-MAIDENNAME:Sievers
+BDAY:19430726
+TITLE:Rentnerin
+CATEGORIES:CCC
+TZ:+0100
+NOTE:Interessen: Handarbeiten\nLieblingsfarbe: Weiß\nLieblingsessen: Orange
+ n
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+FN:Kathi Hoelzl
+N:Hoelzl;Kathi;;;
+BDAY:20020711
+BIRTHPLACE:Grevenbroich
+CATEGORIES:Piratenpartei
+TZ:+0100
+EMAIL;TYPE=INTERNET,HOME,PREF:kathi.hoelzl@alhilal.net
+URL;TYPE=HOME:http://kho.me/
+END:VCARD
+

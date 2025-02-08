@@ -1,0 +1,80 @@
+BEGIN:VCARD
+VERSION:4.0
+EMAIL;PREF=0:john.doe@company.com
+CATEGORIES:My Contacts
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+EMAIL;PREF=0:jane.doe@company.com
+CATEGORIES:My Contacts
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+N:Ñ Ñ Ñ Ñ ;;;;
+FN:Ñ Ñ Ñ Ñ Ñ 
+TEL;TYPE=CELL;PREF=0:123456789
+CATEGORIES:My Contacts
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+N:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ;;;;
+FN:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ
+TEL;TYPE=CELL;PREF=0:123456
+TEL;TYPE=HOME:234567
+TEL;TYPE=CELL:3456789
+TEL;TYPE=HOME:45678901
+CATEGORIES:My Contacts
+NOTE:Ñ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ 
+NOTE:Ñ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ 
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+N:Ñ Ñ ;Ñ Ñ Ñ ;;;
+FN:Ñ Ñ Ñ Ñ 
+TEL;TYPE=CELL;PREF=0:123456
+TEL;TYPE=WORK:123456
+TEL;TYPE=WORK,FAX:123456
+EMAIL;PREF=0;TYPE=WORK:bob@company.com
+EMAIL;PREF=0:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+ORG:ÑÑÑÑÑÑÑÑÑÑÑÑ
+ORG:ÑÑÑÑÑÑÑÑÑÑÑÑ
+URL:www.company.com
+URL:http://www.company.com
+PHOTO;JPEG:data:base64\,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgI
+ CAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDA
+ QICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCb2wxBq
+ ZRuiZQ8z9VmhGMY/wA803yB/dr4Z8a/tiftAaX8DPhLYzeM9U0a98WeCtH0tvFv9mW839ra1qW
+ nWcseqSLIirBYWkn2gXc8TP5L3EI8qTcNnrOp/tsa7P8AseD9prxf8N7zwesGtiwuNNi1D7Tv/
+ eFVmhuJoofOjO5VJKrh1dRu2ZM+zZKg2fO+g/8ABEP45eC/Dmn+HPBX7ZWhab/Zt29xAyfDS2k
+ WF3WRWeNXlPlsVkKkrjhn5+Yg/Xn7HPwP+PHwC+GV74L/AGiv2kLn4natc6kLm21u6077L9ni8
+ qNPJEe9wVDozgZwN5AA6n1ouMnJpkpDPk9cD+ZqnVqTiqUn6GtStiffUqnNzO+//B8zlvG/wN+
+ D3xF+IXhL4u+O/AdnqfibwFNdS+D9WuVYyaW1yiRzmIbsDesaA5B+6OlX/EXg3wH4t1fT/EPiz
+ wRDqF7pyXENhczMzNCk8kbyqPRWaCIsvIOxfSttSxIKjpSPdvEyBEyd+1/xP/1qcXpyvdC5tDm
+ dH+CHwg8K/EGb4w6B8PtKs/E95pkljJrUK4nFqxhJhz0K/wCj2/H/AExX0pujfBH4TaR8ZtX/A
+ GgvDfw7tbXxd4g09LPVvXXKt9qnhQQqI3OcY220Axxwi/jxv7S/7eH7Kn7HR0lP2g/iBeaJJrO
+ uRaVYNa6PcXXm3MymRYz5UbhV2jJY4xxz1r0fwR498K+PtGbXfCGr/a7ZJ9j7w3CvijVraDxdb
+ yWg/4lFlOVN2WP8AZ7GUhnJKv5Ifacule3Qz+QTKD3HanDUELEk9T6UKSjuVGVjxGe31HUdS1/
+ 4da/8Ask6APDvgrV4W8GzHT1mi1DzhPLK8UL2IS1O9V3PE8py+Tgnnn/AmoQfD/wAeab4J8F/8
+ E3tC0qz1LTJJ9V1/RdO+zR2p8yTFviLTVWUsYYGO50+/nB2Lv+jnuoZl2S9ByOKYLrys+SP0p+
+ 0iPnP/2QA==
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+N:ÑÑÑÑ;;;;
+FN:ÑÑÑÑ
+TEL;TYPE=CELL;PREF=0:55556666
+EMAIL;PREF=0:henry@company.com
+ORG:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+ ÑÑÑÑÑÑÑÑ
+ORG:data:base64\,w5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5H
+ DkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkYA=
+ORG:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+ ÑÑÑÑÑÑÑÑ
+CATEGORIES:My Contacts
+END:VCARD
+
