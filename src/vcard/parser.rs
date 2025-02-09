@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    VCard, VCardEntry, VCardParameter, VCardPartialDateTime, VCardType, VCardValue, VCardValueType,
+    PartialDateTime, VCard, VCardEntry, VCardParameter, VCardType, VCardValue, VCardValueType,
     ValueSeparator, ValueType,
 };
 
@@ -509,8 +509,8 @@ impl Parser<'_> {
 }
 
 impl Token<'_> {
-    pub(crate) fn into_date(self) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_date(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         dt.parse_date(&mut self.text.iter().peekable());
         if !dt.is_null() {
             Ok(dt)
@@ -519,10 +519,8 @@ impl Token<'_> {
         }
     }
 
-    pub(crate) fn into_date_and_or_datetime(
-        self,
-    ) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_date_and_or_datetime(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         dt.parse_date_and_or_time(&mut self.text.iter().peekable());
         if !dt.is_null() {
             Ok(dt)
@@ -531,8 +529,8 @@ impl Token<'_> {
         }
     }
 
-    pub(crate) fn into_date_time(self) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_date_time(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         dt.parse_date_time(&mut self.text.iter().peekable());
         if !dt.is_null() {
             Ok(dt)
@@ -541,8 +539,8 @@ impl Token<'_> {
         }
     }
 
-    pub(crate) fn into_time(self) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_time(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         dt.parse_time(&mut self.text.iter().peekable(), false);
         if !dt.is_null() {
             Ok(dt)
@@ -551,8 +549,8 @@ impl Token<'_> {
         }
     }
 
-    pub(crate) fn into_offset(self) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_offset(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         dt.parse_zone(&mut self.text.iter().peekable());
         if !dt.is_null() {
             Ok(dt)
@@ -581,8 +579,8 @@ impl Token<'_> {
         Err(self.into_string())
     }
 
-    pub(crate) fn into_timestamp(self) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_timestamp(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         if dt.parse_timestamp(&mut self.text.iter().peekable()) {
             Ok(dt)
         } else {
@@ -590,14 +588,12 @@ impl Token<'_> {
         }
     }
 
-    pub(crate) fn into_timestamp_or_legacy(
-        self,
-    ) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_timestamp_or_legacy(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         if dt.parse_timestamp(&mut self.text.iter().peekable()) {
             Ok(dt)
         } else {
-            let mut dt = VCardPartialDateTime::default();
+            let mut dt = PartialDateTime::default();
             if dt.parse_date_legacy(&mut self.text.iter().peekable()) {
                 Ok(dt)
             } else {
@@ -606,10 +602,8 @@ impl Token<'_> {
         }
     }
 
-    pub(crate) fn into_datetime_or_legacy(
-        self,
-    ) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_datetime_or_legacy(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         if dt.parse_date_legacy(&mut self.text.iter().peekable()) {
             Ok(dt)
         } else {
@@ -617,8 +611,8 @@ impl Token<'_> {
         }
     }
 
-    pub(crate) fn into_offset_or_legacy(self) -> std::result::Result<VCardPartialDateTime, String> {
-        let mut dt = VCardPartialDateTime::default();
+    pub(crate) fn into_offset_or_legacy(self) -> std::result::Result<PartialDateTime, String> {
+        let mut dt = PartialDateTime::default();
         if dt.parse_zone_legacy(&mut self.text.iter().peekable()) {
             Ok(dt)
         } else {
@@ -631,7 +625,7 @@ impl Token<'_> {
     }
 }
 
-impl VCardPartialDateTime {
+impl PartialDateTime {
     fn parse_timestamp(&mut self, iter: &mut Peekable<Iter<u8>>) -> bool {
         let mut idx = 0;
         for ch in iter {
@@ -954,7 +948,7 @@ impl FromStr for Timestamp {
     type Err = ();
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let mut dt = VCardPartialDateTime::default();
+        let mut dt = PartialDateTime::default();
         dt.parse_timestamp(&mut s.as_bytes().iter().peekable());
         dt.to_timestamp().map(Timestamp).ok_or(())
     }
@@ -1038,7 +1032,7 @@ mod tests {
             (
                 "19850412",
                 VCardValueType::Date,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1985),
                     month: Some(4),
                     day: Some(12),
@@ -1048,7 +1042,7 @@ mod tests {
             (
                 "1985-04",
                 VCardValueType::Date,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1985),
                     month: Some(4),
                     ..Default::default()
@@ -1057,7 +1051,7 @@ mod tests {
             (
                 "1985",
                 VCardValueType::Date,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1985),
                     ..Default::default()
                 },
@@ -1065,7 +1059,7 @@ mod tests {
             (
                 "--0412",
                 VCardValueType::Date,
-                VCardPartialDateTime {
+                PartialDateTime {
                     month: Some(4),
                     day: Some(12),
                     ..Default::default()
@@ -1074,7 +1068,7 @@ mod tests {
             (
                 "---12",
                 VCardValueType::Date,
-                VCardPartialDateTime {
+                PartialDateTime {
                     day: Some(12),
                     ..Default::default()
                 },
@@ -1082,7 +1076,7 @@ mod tests {
             (
                 "102200",
                 VCardValueType::Time,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     second: Some(0),
@@ -1092,7 +1086,7 @@ mod tests {
             (
                 "1022",
                 VCardValueType::Time,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     ..Default::default()
@@ -1101,7 +1095,7 @@ mod tests {
             (
                 "10",
                 VCardValueType::Time,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     ..Default::default()
                 },
@@ -1109,7 +1103,7 @@ mod tests {
             (
                 "-2200",
                 VCardValueType::Time,
-                VCardPartialDateTime {
+                PartialDateTime {
                     minute: Some(22),
                     second: Some(0),
                     ..Default::default()
@@ -1118,7 +1112,7 @@ mod tests {
             (
                 "--00",
                 VCardValueType::Time,
-                VCardPartialDateTime {
+                PartialDateTime {
                     second: Some(0),
                     ..Default::default()
                 },
@@ -1126,7 +1120,7 @@ mod tests {
             (
                 "102200Z",
                 VCardValueType::Time,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     second: Some(0),
@@ -1138,7 +1132,7 @@ mod tests {
             (
                 "102200-0800",
                 VCardValueType::Time,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     second: Some(0),
@@ -1151,7 +1145,7 @@ mod tests {
             (
                 "19961022T140000",
                 VCardValueType::DateTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1996),
                     month: Some(10),
                     day: Some(22),
@@ -1164,7 +1158,7 @@ mod tests {
             (
                 "--1022T1400",
                 VCardValueType::DateTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     month: Some(10),
                     day: Some(22),
                     hour: Some(14),
@@ -1175,7 +1169,7 @@ mod tests {
             (
                 "---22T14",
                 VCardValueType::DateTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     day: Some(22),
                     hour: Some(14),
                     ..Default::default()
@@ -1184,7 +1178,7 @@ mod tests {
             (
                 "19961022T140000",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1996),
                     month: Some(10),
                     day: Some(22),
@@ -1197,7 +1191,7 @@ mod tests {
             (
                 "--1022T1400",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     month: Some(10),
                     day: Some(22),
                     hour: Some(14),
@@ -1208,7 +1202,7 @@ mod tests {
             (
                 "---22T14",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     day: Some(22),
                     hour: Some(14),
                     ..Default::default()
@@ -1217,7 +1211,7 @@ mod tests {
             (
                 "19850412",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1985),
                     month: Some(4),
                     day: Some(12),
@@ -1227,7 +1221,7 @@ mod tests {
             (
                 "1985-04",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1985),
                     month: Some(4),
                     ..Default::default()
@@ -1236,7 +1230,7 @@ mod tests {
             (
                 "1985",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1985),
                     ..Default::default()
                 },
@@ -1244,7 +1238,7 @@ mod tests {
             (
                 "--0412",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     month: Some(4),
                     day: Some(12),
                     ..Default::default()
@@ -1253,7 +1247,7 @@ mod tests {
             (
                 "---12",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     day: Some(12),
                     ..Default::default()
                 },
@@ -1261,7 +1255,7 @@ mod tests {
             (
                 "T102200",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     second: Some(0),
@@ -1271,7 +1265,7 @@ mod tests {
             (
                 "T1022",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     ..Default::default()
@@ -1280,7 +1274,7 @@ mod tests {
             (
                 "T10",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     ..Default::default()
                 },
@@ -1288,7 +1282,7 @@ mod tests {
             (
                 "T-2200",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     minute: Some(22),
                     second: Some(0),
                     ..Default::default()
@@ -1297,7 +1291,7 @@ mod tests {
             (
                 "T--00",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     second: Some(0),
                     ..Default::default()
                 },
@@ -1305,7 +1299,7 @@ mod tests {
             (
                 "T102200Z",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     second: Some(0),
@@ -1317,7 +1311,7 @@ mod tests {
             (
                 "T102200-0800",
                 VCardValueType::DateAndOrTime,
-                VCardPartialDateTime {
+                PartialDateTime {
                     hour: Some(10),
                     minute: Some(22),
                     second: Some(0),
@@ -1330,7 +1324,7 @@ mod tests {
             (
                 "19961022T140000",
                 VCardValueType::Timestamp,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1996),
                     month: Some(10),
                     day: Some(22),
@@ -1343,7 +1337,7 @@ mod tests {
             (
                 "19961022T140000Z",
                 VCardValueType::Timestamp,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1996),
                     month: Some(10),
                     day: Some(22),
@@ -1358,7 +1352,7 @@ mod tests {
             (
                 "19961022T140000-05",
                 VCardValueType::Timestamp,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1996),
                     month: Some(10),
                     day: Some(22),
@@ -1373,7 +1367,7 @@ mod tests {
             (
                 "19961022T140000-0500",
                 VCardValueType::Timestamp,
-                VCardPartialDateTime {
+                PartialDateTime {
                     year: Some(1996),
                     month: Some(10),
                     day: Some(22),
@@ -1388,7 +1382,7 @@ mod tests {
             (
                 "-0500",
                 VCardValueType::UtcOffset,
-                VCardPartialDateTime {
+                PartialDateTime {
                     tz_hour: Some(5),
                     tz_minute: Some(0),
                     tz_minus: true,
@@ -1397,7 +1391,7 @@ mod tests {
             ),
         ] {
             let mut iter = input.as_bytes().iter().peekable();
-            let mut dt = VCardPartialDateTime::default();
+            let mut dt = PartialDateTime::default();
 
             match typ {
                 VCardValueType::Date => dt.parse_date(&mut iter),
