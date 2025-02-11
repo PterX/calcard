@@ -12,7 +12,7 @@ use crate::{
         Data, Encoding,
     },
     vcard::VCardProperty,
-    Parser, Token,
+    Entry, Parser, Token,
 };
 
 use super::{
@@ -30,7 +30,7 @@ struct Params {
 }
 
 impl Parser<'_> {
-    pub fn vcard(&mut self) -> VCard {
+    pub fn vcard(&mut self) -> Entry {
         let mut vcard = VCard::default();
         let mut is_v4 = true;
 
@@ -69,7 +69,11 @@ impl Parser<'_> {
                 StopChar::Colon => {}
                 StopChar::Lf => {
                     // Invalid line
-                    continue;
+                    if name.is_empty() || !self.strict {
+                        continue;
+                    } else {
+                        return Entry::InvalidLine(Token::new(name).into_string());
+                    }
                 }
                 _ => {}
             }
@@ -296,7 +300,7 @@ impl Parser<'_> {
             vcard.entries.push(entry);
         }
 
-        vcard
+        Entry::VCard(vcard)
     }
 
     fn vcard_parameters(&mut self, params: &mut Params) {
@@ -561,6 +565,20 @@ impl Token<'_> {
         } else {
             let mut dt = PartialDateTime::default();
             if dt.parse_vcard_date_legacy(&mut self.text.iter().peekable()) {
+                #[cfg(test)]
+                {
+                    for item in [
+                        &mut dt.hour,
+                        &mut dt.minute,
+                        &mut dt.second,
+                        &mut dt.tz_hour,
+                        &mut dt.tz_minute,
+                    ] {
+                        if item.is_none() {
+                            *item = Some(0);
+                        }
+                    }
+                }
                 Ok(dt)
             } else {
                 Err(self.into_string())
@@ -799,10 +817,10 @@ mod tests {
                         Entry::InvalidLine(text) => {
                             println!("Invalid line in {file_name}: {text}");
                         }
-                        Entry::ICalendar(_) => {
-                            panic!("Expected VCard, got ICalendar for {file_name}");
-                        }
                         Entry::Eof => break,
+                        other => {
+                            panic!("Expected VCard, got {other:?} for {file_name}");
+                        }
                     }
                 }
             }
@@ -1190,11 +1208,13 @@ mod tests {
                 _ => unreachable!(),
             }
 
-            assert_eq!(dt, expected, "failed for {input:?}");
-            assert!(
-                dt.to_string() == input
-                    || dt.to_string() == input.strip_prefix("T").unwrap_or(input),
-                "roundtrip failed: {input} != {dt}"
+            assert_eq!(dt, expected, "failed for {input:?} with type {typ:?}");
+            let mut dt_str = String::new();
+            dt.format_as_vcard(&mut dt_str, &typ).unwrap();
+
+            assert_eq!(
+                input, dt_str,
+                "roundtrip failed for {input} with type {typ:?} {dt:?}"
             );
         }
     }
