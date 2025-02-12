@@ -1,0 +1,8 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+SUMMARY:Event with bare string as argument for categories
+CATEGORIES:Lecture
+END:VEVENT
+END:VCALENDAR
+

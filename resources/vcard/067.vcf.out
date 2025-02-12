@@ -7,7 +7,7 @@ other.name:Jensen;Bj=F8rn
 some.other.value:1.2.3
 some.other.value:some.other
 some.other.value:some.other.value
-v;p-1=;p-2=,,;p-3=a;p-4=a        b,"v;p-1=;p-2=,,;p-3=a;p-4=a":v-value
+v;p-1=;p-2=,,;p-3=a;p-4="a        b","v;p-1=;p-2=,,;p-3=a;p-4=a":v-value
 EMAIL;TYPE=internet:bjorn@umich.edu
 TEL;TYPE=WORK,VOICE,msg:+1 313 747-4454
 TEL:+...

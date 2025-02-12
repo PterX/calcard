@@ -1,0 +1,10 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Life Lint//LifeLintCalendar 0.5//EN
+BEGIN:VEVENT
+LOCATION:At "The Terrace" Complex > Melbourne "\\\,
+SUMMARY:A colon with spaces on either side : like that
+DESCRIPTION:Test		tabs
+END:VEVENT
+END:VCALENDAR
+

@@ -770,7 +770,7 @@ mod tests {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "vcf") {
                 let input = std::fs::read_to_string(&path).unwrap();
-                let mut parser = Parser::new(input.as_bytes());
+                let mut parser = Parser::new(&input);
                 let mut output = std::fs::File::create(path.with_extension("vcf.out")).unwrap();
                 let file_name = path.as_path().to_str().unwrap();
 
@@ -781,7 +781,7 @@ mod tests {
                             writeln!(output, "{}", vcard_text).unwrap();
 
                             // Roundtrip parsing
-                            let mut parser = Parser::new(vcard_text.as_bytes());
+                            let mut parser = Parser::new(&vcard_text);
                             match parser.entry() {
                                 Entry::VCard(mut vcard_) => {
                                     vcard.entries.retain(|entry| {

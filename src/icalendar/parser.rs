@@ -7,7 +7,7 @@ use mail_parser::decoders::{
 
 use crate::{
     common::{
-        parser::{parse_digits, Integer, Timestamp},
+        parser::{parse_digits, Integer},
         CalendarScale, Encoding, PartialDateTime,
     },
     icalendar::{ICalendarDay, ICalendarWeekday},
@@ -25,8 +25,11 @@ struct Params {
 }
 
 impl Parser<'_> {
-    pub fn icalendar(&mut self) -> Entry {
-        let mut ical = ICalendar::default();
+    pub fn icalendar(&mut self, component_type: ICalendarComponentType) -> Entry {
+        let mut ical = ICalendar {
+            component_type,
+            ..Default::default()
+        };
         let mut ical_stack = Vec::new();
 
         loop {
@@ -190,6 +193,18 @@ impl Parser<'_> {
                 } else {
                     while let Some(mut token) = self.token() {
                         let eol = token.stop_char == StopChar::Lf;
+
+                        if token.text.is_empty()
+                            && (matches!(multi_value, ValueSeparator::None)
+                                || matches!(entry.name, ICalendarProperty::Other(_))
+                                    && entry.values.is_empty())
+                        {
+                            if eol {
+                                break;
+                            } else {
+                                continue;
+                            }
+                        }
 
                         // Decode binary parts
                         if let Some(encoding) = params.encoding {
@@ -636,7 +651,7 @@ impl Parser<'_> {
                     }
                 },
                 b"UNTIL" => {
-                    while let Some(value) = self.parse_value_until_lf::<Timestamp>(StopChar::Semicolon, &mut last_stop_char) {
+                    while let Some(value) = self.parse_value_until_lf::<ICalendarDateTime>(StopChar::Semicolon, &mut last_stop_char) {
                         token_end = token.end;
                         if let Ok(value) = value {
                             rrule.until = Some(value.0);
@@ -835,6 +850,21 @@ impl PartialDateTime {
     }
 }
 
+struct ICalendarDateTime(PartialDateTime);
+
+impl TryFrom<&[u8]> for ICalendarDateTime {
+    type Error = ();
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let mut dt = PartialDateTime::default();
+        if dt.parse_timestamp(&mut value.iter().peekable()) {
+            Ok(ICalendarDateTime(dt))
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl TryFrom<&[u8]> for ICalendarPeriod {
     type Error = ();
 
@@ -843,17 +873,11 @@ impl TryFrom<&[u8]> for ICalendarPeriod {
         let mut start = PartialDateTime::default();
         if start.parse_timestamp(&mut iter) {
             if let Some(duration) = ICalendarDuration::try_parse(&mut iter) {
-                Ok(ICalendarPeriod::Duration {
-                    start: start.to_timestamp().unwrap_or_default(),
-                    duration,
-                })
+                Ok(ICalendarPeriod::Duration { start, duration })
             } else {
                 let mut end = PartialDateTime::default();
                 if end.parse_timestamp(&mut iter) {
-                    Ok(ICalendarPeriod::Range {
-                        start: start.to_timestamp().unwrap_or_default(),
-                        end: end.to_timestamp().unwrap_or_default(),
-                    })
+                    Ok(ICalendarPeriod::Range { start, end })
                 } else {
                     Err(())
                 }
@@ -966,6 +990,85 @@ impl From<Token<'_>> for Uri {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn parse_ical() {
+        // Read all .ics files in the test directory
+        for entry in std::fs::read_dir("resources/ical").unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "ics") {
+                let input = match String::from_utf8(std::fs::read(&path).unwrap()) {
+                    Ok(input) => input,
+                    Err(err) => {
+                        // ISO-8859-1
+                        err.as_bytes()
+                            .iter()
+                            .map(|&b| b as char)
+                            .collect::<String>()
+                    }
+                };
+                let mut parser = Parser::new(&input);
+                let mut output = std::fs::File::create(path.with_extension("ics.out")).unwrap();
+                //let mut output_debug =
+                //    std::fs::File::create(path.with_extension("ics.debug")).unwrap();
+                let file_name = path.as_path().to_str().unwrap();
+
+                loop {
+                    match parser.entry() {
+                        Entry::ICalendar(mut ical) => {
+                            let ical_text = ical.to_string();
+                            writeln!(output, "{}", ical_text).unwrap();
+                            //writeln!(output_debug, "{:#?}", ical).unwrap();
+
+                            // Roundtrip parsing
+                            let mut parser = Parser::new(&ical_text);
+                            match parser.entry() {
+                                Entry::ICalendar(mut ical_) => {
+                                    ical.entries.retain(|entry| {
+                                        !matches!(entry.name, ICalendarProperty::Version)
+                                    });
+                                    ical_.entries.retain(|entry| {
+                                        !matches!(entry.name, ICalendarProperty::Version)
+                                    });
+
+                                    compare_components(&ical, &ical_, file_name);
+                                }
+                                other => panic!("Expected iCal, got {other:?} for {file_name}"),
+                            }
+                        }
+                        Entry::InvalidLine(text) => {
+                            println!("Invalid line in {file_name}: {text}");
+                        }
+                        Entry::Eof => break,
+                        other => {
+                            panic!("Expected iCal, got {other:?} for {file_name}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn compare_components(a: &ICalendar, b: &ICalendar, file_name: &str) {
+        assert_eq!(a.entries.len(), b.entries.len(), "failed for {file_name}");
+
+        for (a, b) in a.entries.iter().zip(b.entries.iter()) {
+            assert_eq!(a, b, "failed for {file_name}");
+        }
+
+        assert_eq!(
+            a.components.len(),
+            b.components.len(),
+            "failed for {file_name}"
+        );
+
+        for (a, b) in a.components.iter().zip(b.components.iter()) {
+            assert_eq!(a.component_type, b.component_type, "failed for {file_name}");
+            compare_components(a, b, file_name);
+        }
+    }
 
     #[test]
     fn test_parse_rrule() {
@@ -1043,7 +1146,17 @@ mod tests {
                 "FREQ=YEARLY;BYMONTH=4;BYDAY=-1SU;UNTIL=19730429T070000Z",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Yearly,
-                    until: Some(104914800),
+                    until: Some(PartialDateTime {
+                        year: Some(1973),
+                        month: Some(4),
+                        day: Some(29),
+                        hour: Some(7),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    }),
                     byday: vec![ICalendarDay {
                         ordwk: Some(-1),
                         weekday: ICalendarWeekday::Sunday,
@@ -1053,10 +1166,20 @@ mod tests {
                 },
             ),
             (
-                "FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU;UNTIL=20061029T060000Z",
+                "FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU;UNTIL=20061029T060000",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Yearly,
-                    until: Some(1162101600),
+                    until: Some(PartialDateTime {
+                        year: Some(2006),
+                        month: Some(10),
+                        day: Some(29),
+                        hour: Some(6),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: None,
+                        tz_minute: None,
+                        tz_minus: false,
+                    }),
                     byday: vec![ICalendarDay {
                         ordwk: Some(-1),
                         weekday: ICalendarWeekday::Sunday,
@@ -1110,7 +1233,17 @@ mod tests {
                 "FREQ=YEARLY;UNTIL=20000131T140000Z;BYMONTH=1;BYDAY=SU,MO,TU,WE,TH,FR,SA",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Yearly,
-                    until: Some(949327200),
+                    until: Some(PartialDateTime {
+                        year: Some(2000),
+                        month: Some(1),
+                        day: Some(31),
+                        hour: Some(14),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    }),
                     byday: vec![
                         ICalendarDay {
                             ordwk: None,
@@ -1149,7 +1282,17 @@ mod tests {
                 "FREQ=DAILY;UNTIL=20000131T140000Z;BYMONTH=1",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Daily,
-                    until: Some(949327200),
+                    until: Some(PartialDateTime {
+                        year: Some(2000),
+                        month: Some(1),
+                        day: Some(31),
+                        hour: Some(14),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    }),
                     bymonth: vec![1],
                     ..Default::default()
                 },
@@ -1175,7 +1318,17 @@ mod tests {
                 "FREQ=WEEKLY;UNTIL=19971007T000000Z;WKST=SU;BYDAY=TU,TH",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Weekly,
-                    until: Some(876182400),
+                    until: Some(PartialDateTime {
+                        year: Some(1997),
+                        month: Some(10),
+                        day: Some(7),
+                        hour: Some(0),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    }),
                     byday: vec![
                         ICalendarDay {
                             ordwk: None,
@@ -1213,7 +1366,17 @@ mod tests {
                 "FREQ=WEEKLY;INTERVAL=2;UNTIL=19971224T000000Z;WKST=SU;BYDAY=MO,WE,FR",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Weekly,
-                    until: Some(882921600),
+                    until: Some(PartialDateTime {
+                        year: Some(1997),
+                        month: Some(12),
+                        day: Some(24),
+                        hour: Some(0),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    }),
                     interval: Some(2),
                     byday: vec![
                         ICalendarDay {
@@ -1515,7 +1678,17 @@ mod tests {
                 "FREQ=HOURLY;INTERVAL=3;UNTIL=19970902T170000Z",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Hourly,
-                    until: Some(873219600),
+                    until: Some(PartialDateTime {
+                        year: Some(1997),
+                        month: Some(9),
+                        day: Some(2),
+                        hour: Some(17),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    }),
                     interval: Some(3),
                     ..Default::default()
                 },
@@ -1587,8 +1760,9 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                Parser::new(rule.as_bytes()).strict().rrule().unwrap(),
-                expected
+                Parser::new(rule).strict().rrule().unwrap(),
+                expected,
+                "failed for {rule}"
             );
         }
     }
@@ -1599,7 +1773,17 @@ mod tests {
             (
                 "19970308T160000Z/PT8H30M",
                 ICalendarPeriod::Duration {
-                    start: 857836800,
+                    start: PartialDateTime {
+                        year: Some(1997),
+                        month: Some(3),
+                        day: Some(8),
+                        hour: Some(16),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
                     duration: ICalendarDuration {
                         neg: false,
                         weeks: 0,
@@ -1611,9 +1795,19 @@ mod tests {
                 },
             ),
             (
-                "19970308T160000Z/PT3H",
+                "19970308T160000/PT3H",
                 ICalendarPeriod::Duration {
-                    start: 857836800,
+                    start: PartialDateTime {
+                        year: Some(1997),
+                        month: Some(3),
+                        day: Some(8),
+                        hour: Some(16),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: None,
+                        tz_minute: None,
+                        tz_minus: false,
+                    },
                     duration: ICalendarDuration {
                         neg: false,
                         weeks: 0,
@@ -1627,7 +1821,17 @@ mod tests {
             (
                 "19970308T200000Z/PT1H",
                 ICalendarPeriod::Duration {
-                    start: 857851200,
+                    start: PartialDateTime {
+                        year: Some(1997),
+                        month: Some(3),
+                        day: Some(8),
+                        hour: Some(20),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
                     duration: ICalendarDuration {
                         neg: false,
                         weeks: 0,
@@ -1641,14 +1845,44 @@ mod tests {
             (
                 "19970308T230000Z/19970309T000000Z",
                 ICalendarPeriod::Range {
-                    start: 857862000,
-                    end: 857865600,
+                    start: PartialDateTime {
+                        year: Some(1997),
+                        month: Some(3),
+                        day: Some(8),
+                        hour: Some(23),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
+                    end: PartialDateTime {
+                        year: Some(1997),
+                        month: Some(3),
+                        day: Some(9),
+                        hour: Some(0),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
                 },
             ),
             (
                 "19970101T180000Z/PT5H30M",
                 ICalendarPeriod::Duration {
-                    start: 852141600,
+                    start: PartialDateTime {
+                        year: Some(1997),
+                        month: Some(1),
+                        day: Some(1),
+                        hour: Some(18),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
                     duration: ICalendarDuration {
                         neg: false,
                         weeks: 0,
@@ -1662,7 +1896,17 @@ mod tests {
             (
                 "19971015T050000Z/PT8H30M",
                 ICalendarPeriod::Duration {
-                    start: 876891600,
+                    start: PartialDateTime {
+                        year: Some(1997),
+                        month: Some(10),
+                        day: Some(15),
+                        hour: Some(5),
+                        minute: Some(0),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
                     duration: ICalendarDuration {
                         neg: false,
                         weeks: 0,
@@ -1676,12 +1920,32 @@ mod tests {
             (
                 "19980314T233000Z/19980315T003000Z",
                 ICalendarPeriod::Range {
-                    start: 889918200,
-                    end: 889921800,
+                    start: PartialDateTime {
+                        year: Some(1998),
+                        month: Some(3),
+                        day: Some(14),
+                        hour: Some(23),
+                        minute: Some(30),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
+                    end: PartialDateTime {
+                        year: Some(1998),
+                        month: Some(3),
+                        day: Some(15),
+                        hour: Some(0),
+                        minute: Some(30),
+                        second: Some(0),
+                        tz_hour: Some(0),
+                        tz_minute: Some(0),
+                        tz_minus: false,
+                    },
                 },
             ),
         ] {
-            let mut parser = Parser::new(rule.as_bytes());
+            let mut parser = Parser::new(rule);
             let token = parser.token().unwrap();
 
             assert_eq!(
@@ -1739,7 +2003,7 @@ mod tests {
                 },
             ),
         ] {
-            let mut parser = Parser::new(rule.as_bytes());
+            let mut parser = Parser::new(rule);
             let token = parser.token().unwrap();
 
             assert_eq!(
