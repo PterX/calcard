@@ -9,6 +9,11 @@ pub mod writer;
     any(test, feature = "serde"),
     derive(serde::Serialize, serde::Deserialize)
 )]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
+)]
+#[cfg_attr(feature = "rkyv", rkyv(compare(PartialEq), derive(Debug)))]
 pub struct PartialDateTime {
     pub year: Option<u16>,
     pub month: Option<u16>,
@@ -27,6 +32,11 @@ pub struct PartialDateTime {
     derive(serde::Serialize, serde::Deserialize)
 )]
 #[cfg_attr(any(test, feature = "serde"), serde(tag = "type", content = "data"))]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
+)]
+#[cfg_attr(feature = "rkyv", rkyv(compare(PartialEq), derive(Debug)))]
 pub enum CalendarScale {
     #[default]
     Gregorian,
@@ -91,6 +101,11 @@ impl Encoding {
     any(test, feature = "serde"),
     derive(serde::Serialize, serde::Deserialize)
 )]
+#[cfg_attr(
+    feature = "rkyv",
+    derive(rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)
+)]
+#[cfg_attr(feature = "rkyv", rkyv(compare(PartialEq), derive(Debug)))]
 pub struct Data {
     pub content_type: Option<String>,
     pub data: Vec<u8>,
