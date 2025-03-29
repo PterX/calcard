@@ -847,6 +847,21 @@ mod tests {
                                 }
                                 other => panic!("Expected VCard, got {other:?} for {file_name}"),
                             }
+
+                            // Rkyv archiving tests
+                            #[cfg(feature = "rkyv")]
+                            {
+                                let vcard_bytes =
+                                    rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).unwrap();
+                                let vcard_unarchived = rkyv::access::<
+                                    crate::vcard::ArchivedVCard,
+                                    rkyv::rancor::Error,
+                                >(
+                                    &vcard_bytes
+                                )
+                                .unwrap();
+                                assert_eq!(vcard_text, vcard_unarchived.to_string());
+                            }
                         }
                         Entry::InvalidLine(text) => {
                             println!("Invalid line in {file_name}: {text}");
