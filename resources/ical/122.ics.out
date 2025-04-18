@@ -1,6 +1,6 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 PRODID:-//Plone.org//NONSGML plone.app.event//EN
+VERSION:2.0
 X-WR-CALNAME:test create calendar
 X-WR-CALDESC:icalendar test
 X-WR-RELCALID:12345

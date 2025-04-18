@@ -811,19 +811,24 @@ mod tests {
                 loop {
                     match parser.entry() {
                         Entry::VCard(mut vcard) => {
+                            for item in &mut vcard.entries {
+                                if item.name == VCardProperty::Version {
+                                    item.values = vec![VCardValue::Text("4.0".into())];
+                                }
+                            }
                             let vcard_text = vcard.to_string();
                             writeln!(output, "{}", vcard_text).unwrap();
 
                             // Roundtrip parsing
                             let mut parser = Parser::new(&vcard_text);
                             match parser.entry() {
-                                Entry::VCard(mut vcard_) => {
-                                    vcard.entries.retain(|entry| {
+                                Entry::VCard(vcard_) => {
+                                    /*vcard.entries.retain(|entry| {
                                         !matches!(entry.name, VCardProperty::Version)
                                     });
                                     vcard_.entries.retain(|entry| {
                                         !matches!(entry.name, VCardProperty::Version)
-                                    });
+                                    });*/
                                     assert_eq!(vcard.entries.len(), vcard_.entries.len());
 
                                     if !file_name.contains("003.vcf") {

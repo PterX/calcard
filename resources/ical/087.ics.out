@@ -1,7 +1,7 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 X-SOURCE-URL:https://github.com/pimutils/khal/issues/152#issuecomment-387410
  353
+VERSION:2.0
 PRODID:-//PIMUTILS.ORG//NONSGML khal / icalendar //EN
 BEGIN:VEVENT
 SUMMARY:Event

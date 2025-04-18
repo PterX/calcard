@@ -1062,6 +1062,13 @@ mod tests {
                 loop {
                     match parser.entry() {
                         Entry::ICalendar(mut ical) => {
+                            for item in &mut ical.components {
+                                for item in &mut item.entries {
+                                    if item.name == ICalendarProperty::Version {
+                                        item.values = vec![ICalendarValue::Text("2.0".into())];
+                                    }
+                                }
+                            }
                             let ical_text = ical.to_string();
                             writeln!(output, "{}", ical_text).unwrap();
                             //writeln!(output_debug, "{:#?}", ical).unwrap();
@@ -1069,8 +1076,8 @@ mod tests {
                             // Roundtrip parsing
                             let mut parser = Parser::new(&ical_text);
                             match parser.entry() {
-                                Entry::ICalendar(mut ical_) => {
-                                    ical.components.iter_mut().for_each(|component| {
+                                Entry::ICalendar(ical_) => {
+                                    /*ical.components.iter_mut().for_each(|component| {
                                         component.entries.retain(|entry| {
                                             !matches!(entry.name, ICalendarProperty::Version)
                                         });
@@ -1079,11 +1086,24 @@ mod tests {
                                         component.entries.retain(|entry| {
                                             !matches!(entry.name, ICalendarProperty::Version)
                                         });
-                                    });
+                                    });*/
 
                                     compare_components(&ical, &ical_, file_name);
                                 }
                                 other => panic!("Expected iCal, got {other:?} for {file_name}"),
+                            }
+
+                            // Rkyv archiving tests
+                            #[cfg(feature = "rkyv")]
+                            {
+                                let ical_bytes =
+                                    rkyv::to_bytes::<rkyv::rancor::Error>(&ical).unwrap();
+                                let ical_unarchived = rkyv::access::<
+                                    crate::icalendar::ArchivedICalendar,
+                                    rkyv::rancor::Error,
+                                >(&ical_bytes)
+                                .unwrap();
+                                assert_eq!(ical_text, ical_unarchived.to_string());
                             }
                         }
                         Entry::InvalidLine(text) => {

@@ -1,35 +1,35 @@
+use crate::{
+    common::{
+        writer::{write_bytes, write_param, write_param_value, write_params, write_value},
+        ArchivedPartialDateTime,
+    },
+    icalendar::ValueSeparator,
+};
 use std::{
     fmt::{Display, Write},
     slice::Iter,
 };
 
-use crate::{
-    common::{
-        writer::{write_bytes, write_param, write_param_value, write_params, write_value},
-        PartialDateTime,
-    },
-    icalendar::{ICalendarValue, Uri, ValueSeparator},
-};
+use super::*;
 
-use super::{
-    ICalendar, ICalendarDay, ICalendarDuration, ICalendarEntry, ICalendarParameter,
-    ICalendarPeriod, ICalendarProperty, ICalendarRecurrenceRule, ICalendarValueType,
-};
-
-impl ICalendar {
+impl ArchivedICalendar {
     pub fn write_to(&self, out: &mut impl Write) -> std::fmt::Result {
-        let mut component_iter: Iter<'_, u16> = [0].iter();
+        let _v = [0.into()];
+        let mut component_iter: Iter<'_, rkyv::rend::u16_le> = _v.iter();
         let mut component_stack = Vec::with_capacity(4);
 
         loop {
             if let Some(component_id) = component_iter.next() {
-                let component = self.components.get(*component_id as usize).unwrap();
+                let component = self
+                    .components
+                    .get(component_id.to_native() as usize)
+                    .unwrap();
                 write!(out, "BEGIN:{}\r\n", component.component_type.as_str())?;
 
-                for entry in &component.entries {
+                for entry in component.entries.iter() {
                     if !matches!(
                         entry.name,
-                        ICalendarProperty::Begin | ICalendarProperty::End
+                        ArchivedICalendarProperty::Begin | ArchivedICalendarProperty::End
                     ) {
                         entry.write_to(out)?;
                     }
@@ -53,7 +53,7 @@ impl ICalendar {
     }
 }
 
-impl ICalendarEntry {
+impl ArchivedICalendarEntry {
     pub fn write_to(&self, out: &mut impl Write) -> std::fmt::Result {
         let mut line_len = 0;
 
@@ -61,13 +61,16 @@ impl ICalendarEntry {
         write!(out, "{}", entry_name)?;
         line_len += entry_name.len();
 
-        if matches!(self.values.first(), Some(ICalendarValue::Binary(_))) {
+        if matches!(
+            self.values.first().as_ref(),
+            Some(ArchivedICalendarValue::Binary(_))
+        ) {
             write!(out, ";ENCODING=BASE64")?;
             line_len += 18;
         }
 
         let mut value_type = None;
-        for param in &self.params {
+        for param in self.params.iter() {
             write!(out, ";")?;
             line_len += 1;
 
@@ -77,53 +80,53 @@ impl ICalendarEntry {
             }
 
             match param {
-                ICalendarParameter::Altrep(v) => {
+                ArchivedICalendarParameter::Altrep(v) => {
                     write_uri_param(out, &mut line_len, "ALTREP", v)?;
                 }
-                ICalendarParameter::Cn(v) => {
+                ArchivedICalendarParameter::Cn(v) => {
                     write_param(out, &mut line_len, "CN", v)?;
                 }
-                ICalendarParameter::Cutype(v) => {
+                ArchivedICalendarParameter::Cutype(v) => {
                     write_param(out, &mut line_len, "CUTYPE", v)?;
                 }
-                ICalendarParameter::DelegatedFrom(v) => {
+                ArchivedICalendarParameter::DelegatedFrom(v) => {
                     write_uri_params(out, &mut line_len, "DELEGATED-FROM", v)?;
                 }
-                ICalendarParameter::DelegatedTo(v) => {
+                ArchivedICalendarParameter::DelegatedTo(v) => {
                     write_uri_params(out, &mut line_len, "DELEGATED-TO", v)?;
                 }
-                ICalendarParameter::Dir(v) => {
+                ArchivedICalendarParameter::Dir(v) => {
                     write_uri_param(out, &mut line_len, "DIR", v)?;
                 }
-                ICalendarParameter::Fmttype(v) => {
+                ArchivedICalendarParameter::Fmttype(v) => {
                     write_param(out, &mut line_len, "FMTTYPE", v)?;
                 }
-                ICalendarParameter::Fbtype(v) => {
+                ArchivedICalendarParameter::Fbtype(v) => {
                     write_param(out, &mut line_len, "FBTYPE", v)?;
                 }
-                ICalendarParameter::Language(v) => {
+                ArchivedICalendarParameter::Language(v) => {
                     write_param(out, &mut line_len, "LANGUAGE", v)?;
                 }
-                ICalendarParameter::Member(v) => {
+                ArchivedICalendarParameter::Member(v) => {
                     write_uri_params(out, &mut line_len, "MEMBER", v)?;
                 }
-                ICalendarParameter::Partstat(v) => {
+                ArchivedICalendarParameter::Partstat(v) => {
                     write_param(out, &mut line_len, "PARTSTAT", v)?;
                 }
-                ICalendarParameter::Range => {
+                ArchivedICalendarParameter::Range => {
                     write!(out, "RANGE=THISANDFUTURE")?;
                     line_len += 18;
                 }
-                ICalendarParameter::Related(v) => {
+                ArchivedICalendarParameter::Related(v) => {
                     write_param(out, &mut line_len, "RELATED", v)?;
                 }
-                ICalendarParameter::Reltype(v) => {
+                ArchivedICalendarParameter::Reltype(v) => {
                     write_param(out, &mut line_len, "RELTYPE", v)?;
                 }
-                ICalendarParameter::Role(v) => {
+                ArchivedICalendarParameter::Role(v) => {
                     write_param(out, &mut line_len, "ROLE", v)?;
                 }
-                ICalendarParameter::Rsvp(v) => {
+                ArchivedICalendarParameter::Rsvp(v) => {
                     write_param(
                         out,
                         &mut line_len,
@@ -131,55 +134,55 @@ impl ICalendarEntry {
                         if *v { "TRUE" } else { "FALSE" },
                     )?;
                 }
-                ICalendarParameter::ScheduleAgent(v) => {
+                ArchivedICalendarParameter::ScheduleAgent(v) => {
                     write_param(out, &mut line_len, "SCHEDULE-AGENT", v)?;
                 }
-                ICalendarParameter::ScheduleForceSend(v) => {
+                ArchivedICalendarParameter::ScheduleForceSend(v) => {
                     write_param(out, &mut line_len, "SCHEDULE-FORCE-SEND", v)?;
                 }
-                ICalendarParameter::ScheduleStatus(v) => {
+                ArchivedICalendarParameter::ScheduleStatus(v) => {
                     write_param(out, &mut line_len, "SCHEDULE-STATUS", v)?;
                 }
-                ICalendarParameter::SentBy(v) => {
+                ArchivedICalendarParameter::SentBy(v) => {
                     write_uri_param(out, &mut line_len, "SENT-BY", v)?;
                 }
-                ICalendarParameter::Tzid(v) => {
+                ArchivedICalendarParameter::Tzid(v) => {
                     write_param(out, &mut line_len, "TZID", v)?;
                 }
-                ICalendarParameter::Value(v) => {
+                ArchivedICalendarParameter::Value(v) => {
                     write_param(out, &mut line_len, "VALUE", v)?;
                     value_type = Some(v);
                 }
-                ICalendarParameter::Display(v) => {
+                ArchivedICalendarParameter::Display(v) => {
                     write_params(out, &mut line_len, "DISPLAY", v)?;
                 }
-                ICalendarParameter::Email(v) => {
+                ArchivedICalendarParameter::Email(v) => {
                     write_param(out, &mut line_len, "EMAIL", v)?;
                 }
-                ICalendarParameter::Feature(v) => {
+                ArchivedICalendarParameter::Feature(v) => {
                     write_params(out, &mut line_len, "FEATURE", v)?;
                 }
-                ICalendarParameter::Label(v) => {
+                ArchivedICalendarParameter::Label(v) => {
                     write_param(out, &mut line_len, "LABEL", v)?;
                 }
-                ICalendarParameter::Size(v) => {
+                ArchivedICalendarParameter::Size(v) => {
                     write!(out, "SIZE={}", v)?;
                     line_len += 8;
                 }
-                ICalendarParameter::Filename(v) => {
+                ArchivedICalendarParameter::Filename(v) => {
                     write_param(out, &mut line_len, "FILENAME", v)?;
                 }
-                ICalendarParameter::ManagedId(v) => {
+                ArchivedICalendarParameter::ManagedId(v) => {
                     write_param(out, &mut line_len, "MANAGED-ID", v)?;
                 }
-                ICalendarParameter::Order(v) => {
+                ArchivedICalendarParameter::Order(v) => {
                     write!(out, "ORDER={}", v)?;
                     line_len += 8;
                 }
-                ICalendarParameter::Schema(v) => {
+                ArchivedICalendarParameter::Schema(v) => {
                     write_uri_param(out, &mut line_len, "SCHEMA", v)?;
                 }
-                ICalendarParameter::Derived(v) => {
+                ArchivedICalendarParameter::Derived(v) => {
                     write_param(
                         out,
                         &mut line_len,
@@ -187,14 +190,14 @@ impl ICalendarEntry {
                         if *v { "TRUE" } else { "FALSE" },
                     )?;
                 }
-                ICalendarParameter::Gap(v) => {
+                ArchivedICalendarParameter::Gap(v) => {
                     write!(out, "GAP={}", v)?;
                     line_len += 14;
                 }
-                ICalendarParameter::Linkrel(v) => {
+                ArchivedICalendarParameter::Linkrel(v) => {
                     write_uri_param(out, &mut line_len, "LINKREL", v)?;
                 }
-                ICalendarParameter::Other(v) => {
+                ArchivedICalendarParameter::Other(v) => {
                     for (pos, item) in v.iter().enumerate() {
                         if pos == 0 {
                             write!(out, "{item}")?;
@@ -236,64 +239,64 @@ impl ICalendarEntry {
             }
 
             let text = match value {
-                ICalendarValue::Binary(v) => {
+                ArchivedICalendarValue::Binary(v) => {
                     write_bytes(out, &mut line_len, v)?;
                     continue;
                 }
-                ICalendarValue::Boolean(v) => {
+                ArchivedICalendarValue::Boolean(v) => {
                     let text = if *v { "TRUE" } else { "FALSE" };
                     write!(out, "{text}")?;
                     line_len += text.len();
                     continue;
                 }
-                ICalendarValue::Uri(v) => {
+                ArchivedICalendarValue::Uri(v) => {
                     write_uri(out, &mut line_len, v, true)?;
                     continue;
                 }
-                ICalendarValue::PartialDateTime(v) => {
+                ArchivedICalendarValue::PartialDateTime(v) => {
                     v.format_as_ical(out, value_type.unwrap_or(&default_type))?;
                     line_len += 6;
                     continue;
                 }
-                ICalendarValue::Duration(v) => {
+                ArchivedICalendarValue::Duration(v) => {
                     write!(out, "{}", v)?;
                     line_len += 6;
                     continue;
                 }
-                ICalendarValue::RecurrenceRule(v) => {
+                ArchivedICalendarValue::RecurrenceRule(v) => {
                     write!(out, "{}", v)?;
                     line_len += 6;
                     continue;
                 }
-                ICalendarValue::Period(v) => {
+                ArchivedICalendarValue::Period(v) => {
                     write!(out, "{}", v)?;
                     line_len += 32;
                     continue;
                 }
-                ICalendarValue::Float(v) => {
+                ArchivedICalendarValue::Float(v) => {
                     write!(out, "{v}")?;
                     line_len += 4;
                     continue;
                 }
-                ICalendarValue::Integer(v) => {
+                ArchivedICalendarValue::Integer(v) => {
                     write!(out, "{v}")?;
                     line_len += 4;
                     continue;
                 }
-                ICalendarValue::Text(v) => {
+                ArchivedICalendarValue::Text(v) => {
                     write_value(out, &mut line_len, v)?;
                     continue;
                 }
-                ICalendarValue::CalendarScale(v) => v.as_str(),
-                ICalendarValue::Method(v) => v.as_str(),
-                ICalendarValue::Classification(v) => v.as_str(),
-                ICalendarValue::Status(v) => v.as_str(),
-                ICalendarValue::Transparency(v) => v.as_str(),
-                ICalendarValue::Action(v) => v.as_str(),
-                ICalendarValue::BusyType(v) => v.as_str(),
-                ICalendarValue::ParticipantType(v) => v.as_str(),
-                ICalendarValue::ResourceType(v) => v.as_str(),
-                ICalendarValue::Proximity(v) => v.as_str(),
+                ArchivedICalendarValue::CalendarScale(v) => v.as_str(),
+                ArchivedICalendarValue::Method(v) => v.as_str(),
+                ArchivedICalendarValue::Classification(v) => v.as_str(),
+                ArchivedICalendarValue::Status(v) => v.as_str(),
+                ArchivedICalendarValue::Transparency(v) => v.as_str(),
+                ArchivedICalendarValue::Action(v) => v.as_str(),
+                ArchivedICalendarValue::BusyType(v) => v.as_str(),
+                ArchivedICalendarValue::ParticipantType(v) => v.as_str(),
+                ArchivedICalendarValue::ResourceType(v) => v.as_str(),
+                ArchivedICalendarValue::Proximity(v) => v.as_str(),
             };
 
             write!(out, "{text}")?;
@@ -308,7 +311,7 @@ pub(crate) fn write_uri_param(
     out: &mut impl Write,
     line_len: &mut usize,
     name: &str,
-    value: &Uri,
+    value: &ArchivedUri,
 ) -> std::fmt::Result {
     write!(out, "{}=\"", name)?;
     *line_len += name.len() + 3;
@@ -320,7 +323,7 @@ pub(crate) fn write_uri_params(
     out: &mut impl Write,
     line_len: &mut usize,
     name: &str,
-    values: &[Uri],
+    values: &[ArchivedUri],
 ) -> std::fmt::Result {
     write!(out, "{}", name)?;
     *line_len += name.len() + 1;
@@ -342,14 +345,14 @@ pub(crate) fn write_uri_params(
 pub(crate) fn write_uri(
     out: &mut impl Write,
     line_len: &mut usize,
-    value: &Uri,
+    value: &ArchivedUri,
     escape: bool,
 ) -> std::fmt::Result {
     match value {
-        Uri::Data(v) => {
+        ArchivedUri::Data(v) => {
             write!(out, "data:")?;
             *line_len += 5;
-            if let Some(ct) = &v.content_type {
+            if let Some(ct) = v.content_type.as_ref() {
                 write!(out, "{ct};")?;
                 *line_len += ct.len() + 1;
             }
@@ -361,21 +364,21 @@ pub(crate) fn write_uri(
             *line_len += 8;
             write_bytes(out, line_len, &v.data)
         }
-        Uri::Location(v) => write_value(out, line_len, v),
+        ArchivedUri::Location(v) => write_value(out, line_len, v),
     }
 }
 
-impl Display for ICalendarRecurrenceRule {
+impl Display for ArchivedICalendarRecurrenceRule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "FREQ={}", self.freq.as_str())?;
-        if let Some(until) = &self.until {
+        if let Some(until) = self.until.as_ref() {
             write!(f, ";UNTIL=")?;
-            until.format_as_ical(f, &ICalendarValueType::DateTime)?;
+            until.format_as_ical(f, &ArchivedICalendarValueType::DateTime)?;
         }
-        if let Some(count) = self.count {
+        if let Some(count) = self.count.as_ref() {
             write!(f, ";COUNT={}", count)?;
         }
-        if let Some(interval) = self.interval {
+        if let Some(interval) = self.interval.as_ref() {
             write!(f, ";INTERVAL={}", interval)?;
         }
         if !self.bysecond.is_empty() {
@@ -459,7 +462,7 @@ impl Display for ICalendarRecurrenceRule {
                 write!(f, "{}", item)?;
             }
         }
-        if let Some(wkst) = self.wkst {
+        if let Some(wkst) = self.wkst.as_ref() {
             write!(f, ";WKST={}", wkst.as_str())?;
         }
 
@@ -467,32 +470,32 @@ impl Display for ICalendarRecurrenceRule {
     }
 }
 
-impl Display for ICalendarDay {
+impl Display for ArchivedICalendarDay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(ordwk) = self.ordwk {
+        if let Some(ordwk) = self.ordwk.as_ref() {
             write!(f, "{}", ordwk)?;
         }
         write!(f, "{}", self.weekday.as_str())
     }
 }
 
-impl Display for ICalendarPeriod {
+impl Display for ArchivedICalendarPeriod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ICalendarPeriod::Range { start, end } => {
-                start.format_as_ical(f, &ICalendarValueType::DateTime)?;
+            ArchivedICalendarPeriod::Range { start, end } => {
+                start.format_as_ical(f, &ArchivedICalendarValueType::DateTime)?;
                 write!(f, "/")?;
-                end.format_as_ical(f, &ICalendarValueType::DateTime)
+                end.format_as_ical(f, &ArchivedICalendarValueType::DateTime)
             }
-            ICalendarPeriod::Duration { start, duration } => {
-                start.format_as_ical(f, &ICalendarValueType::DateTime)?;
+            ArchivedICalendarPeriod::Duration { start, duration } => {
+                start.format_as_ical(f, &ArchivedICalendarValueType::DateTime)?;
                 write!(f, "/{}", duration)
             }
         }
     }
 }
 
-impl Display for ICalendarDuration {
+impl Display for ArchivedICalendarDuration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.neg {
             write!(f, "-")?;
@@ -521,41 +524,68 @@ impl Display for ICalendarDuration {
     }
 }
 
-impl PartialDateTime {
+impl ArchivedPartialDateTime {
     pub fn format_as_ical(
         &self,
         out: &mut impl Write,
-        fmt: &ICalendarValueType,
+        fmt: &ArchivedICalendarValueType,
     ) -> std::fmt::Result {
-        if matches!(fmt, ICalendarValueType::Date | ICalendarValueType::DateTime) {
+        if matches!(
+            fmt,
+            ArchivedICalendarValueType::Date | ArchivedICalendarValueType::DateTime
+        ) {
             write!(
                 out,
                 "{:04}{:02}{:02}",
-                self.year.unwrap_or_default(),
-                self.month.unwrap_or_default(),
-                self.day.unwrap_or_default()
+                self.year
+                    .as_ref()
+                    .map(|n| n.to_native())
+                    .unwrap_or_default(),
+                self.month
+                    .as_ref()
+                    .map(|n| n.to_native())
+                    .unwrap_or_default(),
+                self.day.as_ref().map(|n| n.to_native()).unwrap_or_default(),
             )?;
         }
 
-        if matches!(fmt, ICalendarValueType::DateTime) {
+        if matches!(fmt, ArchivedICalendarValueType::DateTime) {
             write!(out, "T")?;
         }
 
-        if matches!(fmt, ICalendarValueType::DateTime | ICalendarValueType::Time) {
+        if matches!(
+            fmt,
+            ArchivedICalendarValueType::DateTime | ArchivedICalendarValueType::Time
+        ) {
             write!(
                 out,
                 "{:02}{:02}{:02}",
-                self.hour.unwrap_or_default(),
-                self.minute.unwrap_or_default(),
-                self.second.unwrap_or_default()
+                self.hour
+                    .as_ref()
+                    .map(|n| n.to_native())
+                    .unwrap_or_default(),
+                self.minute
+                    .as_ref()
+                    .map(|n| n.to_native())
+                    .unwrap_or_default(),
+                self.second
+                    .as_ref()
+                    .map(|n| n.to_native())
+                    .unwrap_or_default(),
             )?;
 
-            if matches!((self.tz_hour, self.tz_minute), (Some(0), Some(0))) {
+            if matches!(
+                (
+                    self.tz_hour.as_ref().map(|n| n.to_native()),
+                    self.tz_minute.as_ref().map(|n| n.to_native())
+                ),
+                (Some(0), Some(0))
+            ) {
                 write!(out, "Z")?;
             }
         }
 
-        if matches!(fmt, ICalendarValueType::UtcOffset) {
+        if matches!(fmt, ArchivedICalendarValueType::UtcOffset) {
             if self.tz_minus {
                 write!(out, "-")?;
             } else {
@@ -565,8 +595,14 @@ impl PartialDateTime {
             write!(
                 out,
                 "{:02}{:02}",
-                self.tz_hour.unwrap_or_default(),
-                self.tz_minute.unwrap_or_default(),
+                self.tz_hour
+                    .as_ref()
+                    .map(|n| n.to_native())
+                    .unwrap_or_default(),
+                self.tz_minute
+                    .as_ref()
+                    .map(|n| n.to_native())
+                    .unwrap_or_default(),
             )?;
         }
 
@@ -574,7 +610,7 @@ impl PartialDateTime {
     }
 }
 
-impl Display for ICalendar {
+impl Display for ArchivedICalendar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.write_to(f)
     }

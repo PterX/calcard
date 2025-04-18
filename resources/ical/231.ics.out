@@ -1,6 +1,6 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 PRODID:-//flaimo.com//iCal Class MIMEDIR//EN
+VERSION:2.0
 METHOD:REQUEST
 BEGIN:VEVENT
 ORGANIZER;CN="TMS -- Calendar Publisher":MAILTO:cal_publisher@xxxx.xxxx.xxxx

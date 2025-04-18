@@ -1,8 +1,8 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 PRODID:-//lanyrd.com//Lanyrd//EN
 X-ORIGINAL-URL:http://lanyrd.com/topics/nodejs/nodejs.ics
 X-WR-CALNAME:Node.js conferences
+VERSION:2.0
 METHOD:PUBLISH
 BEGIN:VEVENT
 SUMMARY:Dyncon 2011

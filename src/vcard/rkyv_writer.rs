@@ -5,17 +5,18 @@ use crate::{
         parser::Timestamp,
         writer::{write_bytes, write_param, write_param_value, write_params, write_value},
     },
-    vcard::{VCardParameter, VCardProperty, VCardValue, ValueSeparator},
+    vcard::*,
 };
 
-use super::{PartialDateTime, VCard, VCardEntry, VCardValueType};
-
-impl VCard {
+impl ArchivedVCard {
     pub fn write_to(&self, out: &mut impl Write) -> std::fmt::Result {
         write!(out, "BEGIN:VCARD\r\n")?;
 
-        for entry in &self.entries {
-            if !matches!(entry.name, VCardProperty::Begin | VCardProperty::End) {
+        for entry in self.entries.iter() {
+            if !matches!(
+                entry.name,
+                ArchivedVCardProperty::Begin | ArchivedVCardProperty::End
+            ) {
                 entry.write_to(out)?;
             }
         }
@@ -24,11 +25,11 @@ impl VCard {
     }
 }
 
-impl VCardEntry {
+impl ArchivedVCardEntry {
     pub fn write_to(&self, out: &mut impl Write) -> std::fmt::Result {
         let mut line_len = 0;
 
-        if let Some(group_name) = &self.group {
+        if let Some(group_name) = self.group.as_ref() {
             write!(out, "{group_name}.")?;
             line_len += group_name.len() + 1;
         }
@@ -38,7 +39,7 @@ impl VCardEntry {
         line_len += entry_name.len();
         let mut types = &[][..];
 
-        for param in &self.params {
+        for param in self.params.iter() {
             write!(out, ";")?;
             line_len += 1;
 
@@ -48,65 +49,65 @@ impl VCardEntry {
             }
 
             match param {
-                VCardParameter::Language(v) => {
+                ArchivedVCardParameter::Language(v) => {
                     write_param(out, &mut line_len, "LANGUAGE", v)?;
                 }
-                VCardParameter::Value(v) => {
+                ArchivedVCardParameter::Value(v) => {
                     write_params(out, &mut line_len, "VALUE", v)?;
                     types = v.as_slice();
                 }
-                VCardParameter::Pref(v) => {
+                ArchivedVCardParameter::Pref(v) => {
                     write!(out, "PREF={v}")?;
                     line_len += 7;
                 }
-                VCardParameter::Altid(v) => {
+                ArchivedVCardParameter::Altid(v) => {
                     write_param(out, &mut line_len, "ALTID", v)?;
                 }
-                VCardParameter::Pid(v) => {
+                ArchivedVCardParameter::Pid(v) => {
                     write_params(out, &mut line_len, "PID", v)?;
                 }
-                VCardParameter::Type(v) => {
-                    write_params(out, &mut line_len, "TYPE", v)?;
+                ArchivedVCardParameter::Type(v) => {
+                    write_params(out, &mut line_len, "TYPE", v.as_slice())?;
                 }
-                VCardParameter::Mediatype(v) => {
+                ArchivedVCardParameter::Mediatype(v) => {
                     write_param(out, &mut line_len, "MEDIATYPE", v)?;
                 }
-                VCardParameter::Calscale(v) => {
+                ArchivedVCardParameter::Calscale(v) => {
                     write_param(out, &mut line_len, "CALSCALE", v)?;
                 }
-                VCardParameter::SortAs(v) => {
+                ArchivedVCardParameter::SortAs(v) => {
                     write_param(out, &mut line_len, "SORT-AS", v)?;
                 }
-                VCardParameter::Geo(v) => {
+                ArchivedVCardParameter::Geo(v) => {
                     write_param(out, &mut line_len, "GEO", v)?;
                 }
-                VCardParameter::Tz(v) => {
+                ArchivedVCardParameter::Tz(v) => {
                     write_param(out, &mut line_len, "TZ", v)?;
                 }
-                VCardParameter::Index(v) => {
+                ArchivedVCardParameter::Index(v) => {
                     write!(out, "INDEX={v}")?;
                     line_len += 8;
                 }
-                VCardParameter::Level(v) => {
+                ArchivedVCardParameter::Level(v) => {
                     write_param(out, &mut line_len, "LEVEL", v)?;
                 }
-                VCardParameter::Group(v) => {
+                ArchivedVCardParameter::Group(v) => {
                     write_param(out, &mut line_len, "GROUP", v)?;
                 }
-                VCardParameter::Cc(v) => {
+                ArchivedVCardParameter::Cc(v) => {
                     write_param(out, &mut line_len, "CC", v)?;
                 }
-                VCardParameter::Author(v) => {
+                ArchivedVCardParameter::Author(v) => {
                     write_param(out, &mut line_len, "AUTHOR", v)?;
                 }
-                VCardParameter::AuthorName(v) => {
+                ArchivedVCardParameter::AuthorName(v) => {
                     write_param(out, &mut line_len, "AUTHOR-NAME", v)?;
                 }
-                VCardParameter::Created(v) => {
-                    write!(out, "CREATED={}", Timestamp(*v))?;
+                ArchivedVCardParameter::Created(v) => {
+                    write!(out, "CREATED={}", Timestamp(v.to_native()))?;
                     line_len += 17;
                 }
-                VCardParameter::Derived(v) => {
+                ArchivedVCardParameter::Derived(v) => {
                     write_param(
                         out,
                         &mut line_len,
@@ -114,28 +115,28 @@ impl VCardEntry {
                         if *v { "TRUE" } else { "FALSE" },
                     )?;
                 }
-                VCardParameter::Label(v) => {
+                ArchivedVCardParameter::Label(v) => {
                     write_param(out, &mut line_len, "LABEL", v)?;
                 }
-                VCardParameter::Phonetic(v) => {
+                ArchivedVCardParameter::Phonetic(v) => {
                     write_param(out, &mut line_len, "PHONETIC", v)?;
                 }
-                VCardParameter::PropId(v) => {
+                ArchivedVCardParameter::PropId(v) => {
                     write_param(out, &mut line_len, "PROP-ID", v)?;
                 }
-                VCardParameter::Script(v) => {
+                ArchivedVCardParameter::Script(v) => {
                     write_param(out, &mut line_len, "SCRIPT", v)?;
                 }
-                VCardParameter::ServiceType(v) => {
+                ArchivedVCardParameter::ServiceType(v) => {
                     write_param(out, &mut line_len, "SERVICE-TYPE", v)?;
                 }
-                VCardParameter::Username(v) => {
+                ArchivedVCardParameter::Username(v) => {
                     write_param(out, &mut line_len, "USERNAME", v)?;
                 }
-                VCardParameter::Jsptr(v) => {
+                ArchivedVCardParameter::Jsptr(v) => {
                     write_param(out, &mut line_len, "JSPTR", v)?;
                 }
-                VCardParameter::Other(v) => {
+                ArchivedVCardParameter::Other(v) => {
                     for (pos, item) in v.iter().enumerate() {
                         if pos == 0 {
                             write!(out, "{item}")?;
@@ -177,30 +178,30 @@ impl VCardEntry {
             }
 
             match value {
-                VCardValue::Text(v) => {
+                ArchivedVCardValue::Text(v) => {
                     write_value(out, &mut line_len, v)?;
                 }
-                VCardValue::Integer(v) => {
+                ArchivedVCardValue::Integer(v) => {
                     write!(out, "{v}")?;
                     line_len += 4;
                 }
-                VCardValue::Float(v) => {
+                ArchivedVCardValue::Float(v) => {
                     write!(out, "{v}")?;
                     line_len += 4;
                 }
-                VCardValue::Boolean(v) => {
+                ArchivedVCardValue::Boolean(v) => {
                     let text = if *v { "TRUE" } else { "FALSE" };
                     write!(out, "{text}")?;
                     line_len += text.len();
                 }
-                VCardValue::PartialDateTime(v) => {
+                ArchivedVCardValue::PartialDateTime(v) => {
                     v.format_as_vcard(out, types.get(pos).unwrap_or(&default_type))?;
                     line_len += 16;
                 }
-                VCardValue::Binary(v) => {
+                ArchivedVCardValue::Binary(v) => {
                     write!(out, "data:")?;
                     line_len += 5;
-                    if let Some(ct) = &v.content_type {
+                    if let Some(ct) = v.content_type.as_ref() {
                         write!(out, "{ct};")?;
                         line_len += ct.len() + 1;
                     }
@@ -208,17 +209,17 @@ impl VCardEntry {
                     line_len += 8;
                     write_bytes(out, &mut line_len, &v.data)?;
                 }
-                VCardValue::Sex(v) => {
+                ArchivedVCardValue::Sex(v) => {
                     let text = v.as_str();
                     write!(out, "{text}")?;
                     line_len += text.len();
                 }
-                VCardValue::GramGender(v) => {
+                ArchivedVCardValue::GramGender(v) => {
                     let text = v.as_str();
                     write!(out, "{text}")?;
                     line_len += text.len();
                 }
-                VCardValue::Kind(v) => {
+                ArchivedVCardValue::Kind(v) => {
                     let text = v.as_str();
                     write!(out, "{text}")?;
                     line_len += text.len();
@@ -230,22 +231,29 @@ impl VCardEntry {
     }
 }
 
-impl PartialDateTime {
-    pub fn format_as_vcard(&self, out: &mut impl Write, fmt: &VCardValueType) -> std::fmt::Result {
-        if matches!(fmt, VCardValueType::Timestamp) {
+impl crate::common::ArchivedPartialDateTime {
+    pub fn format_as_vcard(
+        &self,
+        out: &mut impl Write,
+        fmt: &ArchivedVCardValueType,
+    ) -> std::fmt::Result {
+        use rkyv::option::ArchivedOption;
+        use ArchivedVCardValueType;
+
+        if matches!(fmt, ArchivedVCardValueType::Timestamp) {
             write!(
                 out,
                 "{:04}{:02}{:02}T{:02}{:02}{:02}",
-                self.year.unwrap_or_default(),
-                self.month.unwrap_or_default(),
-                self.day.unwrap_or_default(),
-                self.hour.unwrap_or_default(),
-                self.minute.unwrap_or_default(),
-                self.second.unwrap_or_default()
+                self.year.as_ref().map(u16::from).unwrap_or_default(),
+                self.month.as_ref().map(u16::from).unwrap_or_default(),
+                self.day.as_ref().map(u16::from).unwrap_or_default(),
+                self.hour.as_ref().map(u16::from).unwrap_or_default(),
+                self.minute.as_ref().map(u16::from).unwrap_or_default(),
+                self.second.as_ref().map(u16::from).unwrap_or_default()
             )?;
 
-            if let Some(tz_hour) = self.tz_hour {
-                let tz_minute = self.tz_minute.unwrap_or_default();
+            if let Some(tz_hour) = self.tz_hour.as_ref().map(u16::from) {
+                let tz_minute = self.tz_minute.as_ref().map(u16::from).unwrap_or_default();
                 if tz_hour == 0 && tz_minute == 0 {
                     write!(out, "Z")?;
                 } else {
@@ -256,7 +264,7 @@ impl PartialDateTime {
                         tz_hour,
                     )?;
 
-                    if let Some(tz_minute) = self.tz_minute {
+                    if let Some(tz_minute) = self.tz_minute.as_ref() {
                         write!(out, "{:02}", tz_minute)?;
                     }
                 }
@@ -269,29 +277,43 @@ impl PartialDateTime {
 
             if matches!(
                 fmt,
-                VCardValueType::Date | VCardValueType::DateAndOrTime | VCardValueType::DateTime
+                ArchivedVCardValueType::Date
+                    | ArchivedVCardValueType::DateAndOrTime
+                    | ArchivedVCardValueType::DateTime
             ) {
                 match (self.year, self.month, self.day) {
-                    (Some(year), Some(month), Some(day)) => {
+                    (
+                        ArchivedOption::Some(year),
+                        ArchivedOption::Some(month),
+                        ArchivedOption::Some(day),
+                    ) => {
                         write!(out, "{:04}{:02}{:02}", year, month, day)?;
                     }
-                    (Some(year), Some(month), None) => {
+                    (
+                        ArchivedOption::Some(year),
+                        ArchivedOption::Some(month),
+                        ArchivedOption::None,
+                    ) => {
                         if missing_time && missing_tz {
                             write!(out, "{:04}-{:02}", year, month)?;
                         } else {
                             write!(out, "{:04}{:02}", year, month)?;
                         }
                     }
-                    (None, Some(month), Some(day)) => {
+                    (
+                        ArchivedOption::None,
+                        ArchivedOption::Some(month),
+                        ArchivedOption::Some(day),
+                    ) => {
                         write!(out, "--{:02}{:02}", month, day)?;
                     }
-                    (None, None, Some(day)) => {
+                    (ArchivedOption::None, ArchivedOption::None, ArchivedOption::Some(day)) => {
                         write!(out, "---{:02}", day)?;
                     }
-                    (Some(year), None, None) => {
+                    (ArchivedOption::Some(year), ArchivedOption::None, ArchivedOption::None) => {
                         write!(out, "{:04}", year)?;
                     }
-                    (None, Some(month), None) => {
+                    (ArchivedOption::None, ArchivedOption::Some(month), ArchivedOption::None) => {
                         write!(out, "--{month}")?;
                     }
                     _ => {}
@@ -300,18 +322,20 @@ impl PartialDateTime {
 
             if matches!(
                 fmt,
-                VCardValueType::DateAndOrTime | VCardValueType::DateTime | VCardValueType::Time
+                ArchivedVCardValueType::DateAndOrTime
+                    | ArchivedVCardValueType::DateTime
+                    | ArchivedVCardValueType::Time
             ) && !missing_time
             {
                 if matches!(
                     fmt,
-                    VCardValueType::DateAndOrTime | VCardValueType::DateTime
+                    ArchivedVCardValueType::DateAndOrTime | ArchivedVCardValueType::DateTime
                 ) {
                     write!(out, "T")?;
                 }
                 let mut last_is_some = false;
                 for value in [&self.hour, &self.minute, &self.second].iter() {
-                    if let Some(value) = value {
+                    if let ArchivedOption::Some(value) = value {
                         write!(out, "{:02}", value)?;
                         last_is_some = true;
                     } else if !last_is_some {
@@ -322,12 +346,15 @@ impl PartialDateTime {
 
             if matches!(
                 fmt,
-                VCardValueType::DateAndOrTime
-                    | VCardValueType::DateTime
-                    | VCardValueType::Time
-                    | VCardValueType::UtcOffset
+                ArchivedVCardValueType::DateAndOrTime
+                    | ArchivedVCardValueType::DateTime
+                    | ArchivedVCardValueType::Time
+                    | ArchivedVCardValueType::UtcOffset
             ) {
-                match (self.tz_hour, self.tz_minute) {
+                match (
+                    self.tz_hour.as_ref().map(u16::from),
+                    self.tz_minute.as_ref().map(u16::from),
+                ) {
                     (Some(0), Some(0)) | (Some(0), _) => {
                         write!(out, "Z")?;
                     }
@@ -356,7 +383,7 @@ impl PartialDateTime {
     }
 }
 
-impl Display for VCard {
+impl Display for ArchivedVCard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.write_to(f)
     }

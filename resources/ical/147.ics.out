@@ -1,5 +1,4 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 BEGIN:VEVENT
 SUMMARY:Bastille Day Party This option indicates that xauth should attempt t
  o break any authority file locks before proceeding.

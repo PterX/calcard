@@ -1,6 +1,6 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 PRODID:-//tzurl.org//NONSGML Olson 2014g//EN
+VERSION:2.0
 BEGIN:VTIMEZONE
 TZID:custom_Pacific/Fiji
 TZURL:http://tzurl.org/zoneinfo/Pacific/Fiji

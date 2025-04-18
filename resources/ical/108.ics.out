@@ -1,5 +1,4 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 DESCRIPTION:We leave the timezones out but we use common names so that they 
  are added.
 BEGIN:VEVENT

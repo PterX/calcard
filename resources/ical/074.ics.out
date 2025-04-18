@@ -1,6 +1,6 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 PRODID:-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN
+VERSION:2.0
 BEGIN:VTIMEZONE
 TZID:Europe/London
 X-TZINFO:Europe/London[2024a]

@@ -1,5 +1,4 @@
 BEGIN:VCALENDAR
-VERSION:2.0
 CALSCALE:GREGORIAN
 X-WR-TIMEZONE;VALUE=TEXT:America/Anchorage
 X-WR-CALDESC;VALUE=TEXT:This calendar contains all of the Vernal Equinox (st
@@ -9,6 +8,7 @@ X-WR-CALDESC;VALUE=TEXT:This calendar contains all of the Vernal Equinox (st
 PRODID:-//Apple Computer\, Inc//iCal 1.0//EN
 X-WR-RELCALID:02D91CAF-6873-11D7-AB01-000393AF7662-CALP
 X-WR-CALNAME:Earth Seasons
+VERSION:2.0
 BEGIN:VTIMEZONE
 LAST-MODIFIED:20031023T040327Z
 TZID:America/Anchorage
