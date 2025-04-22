@@ -1,9 +1,8 @@
 use super::{
     error::ValidationError,
     rrule::{NWeekday, RRule},
-    timezone::Tz,
 };
-use crate::icalendar::ICalendarFrequency;
+use crate::{common::timezone::Tz, icalendar::ICalendarFrequency};
 use std::ops::RangeInclusive;
 
 pub(crate) static MONTH_RANGE: RangeInclusive<u8> = 1..=12;
@@ -363,7 +362,7 @@ mod tests {
         // if `rrule.by_set_hour` is empty, then it is going to default to
         // `dt_start.hour()`, therefore, there is always a BYXXX
         // rule, and the rrule is accepted.
-        let res = rrule.build(dt_start);
+        let res = rrule.validate(dt_start);
         assert!(res.is_ok());
     }
 
@@ -578,7 +577,11 @@ mod tests {
             )
         }
 
-        let tests = [t(Tz::Naive, Tz::Naive), t(Tz::Naive, UTC), t(UTC, UTC)];
+        let tests = [
+            t(Tz::Floating, Tz::Floating),
+            t(Tz::Floating, UTC),
+            t(UTC, UTC),
+        ];
 
         for (start_date, until) in tests {
             let rrule = RRule {
@@ -600,9 +603,9 @@ mod tests {
         }
 
         let tests = [
-            t(Tz::Tz(chrono_tz::Tz::UTC), Tz::Naive),
-            t(Tz::Tz(chrono_tz::Europe::Berlin), Tz::Naive),
-            t(Tz::Naive, Tz::Tz(chrono_tz::Europe::Berlin)),
+            t(Tz::Tz(chrono_tz::Tz::UTC), Tz::Floating),
+            t(Tz::Tz(chrono_tz::Europe::Berlin), Tz::Floating),
+            t(Tz::Floating, Tz::Tz(chrono_tz::Europe::Berlin)),
         ];
 
         for (start_date, until) in tests {
