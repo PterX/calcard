@@ -1,17 +1,11 @@
-[
-  {
-    "comp_id": 1,
-    "default_duration": 0,
-    "events": []
-  },
-  {
-    "comp_id": 2,
-    "default_duration": 36000,
-    "events": [
-      [
-        "2019-06-24T06:30:00Z",
-        "2019-06-24T16:30:00Z"
-      ]
-    ]
-  }
-]
+{
+  "errors": [],
+  "events": [
+    {
+      "comp_id": 2,
+      "alarm_id": 3,
+      "start": "2019-06-24T06:30:00Z",
+      "end": "2019-06-24T16:30:00Z"
+    }
+  ]
+}

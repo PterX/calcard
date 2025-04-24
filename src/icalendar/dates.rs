@@ -12,18 +12,20 @@ use super::{
     ICalendarProperty, ICalendarValue,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize))]
 pub struct CalendarExpand {
-    pub default_duration: TimeDelta,
-    pub events: Vec<CalendarEventRange>,
+    pub events: Vec<CalendarEvent<TimeOrDelta<DateTime<Tz>, TimeDelta>>>,
+    pub errors: Vec<CalendarError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize))]
-pub struct CalendarEventRange {
+pub struct CalendarEvent<T> {
+    pub comp_id: u16,
+    pub alarm_id: Option<u16>,
     pub start: DateTime<Tz>,
-    pub end: TimeOrDelta<DateTime<Tz>, TimeDelta>,
+    pub end: T,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,11 +37,18 @@ pub struct CalendarEventRange {
 pub enum TimeOrDelta<T, D> {
     Time(T),
     Delta(D),
-    Default,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CalendarExpandError {
+#[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize))]
+pub struct CalendarError {
+    pub comp_id: u16,
+    pub error: CalendarErrorType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize))]
+pub enum CalendarErrorType {
     MissingDtStart,
     InvalidDtStart,
     InvalidDtEnd,
@@ -47,107 +56,165 @@ pub enum CalendarExpandError {
     RRule(RRuleError),
 }
 
-pub struct CalendarExpandOpts<'x> {
-    tz_resolver: TzResolver<'x>,
-    limit: usize,
-    overridden: AHashMap<(i64, DateTime<Tz>), bool>,
-}
-
 impl ICalendar {
-    pub fn expand_dates(
-        &self,
-        default_tz: impl Into<Tz>,
-        limit: usize,
-    ) -> impl Iterator<Item = (u16, Result<CalendarExpand, CalendarExpandError>)> + '_ {
-        let mut opts = self.build_calendar_expand_opts(default_tz, limit);
-        self.components
-            .iter()
-            .enumerate()
-            .filter_map(move |(idx, comp)| {
-                if matches!(
-                    comp.component_type,
-                    ICalendarComponentType::VEvent
-                        | ICalendarComponentType::VTodo
-                        | ICalendarComponentType::VJournal
-                        | ICalendarComponentType::VFreebusy
-                ) {
-                    Some((idx as u16, comp.expand_dates(&mut opts)))
-                } else {
-                    None
-                }
-            })
-    }
-
-    pub fn build_calendar_expand_opts(
-        &self,
-        default_tz: impl Into<Tz>,
-        limit: usize,
-    ) -> CalendarExpandOpts<'_> {
+    pub fn expand_dates(&self, default_tz: impl Into<Tz>, mut limit: usize) -> CalendarExpand {
         let tz_resolver = self.build_tz_resolver().with_default(default_tz);
-
+        let mut expand = CalendarExpand::default();
+        let mut rrules = Vec::new();
         let mut overridden = AHashMap::new();
 
-        for component in &self.components {
+        for (comp_id, comp) in self.components.iter().enumerate() {
             if matches!(
-                component.component_type,
+                comp.component_type,
                 ICalendarComponentType::VEvent
                     | ICalendarComponentType::VTodo
                     | ICalendarComponentType::VJournal
                     | ICalendarComponentType::VFreebusy
             ) {
-                let mut sequence = i64::MAX;
-                let mut this_and_future = false;
-                let mut recur = None;
+                let alarm_id = comp
+                    .component_ids
+                    .iter()
+                    .find(|id| {
+                        matches!(
+                            self.components[**id as usize].component_type,
+                            ICalendarComponentType::VAlarm
+                        )
+                    })
+                    .copied();
 
-                for entry in &component.entries {
-                    match (&entry.name, entry.values.first()) {
-                        (
-                            ICalendarProperty::RecurrenceId,
-                            Some(ICalendarValue::PartialDateTime(dt)),
-                        ) => {
-                            let mut tz_id = None;
-
-                            for param in &entry.params {
-                                match param {
-                                    ICalendarParameter::Tzid(id) => {
-                                        tz_id = Some(id.as_str());
-                                    }
-                                    ICalendarParameter::Range => {
-                                        this_and_future = true;
-                                    }
-                                    _ => (),
-                                }
-                            }
-
-                            recur = dt.to_date_time_with_tz(tz_resolver.resolve(tz_id));
+                match comp.build_calendar_date(
+                    comp_id as u16,
+                    alarm_id,
+                    &tz_resolver,
+                    &mut expand.events,
+                ) {
+                    Ok(Some(event)) => {
+                        if event.rrule.is_some() {
+                            rrules.push((comp_id as u16, alarm_id, event));
+                        } else if let Some(rid) = event.rid {
+                            overridden.insert((event.rrule_seq, rid), (comp_id as u16, event));
+                        } else if let Some(cal_event) = event.event {
+                            expand.events.push(cal_event);
                         }
-                        (ICalendarProperty::Sequence, Some(ICalendarValue::Integer(seq))) => {
-                            sequence = *seq;
-                        }
-
-                        _ => (),
                     }
-                }
-
-                if let Some(recur) = recur {
-                    overridden.insert((sequence, recur), this_and_future);
+                    Ok(None) => {}
+                    Err(error) => {
+                        expand.errors.push(CalendarError {
+                            comp_id: comp_id as u16,
+                            error,
+                        });
+                    }
                 }
             }
         }
 
-        CalendarExpandOpts {
-            tz_resolver,
-            limit,
-            overridden,
+        // Expand recurrences
+        for (mut comp_id, alarm_id, event) in rrules {
+            let rrule = event.rrule.unwrap();
+            let floating_start = if let Some(floating_start) = Tz::Floating
+                .from_local_datetime(&event.dt_start.date_time)
+                .single()
+            {
+                floating_start
+            } else {
+                expand.errors.push(CalendarError {
+                    comp_id,
+                    error: CalendarErrorType::InvalidDtStart,
+                });
+                continue;
+            };
+            let rrule = match rrule.validate(floating_start) {
+                Ok(rrule) => rrule,
+                Err(err) => {
+                    expand.errors.push(CalendarError {
+                        comp_id,
+                        error: CalendarErrorType::RRule(err),
+                    });
+                    continue;
+                }
+            };
+            let exdates = event
+                .exdates
+                .into_iter()
+                .filter_map(|(tz_id, dt)| {
+                    dt.to_date_time_with_tz(tz_resolver.resolve(tz_id.or(event.dt_start_tzid)))
+                })
+                .collect::<AHashSet<_>>();
+            let mut override_offset = None;
+
+            for date in RRuleIter::new(&rrule, &floating_start, true) {
+                if limit != 0 {
+                    limit -= 1;
+                } else {
+                    break;
+                }
+                let mut date = if date.timezone().is_floating() {
+                    event
+                        .start_tz
+                        .from_local_datetime(&date.naive_local())
+                        .single()
+                        .unwrap_or(date)
+                } else {
+                    date
+                };
+                if let Some(override_offset) = override_offset {
+                    date += override_offset;
+                }
+                match overridden.remove(&(event.rrule_seq, date)) {
+                    Some((new_comp_id, overridden_event)) => {
+                        if let Some(new_event) = overridden_event.event {
+                            if overridden_event.rid_this_and_future {
+                                comp_id = new_comp_id;
+                                override_offset = Some(new_event.start - date);
+                            }
+                            expand.events.push(new_event);
+                        }
+                    }
+                    None if !exdates.contains(&date) => {
+                        expand.events.push(CalendarEvent {
+                            start: date,
+                            end: TimeOrDelta::Delta(event.default_duration),
+                            comp_id,
+                            alarm_id,
+                        });
+                    }
+                    _ => {}
+                }
+            }
         }
+
+        // Add missing overridden events (this should not occur unless the iCalendar is malformed)
+        for (_, event) in overridden.into_values() {
+            if let Some(cal_event) = event.event {
+                expand.events.push(cal_event);
+            }
+        }
+
+        expand
     }
 }
 
+struct CalendarEventBuilder<'x> {
+    event: Option<CalendarEvent<TimeOrDelta<DateTime<Tz>, TimeDelta>>>,
+    dt_start: DateTimeResult,
+    dt_start_tzid: Option<&'x str>,
+    start_tz: Tz,
+    default_duration: TimeDelta,
+    rrule: Option<RRule>,
+    rrule_seq: i64,
+    exdates: Vec<(Option<&'x str>, DateTimeResult)>,
+    rid: Option<DateTime<Tz>>,
+    rid_this_and_future: bool,
+}
+
 impl ICalendarComponent {
-    pub fn expand_dates(
+    fn build_calendar_date(
         &self,
-        opts: &mut CalendarExpandOpts,
-    ) -> Result<CalendarExpand, CalendarExpandError> {
+        comp_id: u16,
+        alarm_id: Option<u16>,
+        tz_resolver: &TzResolver,
+        events: &mut Vec<CalendarEvent<TimeOrDelta<DateTime<Tz>, TimeDelta>>>,
+    ) -> Result<Option<CalendarEventBuilder>, CalendarErrorType> {
         let mut dt_start = None;
         let mut dt_start_tzid = None;
         let mut dt_start_has_time = false;
@@ -157,13 +224,13 @@ impl ICalendarComponent {
         let mut due_tzid = None;
         let mut rid: Option<DateTimeResult> = None;
         let mut rid_tzid = None;
+        let mut rid_this_and_future = false;
         let mut duration = None;
         let mut rrule = None;
         let mut rrule_seq = i64::MAX;
         let mut rdates = vec![];
         let mut rdates_periods = vec![];
         let mut exdates = vec![];
-        let mut events = vec![];
 
         for entry in &self.entries {
             match (&entry.name, entry.values.first()) {
@@ -186,8 +253,19 @@ impl ICalendarComponent {
                 }
                 (ICalendarProperty::RecurrenceId, Some(ICalendarValue::PartialDateTime(dt))) => {
                     if let Some(dt) = dt.to_date_time() {
+                        for param in &entry.params {
+                            match param {
+                                ICalendarParameter::Tzid(id) => {
+                                    rid_tzid = Some(id.as_str());
+                                }
+                                ICalendarParameter::Range => {
+                                    rid_this_and_future = true;
+                                }
+                                _ => (),
+                            }
+                        }
+
                         rid = Some(dt);
-                        rid_tzid = entry.tz_id();
                     }
                 }
                 (ICalendarProperty::Duration, Some(ICalendarValue::Duration(dur))) => {
@@ -248,14 +326,14 @@ impl ICalendarComponent {
 
         let dt_start = match dt_start {
             Some(dt_start) => dt_start,
-            None => match rid {
+            None => match &rid {
                 Some(rid) => {
                     dt_start_tzid = rid_tzid;
-                    rid
+                    rid.clone()
                 }
                 None => match self.component_type {
                     ICalendarComponentType::VEvent => {
-                        return Err(CalendarExpandError::MissingDtStart);
+                        return Err(CalendarErrorType::MissingDtStart);
                     }
                     ICalendarComponentType::VTodo if due.is_some() => {
                         dt_start_has_time = true;
@@ -263,38 +341,40 @@ impl ICalendarComponent {
                         due.unwrap()
                     }
                     _ => {
-                        return Ok(CalendarExpand {
-                            default_duration: TimeDelta::zero(),
-                            events: vec![],
-                        });
+                        return Ok(None);
                     }
                 },
             },
         };
-        let start_tz = opts.tz_resolver.resolve(dt_start_tzid);
+        let mut event = None;
+        let start_tz = tz_resolver.resolve(dt_start_tzid);
         let dt_start_tz = dt_start
             .to_date_time_with_tz(start_tz)
-            .ok_or(CalendarExpandError::InvalidDtStart)?;
+            .ok_or(CalendarErrorType::InvalidDtStart)?;
         let default_duration = if let Some(dt_end) = dt_end {
             let end = dt_end
-                .to_date_time_with_tz(opts.tz_resolver.resolve(dt_end_tzid.or(dt_start_tzid)))
-                .ok_or(CalendarExpandError::InvalidDtEnd)?;
+                .to_date_time_with_tz(tz_resolver.resolve(dt_end_tzid.or(dt_start_tzid)))
+                .ok_or(CalendarErrorType::InvalidDtEnd)?;
 
             if rrule.is_none() {
-                events.push(CalendarEventRange {
+                event = Some(CalendarEvent {
                     start: dt_start_tz,
                     end: TimeOrDelta::Time(end),
+                    comp_id,
+                    alarm_id,
                 });
             }
             dt_end.date_time - dt_start.date_time
         } else if let Some(duration) = duration {
             let duration = duration
                 .to_time_delta()
-                .ok_or(CalendarExpandError::InvalidDuration)?;
+                .ok_or(CalendarErrorType::InvalidDuration)?;
             if rrule.is_none() {
-                events.push(CalendarEventRange {
+                event = Some(CalendarEvent {
                     start: dt_start_tz,
                     end: TimeOrDelta::Delta(duration),
+                    comp_id,
+                    alarm_id,
                 });
             }
             duration
@@ -322,88 +402,61 @@ impl ICalendarComponent {
                 TimeDelta::days(1)
             };
             if rrule.is_none() {
-                events.push(CalendarEventRange {
+                event = Some(CalendarEvent {
                     start: dt_start_tz,
                     end: TimeOrDelta::Delta(duration),
+                    comp_id,
+                    alarm_id,
                 });
             }
             duration
         };
-
-        if let Some(rrule) = rrule {
-            let floating_start = Tz::Floating
-                .from_local_datetime(&dt_start.date_time)
-                .single()
-                .ok_or(CalendarExpandError::InvalidDtStart)?;
-            let rrule = rrule
-                .validate(floating_start)
-                .map_err(CalendarExpandError::RRule)?;
-            let exdates = exdates
-                .into_iter()
-                .filter_map(|(tz_id, dt)| {
-                    dt.to_date_time_with_tz(opts.tz_resolver.resolve(tz_id.or(dt_start_tzid)))
-                })
-                .collect::<AHashSet<_>>();
-
-            for date in RRuleIter::new(&rrule, &floating_start, true) {
-                if opts.limit != 0 {
-                    opts.limit -= 1;
-                } else {
-                    break;
-                }
-                let date = if date.timezone().is_floating() {
-                    start_tz
-                        .from_local_datetime(&date.naive_local())
-                        .single()
-                        .unwrap_or(date)
-                } else {
-                    date
-                };
-                match opts.overridden.get(&(rrule_seq, date)) {
-                    Some(true) => {
-                        // THISANDFUTURE is set
-                        break;
-                    }
-                    None if !exdates.contains(&date) => {
-                        events.push(CalendarEventRange {
-                            start: date,
-                            end: TimeOrDelta::Default,
-                        });
-                    }
-                    _ => {}
-                }
-            }
-        }
+        let rid = if let Some(rid) = rid {
+            rid.to_date_time_with_tz(tz_resolver.resolve(rid_tzid.or(dt_start_tzid)))
+        } else {
+            None
+        };
 
         // Add rdates
         for (tz_id, rdate) in rdates {
             if let Some(date_start) =
-                rdate.to_date_time_with_tz(opts.tz_resolver.resolve(tz_id.or(dt_start_tzid)))
+                rdate.to_date_time_with_tz(tz_resolver.resolve(tz_id.or(dt_start_tzid)))
             {
-                events.push(CalendarEventRange {
+                events.push(CalendarEvent {
                     start: date_start,
-                    end: TimeOrDelta::Default,
+                    end: TimeOrDelta::Delta(default_duration),
+                    comp_id,
+                    alarm_id,
                 });
             }
         }
         for (tz_id, start, end) in rdates_periods {
-            let tz = opts.tz_resolver.resolve(tz_id.or(dt_start_tzid));
+            let tz = tz_resolver.resolve(tz_id.or(dt_start_tzid));
             if let (Some(date_start), Some(date_end)) = (
                 start.to_date_time_with_tz(tz),
                 end.into_date_time_with_tz(tz),
             ) {
-                events.push(CalendarEventRange {
+                events.push(CalendarEvent {
                     start: date_start,
                     end: date_end,
+                    comp_id,
+                    alarm_id,
                 });
             }
         }
 
-        events.sort_by(|a, b| a.start.cmp(&b.start));
-        Ok(CalendarExpand {
+        Ok(Some(CalendarEventBuilder {
+            event,
+            dt_start_tzid,
             default_duration,
-            events,
-        })
+            rrule_seq,
+            rrule,
+            exdates,
+            start_tz,
+            dt_start,
+            rid,
+            rid_this_and_future,
+        }))
     }
 }
 
@@ -412,13 +465,12 @@ impl TimeOrDelta<DateTimeResult, TimeDelta> {
         match self {
             TimeOrDelta::Time(time) => time.to_date_time_with_tz(tz).map(TimeOrDelta::Time),
             TimeOrDelta::Delta(delta) => Some(TimeOrDelta::Delta(delta)),
-            TimeOrDelta::Default => Some(TimeOrDelta::Default),
         }
     }
 }
 
-impl CalendarEventRange {
-    pub fn into_date_time(self, default_delta: TimeDelta) -> Option<(DateTime<Tz>, DateTime<Tz>)> {
+impl CalendarEvent<TimeOrDelta<DateTime<Tz>, TimeDelta>> {
+    pub fn try_into_date_time(self) -> Option<CalendarEvent<DateTime<Tz>>> {
         match self.end {
             TimeOrDelta::Time(time) => Some(time),
             TimeOrDelta::Delta(delta) => self
@@ -426,42 +478,25 @@ impl CalendarEventRange {
                 .naive_local()
                 .checked_add_signed(delta)
                 .and_then(|end| end.and_local_timezone(self.start.timezone()).single()),
-            TimeOrDelta::Default => self
-                .start
-                .naive_local()
-                .checked_add_signed(default_delta)
-                .and_then(|end| end.and_local_timezone(self.start.timezone()).single()),
         }
-        .map(|end| (self.start, end))
-    }
-}
-
-impl<'x> CalendarExpandOpts<'x> {
-    pub fn new(tz_resolver: TzResolver<'x>) -> Self {
-        Self {
-            tz_resolver,
-            limit: 5000,
-            overridden: AHashMap::new(),
-        }
-    }
-
-    pub fn limit(mut self, limit: usize) -> Self {
-        self.limit = limit;
-        self
-    }
-
-    pub fn overridden(mut self, seq: i64, dt: DateTime<Tz>, this_and_future: bool) -> Self {
-        self.overridden.insert((seq, dt), this_and_future);
-        self
+        .map(|end| CalendarEvent {
+            start: self.start,
+            end,
+            comp_id: self.comp_id,
+            alarm_id: self.alarm_id,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        common::timezone::Tz,
+        icalendar::dates::{CalendarError, CalendarEvent},
+        Entry, Parser,
+    };
     use chrono::DateTime;
     use serde::Serialize;
-
-    use crate::{common::timezone::Tz, Entry, Parser};
     use std::{io::Write, time::Instant};
 
     #[test]
@@ -493,9 +528,8 @@ mod tests {
 
                 #[derive(Serialize)]
                 struct TestResult {
-                    comp_id: u16,
-                    default_duration: i64,
-                    events: Vec<(DateTime<Tz>, DateTime<Tz>)>,
+                    errors: Vec<CalendarError>,
+                    events: Vec<CalendarEvent<DateTime<Tz>>>,
                 }
 
                 print!("Expanding recurrences for {file_name}... ");
@@ -503,41 +537,30 @@ mod tests {
                 loop {
                     match parser.entry() {
                         Entry::ICalendar(ical) => {
-                            let mut entries = Vec::with_capacity(16);
+                            let expanded = ical.expand_dates(chrono_tz::Tz::Pacific__Auckland, 100);
+                            let mut events = expanded
+                                .events
+                                .into_iter()
+                                .filter_map(|event| event.try_into_date_time())
+                                .collect::<Vec<_>>();
+                            events.sort_by(|a, b| a.start.cmp(&b.start));
 
-                            for (comp_id, expanded) in
-                                ical.expand_dates(chrono_tz::Tz::Pacific__Auckland, 1000)
-                            {
-                                let expanded = match expanded {
-                                    Ok(expanded) => expanded,
-                                    Err(err) => {
-                                        print!("[{comp_id}: {err:?}] ");
-                                        continue;
-                                    }
-                                };
-
-                                entries.push(TestResult {
-                                    comp_id,
-                                    default_duration: expanded.default_duration.num_seconds(),
-                                    events: expanded
-                                        .events
-                                        .into_iter()
-                                        .map(|e| {
-                                            e.into_date_time(expanded.default_duration).unwrap()
-                                        })
-                                        .collect(),
-                                });
+                            for err in &expanded.errors {
+                                print!("[{}: {:?}] ", err.comp_id, err.error);
                             }
 
-                            if entries.iter().any(|e| !e.events.is_empty()) {
-                                let expanded = serde_json::to_string_pretty(&entries).unwrap();
+                            if !events.is_empty() || !expanded.errors.is_empty() {
                                 writeln!(
                                     output.get_or_insert_with(|| std::fs::File::create(
                                         path.with_extension("json")
                                     )
                                     .unwrap()),
                                     "{}",
-                                    expanded
+                                    serde_json::to_string_pretty(&TestResult {
+                                        errors: expanded.errors,
+                                        events,
+                                    })
+                                    .unwrap()
                                 )
                                 .unwrap();
                             }
