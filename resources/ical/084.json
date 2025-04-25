@@ -8,13 +8,11 @@
   "events": [
     {
       "comp_id": 2,
-      "alarm_id": null,
       "start": "2010-10-10T00:00:00Z",
       "end": "2010-10-10T23:59:59Z"
     },
     {
       "comp_id": 1,
-      "alarm_id": null,
       "start": "2010-10-10T10:00:00Z",
       "end": "2010-10-10T12:00:00Z"
     }

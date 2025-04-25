@@ -3,7 +3,6 @@
   "events": [
     {
       "comp_id": 2,
-      "alarm_id": null,
       "start": "1997-07-14T17:00:00Z",
       "end": "1997-07-15T03:59:59Z"
     }
