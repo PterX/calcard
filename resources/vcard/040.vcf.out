@@ -1,5 +1,5 @@
 BEGIN:VCARD
-VERSION:4.0
+VERSION:3.0
 FN:VCard Test
 N:Test;VCard;;;
 NICKNAME:TheNickname
@@ -40,7 +40,7 @@ item4.ADR:;;115 Main St;NY;New York;10011;
 item4.X-ABLabel:CustomAddressCategory
 ORG:TheCompany
 TITLE:TheJobTitle
-BDAY:19120623
+BDAY:1912-06-23
 URL:http://www.example1.com
 item5.URL:http://www.example2.com
 item5.X-ABLabel:PROFILE

@@ -1,5 +1,5 @@
 BEGIN:VCARD
-VERSION:4.0
+VERSION:3.0
 FN:Greg Dartmouth
 N:Dartmouth;Greg;;;
 NICKNAME:Gman
@@ -15,7 +15,7 @@ item2.ADR:;;321 Custom St;Custom City;TX;98765;USA
 item2.X-ABLabel:CustomAdrType
 ORG:TheCompany
 TITLE:TheJobTitle
-BDAY:19600910
+BDAY:1960-09-10
 item3.URL:http://TheProfile.com
 item3.X-ABLabel:PROFILE
 item4.X-ABDATE:1970-06-02

@@ -1,5 +1,5 @@
 BEGIN:VCARD
-VERSION:4.0
+VERSION:3.0
 FN:Mr. John Q. Public\, Esq.
 N:Public;John;Quinlan;Mr.;Esq.
 N:Stevenson;John;Philip\,Paul;Dr.;Jr.\,M.D.\,A.C.P.
@@ -7,9 +7,9 @@ NICKNAME:Robbie
 NICKNAME:Jim,Jimmie
 PHOTO;VALUE=URI:http://www.abc.com/pub/photos/jqpublic.gif
 PHOTO;TYPE=JPEG:Hello\, this is not a real image just a test.
-BDAY:19960415
-BDAY:19531015T231000Z
-BDAY:19870927T083000-0600
+BDAY:1996-04-15
+BDAY:1953-10-15T23:10:00Z
+BDAY:1987-09-27T08:30:00-06:00
 ADR;TYPE=dom,HOME,postal,parcel:;;123 Main Street;Any Town;CA;91921-1234
 LABEL;TYPE=dom,HOME,postal,parcel:Mr.John Q. Public\, Esq.\nMail Drop: TNE Q
  B\n123 Main Street\nAny Town\, CA  91921-1234\nU.S.A.
@@ -18,7 +18,7 @@ EMAIL;TYPE=internet:jqpublic@xyz.dom1.com
 EMAIL;TYPE=internet:jdoe@isp.net
 EMAIL;TYPE=internet,pref:jane_doe@abc.com
 MAILER:PigeonMail 2.1
-TZ:-0500
+TZ:-05:00
 TZ;VALUE=TEXT:-05:00\; EST\; Raleigh/North America\;This example has a singl
  e value\, not a structure text value.
 GEO:37.386013\;-122.082932

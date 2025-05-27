@@ -6,7 +6,7 @@
 
 use super::{
     PartialDateTime, VCard, VCardEntry, VCardParameter, VCardParameterName, VCardType, VCardValue,
-    VCardValueType, ValueSeparator, ValueType,
+    VCardValueType, VCardVersion, ValueSeparator, ValueType,
 };
 use crate::{
     common::{
@@ -553,6 +553,17 @@ impl VCardParameterName {
     }
 }
 
+impl VCardVersion {
+    pub fn try_parse(input: &str) -> Option<Self> {
+        hashify::tiny_map!(input.as_bytes(),
+            b"4.0" => VCardVersion::V4_0,
+            b"3.0" => VCardVersion::V3_0,
+            b"2.1" => VCardVersion::V2_1,
+            b"2.0" => VCardVersion::V2_0,
+        )
+    }
+}
+
 impl Token<'_> {
     pub(crate) fn into_vcard_date(self) -> std::result::Result<PartialDateTime, String> {
         let mut dt = PartialDateTime::default();
@@ -825,24 +836,25 @@ mod tests {
                 loop {
                     match parser.entry() {
                         Entry::VCard(mut vcard) => {
-                            for item in &mut vcard.entries {
+                            /*for item in &mut vcard.entries {
                                 if item.name == VCardProperty::Version {
                                     item.values = vec![VCardValue::Text("4.0".into())];
                                 }
-                            }
+                            }*/
                             let vcard_text = vcard.to_string();
                             writeln!(output, "{}", vcard_text).unwrap();
+                            let _vcard_orig = vcard.clone();
 
                             // Roundtrip parsing
                             let mut parser = Parser::new(&vcard_text);
                             match parser.entry() {
-                                Entry::VCard(vcard_) => {
-                                    /*vcard.entries.retain(|entry| {
+                                Entry::VCard(mut vcard_) => {
+                                    vcard.entries.retain(|entry| {
                                         !matches!(entry.name, VCardProperty::Version)
                                     });
                                     vcard_.entries.retain(|entry| {
                                         !matches!(entry.name, VCardProperty::Version)
-                                    });*/
+                                    });
                                     assert_eq!(vcard.entries.len(), vcard_.entries.len());
 
                                     if !file_name.contains("003.vcf") {
@@ -871,7 +883,7 @@ mod tests {
                             #[cfg(feature = "rkyv")]
                             {
                                 let vcard_bytes =
-                                    rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).unwrap();
+                                    rkyv::to_bytes::<rkyv::rancor::Error>(&_vcard_orig).unwrap();
                                 let vcard_unarchived = rkyv::access::<
                                     crate::vcard::ArchivedVCard,
                                     rkyv::rancor::Error,

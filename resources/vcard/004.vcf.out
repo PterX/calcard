@@ -1,6 +1,6 @@
 BEGIN:VCARD
+VERSION:3.0
 BDAY;VALUE=DATE:1963-09
-VERSION:4.0
 N:Stenerson;Derik
 FN:Derik Stenerson
 ORG:Microsoft Corporation
@@ -11,7 +11,7 @@ EMAIL;TYPE=INTERNET:deriks@Microsoft.com
 END:VCARD
 
 BEGIN:VCARD
-VERSION:4.0
+VERSION:3.0
 N:Ganguly;Anik
 FN:Anik Ganguly
 ORG: Open Text Inc.
@@ -22,7 +22,7 @@ EMAIL;TYPE=INTERNET:ganguly@acm.org
 END:VCARD
 
 BEGIN:VCARD
-VERSION:4.0
+VERSION:3.0
 N:Moskowitz;Robert
 FN:Robert Moskowitz
 EMAIL;TYPE=INTERNET:rgm-ietf@htt-consult.com

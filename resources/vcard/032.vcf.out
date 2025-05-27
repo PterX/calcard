@@ -1,5 +1,5 @@
 BEGIN:VCARD
-VERSION:4.0
+VERSION:3.0
 FN:Mr. John Richter\, James Doe Sr.
 N:Doe;John;Richter\, James;Mr.;Sr.
 X-PHONETIC-FIRST-NAME:Jon
@@ -11,7 +11,7 @@ ADR;TYPE=HOME:;Crescent moon drive\n555-asd\nNice Area\, Albaney\, New York
  12345\nUnited States of America;;;;;
 ORG:IBM
 TITLE:Money Counter
-BDAY:19800322
+BDAY:1980-03-22
 URL;TYPE=WORK:http://www.ibm.com
 item1.X-ABDATE:1975-03-01
 item1.X-ABLabel:_$!<Anniversary>!$_
