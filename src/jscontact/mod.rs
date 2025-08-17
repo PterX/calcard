@@ -6,12 +6,15 @@
 
 use crate::common::CalendarScale;
 use jmap_tools::{JsonPointer, Value};
+use serde::Serialize;
 use std::{borrow::Cow, str::FromStr};
 
 pub mod export;
 pub mod import;
 pub mod parser;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[repr(transparent)]
 pub struct JSContact<'x>(pub Value<'x, JSContactProperty, JSContactValue>);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -913,5 +916,199 @@ impl JSContactPhoneticSystem {
             JSContactPhoneticSystem::Piny => "piny",
             JSContactPhoneticSystem::Script => "script",
         }
+    }
+}
+
+#[cfg(test)]
+impl std::fmt::Display for JSContact<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = serde_json::to_string_pretty(&self.0).map_err(|_| std::fmt::Error)?;
+        write!(f, "{}", s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{jscontact::JSContact, vcard::VCard};
+
+    #[derive(Debug, Default)]
+    struct Test {
+        comment: String,
+        test: String,
+        expect: String,
+        roundtrip: String,
+        line_num: usize,
+    }
+
+    #[test]
+    fn convert_jscontact() {
+        // Read all test files in the test directory
+        for entry in std::fs::read_dir("resources/jscontact").unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let input = std::fs::read_to_string(&path).unwrap();
+            let mut test = Test::default();
+            let mut cur_command = "";
+            let mut cur_value = &mut test.test;
+
+            for (line_num, line) in input.lines().enumerate() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                if let Some(line) = line.strip_prefix("> ") {
+                    let (command, comment) = line.split_once(' ').unwrap_or((line, ""));
+
+                    match (command, cur_command) {
+                        ("test", _) => {
+                            if !test.test.is_empty() {
+                                test.run();
+                            }
+                            test = Test::default();
+                            cur_value = &mut test.test;
+                            cur_command = "test";
+                            test.comment = comment.to_string();
+                            test.line_num = line_num + 1;
+                        }
+                        ("convert", "test") => {
+                            cur_command = "convert";
+                            cur_value = &mut test.expect;
+                        }
+                        ("convert", "convert") => {
+                            cur_command = "convert";
+                            cur_value = &mut test.roundtrip;
+                        }
+                        _ => {
+                            panic!(
+                                "Unexpected command '{}' in file '{}' at line {}",
+                                command,
+                                path.display(),
+                                line_num + 1
+                            );
+                        }
+                    }
+                } else {
+                    cur_value.push_str(line);
+                    cur_value.push('\n');
+                }
+            }
+
+            if !test.test.is_empty() {
+                test.run();
+            }
+        }
+    }
+
+    impl Test {
+        fn run(mut self) {
+            if self.expect.is_empty() {
+                panic!(
+                    "Test '{}' at line {} has no expected output",
+                    self.comment, self.line_num
+                );
+            }
+
+            if is_jscontact(&self.test) {
+                fix_jscontact(&mut self.test);
+                fix_vcard(&mut self.expect);
+                let source = parse_jscontact(&self.comment, self.line_num, &self.test);
+                let expect = parse_vcard(&self.comment, self.line_num, &self.expect);
+                let roundtrip = if !self.roundtrip.is_empty() {
+                    fix_jscontact(&mut self.roundtrip);
+                    parse_jscontact(&self.comment, self.line_num, &self.roundtrip)
+                } else {
+                    source.clone()
+                };
+
+                let first_convert = source.into_vcard().unwrap_or_else(|| {
+                    panic!(
+                        "Failed to convert JSContact to vCard: test {} on line {}: {}",
+                        self.comment, self.line_num, self.test
+                    )
+                });
+                if first_convert != expect {
+                    panic!(
+                        "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                        self.comment, self.line_num, expect, first_convert
+                    );
+                }
+                let roundtrip_convert = first_convert.into_jscontact();
+                if roundtrip_convert != roundtrip {
+                    panic!(
+                        "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
+                        self.comment, self.line_num, roundtrip, roundtrip_convert
+                    );
+                }
+            } else {
+                fix_vcard(&mut self.test);
+                fix_jscontact(&mut self.expect);
+                let source = parse_vcard(&self.comment, self.line_num, &self.test);
+                let expect = parse_jscontact(&self.comment, self.line_num, &self.expect);
+                let roundtrip = if !self.roundtrip.is_empty() {
+                    fix_vcard(&mut self.roundtrip);
+                    parse_vcard(&self.comment, self.line_num, &self.roundtrip)
+                } else {
+                    source.clone()
+                };
+                let first_convert = source.into_jscontact();
+                if first_convert != expect {
+                    panic!(
+                        "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
+                        self.comment, self.line_num, expect, first_convert
+                    );
+                }
+                let roundtrip_convert = first_convert.into_vcard().unwrap_or_else(|| {
+                    panic!(
+                        "Failed to convert JSContact to vCard: test {} on line {}: {}",
+                        self.comment, self.line_num, self.test
+                    )
+                });
+                if roundtrip_convert != roundtrip {
+                    panic!(
+                        "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                        self.comment, self.line_num, roundtrip, roundtrip_convert
+                    );
+                }
+            }
+        }
+    }
+
+    fn is_jscontact(s: &str) -> bool {
+        s.starts_with("{") || s.starts_with("\"")
+    }
+
+    fn fix_vcard(s: &mut String) {
+        if !s.starts_with("BEGIN:VCARD") {
+            let mut v = "BEGIN:VCARD\nVERSION:4.0\n".to_string();
+            v.push_str(s);
+            v.push_str("END:VCARD\n");
+            *s = v;
+        }
+    }
+
+    fn fix_jscontact(s: &mut String) {
+        if !s.starts_with("{") {
+            let mut v = "{\"@type\": \"Card\", \n".to_string();
+            v.push_str(s);
+            v.push_str("\n}\n");
+            *s = v;
+        }
+    }
+
+    fn parse_vcard(test_name: &str, line_num: usize, s: &str) -> VCard {
+        VCard::parse(s).unwrap_or_else(|_| {
+            panic!(
+                "Failed to parse vCard: {} on line {}, test {}",
+                s, line_num, test_name
+            )
+        })
+    }
+
+    fn parse_jscontact<'x>(test_name: &str, line_num: usize, s: &'x str) -> JSContact<'x> {
+        JSContact::parse(s).unwrap_or_else(|_| {
+            panic!(
+                "Failed to parse JSContact: {} on line {}, test {}",
+                s, line_num, test_name
+            )
+        })
     }
 }
