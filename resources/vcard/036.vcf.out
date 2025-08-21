@@ -1,6 +1,6 @@
 BEGIN:VCARD
 VERSION:2.1
-N;LANGUAGE=en-us:Doe;John;Richter\,James;Mr.;Sr.
+N;LANGUAGE=en-us:Doe;John;Richter,James;Mr.;Sr.
 FN:Mr. John Richter James Doe Sr.
 NICKNAME:Johny
 ORG:IBM;Accounting
@@ -21,8 +21,8 @@ TEL;TYPE=HOME,VOICE:(905) 666-1234
 ADR;TYPE=WORK;PREF=0:;;Cresent moon drive;Albaney;New York;12345;United Sta
  tes of America
 LABEL;TYPE=WORK;PREF=0:Cresent moon drive\r\nAlbaney\, New York  12345
-ADR;TYPE=HOME:;;Silicon Alley 5\,;New York;New York;12345;United States of A
- merica
+ADR;TYPE=HOME:;;Silicon Alley 5,;New York;New York;12345;United States of Am
+ erica
 LABEL;TYPE=HOME:Silicon Alley 5\,\r\nNew York\, New York  12345
 X-MS-OL-DEFAULT-POSTAL-ADDRESS:2
 URL;TYPE=WORK:http://www.ibm.com

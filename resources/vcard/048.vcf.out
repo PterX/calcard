@@ -2,11 +2,11 @@ BEGIN:VCARD
 VERSION:3.0
 FN:Mr. John Q. Public\, Esq.
 N:Public;John;Quinlan;Mr.;Esq.
-N:Stevenson;John;Philip\,Paul;Dr.;Jr.\,M.D.\,A.C.P.
+N:Stevenson;John;Philip,Paul;Dr.;Jr.,M.D.,A.C.P.
 NICKNAME:Robbie
 NICKNAME:Jim,Jimmie
 PHOTO;VALUE=URI:http://www.abc.com/pub/photos/jqpublic.gif
-PHOTO;TYPE=JPEG:Hello\, this is not a real image just a test.
+PHOTO;TYPE=JPEG:Hello, this is not a real image just a test.
 BDAY:1996-04-15
 BDAY:1953-10-15T23:10:00Z
 BDAY:1987-09-27T08:30:00-06:00
@@ -21,11 +21,11 @@ MAILER:PigeonMail 2.1
 TZ:-05:00
 TZ;VALUE=TEXT:-05:00\; EST\; Raleigh/North America\;This example has a singl
  e value\, not a structure text value.
-GEO:37.386013\;-122.082932
+GEO:37.386013;-122.082932
 TITLE:Director\, Research and Development
 ROLE:Programmer
 LOGO;VALUE=URI:http://www.abc.com/pub/logos/abccorp.jpg
-LOGO;TYPE=JPEG:Hello\, this is not a real image just a test.
+LOGO;TYPE=JPEG:Hello, this is not a real image just a test.
 AGENT;VALUE=URI:CID:JQPUBLIC.part3.960129T083020.xyzMail@host3.com
 AGENT:BEGIN:VCARD\nFN:Susan Thomas\nTEL:+1-919-555-1234\nEMAIL\;INTERNET:sth
  omas@host.com\nEND:VCARD\n

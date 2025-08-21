@@ -1,0 +1,46 @@
+> test RFC9555 anniversary
+BDAY:19531015T231000Z
+BIRTHPLACE:
+ 123 Main Street\nAny Town, CA 91921-1234\nU.S.A.
+DEATHDATE:19960415
+DEATHPLACE:
+ 5 Court Street\nNew England, ND 58647\nU.S.A.
+ANNIVERSARY:19860201
+> convert
+"anniversaries": {
+    "k1": {
+        "kind": "birth",
+        "date": {
+            "@type": "Timestamp",
+            "utc": "1953-10-15T23:10:00Z"
+        },
+        "place": {
+            "full": "123 Main Street\nAny Town, CA 91921-1234\nU.S.A."
+        }
+    },
+    "k3": {
+        "kind": "death",
+        "date": {
+            "year": 1996,
+            "month": 4,
+            "day": 15
+        },
+        "place": {
+            "full": "5 Court Street\nNew England, ND 58647\nU.S.A."
+        }
+    },
+    "k2": {
+        "kind": "wedding",
+        "date": {
+            "year": 1986,
+            "month": 2,
+            "day": 1
+        }
+    }
+}
+> convert
+BDAY;PROP-ID=k1:19531015T231000Z
+ANNIVERSARY;PROP-ID=k2:19860201
+BIRTHPLACE;PROP-ID=k1:123 Main Street\nAny Town\, CA 91921-1234\nU.S.A.
+DEATHPLACE;PROP-ID=k3:5 Court Street\nNew England\, ND 58647\nU.S.A.
+DEATHDATE;PROP-ID=k3:19960415

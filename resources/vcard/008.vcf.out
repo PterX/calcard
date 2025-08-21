@@ -17,16 +17,16 @@ LABEL;TYPE=HOME:42 Plantation St.\nBaytown\, LA 30314\nUnited States of Amer
  ica
 EMAIL;TYPE=PREF,INTERNET:forrestgump@example.com
 AGENT;VALUE=URI:CID:JQPUBLIC.part3.960129T083020.xyzMail@host3.com
-AGENT:BEGIN:VCARDVERSION:3.0N:Gump;ForrestFN:Forrest GumpORG:Bubba Gump Shri
- mp Co.TITLE:Shrimp ManPHOTO;VALUE=URL;TYPE=GIF:http://upload.wikimedia.org
- /wikipedia/commons/thumb/a/a5/Example_svg.svg/200px-Example_svg.svg.pngTEL;
- TYPE=WORK\,VOICE:(111) 555-1212TEL;TYPE=HOME\,VOICE:(404) 555-1212TEL;TYPE
- =HOME\,TYPE=VOICE:(404) 555-1213ADR;TYPE=WORK:;;100 Waters Edge;Baytown;LA;
- 30314;United States of AmericaLABEL;TYPE=WORK:100 Waters Edge\nBaytown\, L
- A 30314\nUnited States of AmericaADR;TYPE=HOME:;;42 Plantation St.;Baytown;
- LA;30314;United States of AmericaLABEL;TYPE=HOME:42 Plantation St.\nBaytow
- n\, LA 30314\nUnited States of AmericaEMAIL;TYPE=PREF\,INTERNET:forrestgum
- p@example.comREV:20080424T195243ZEND:VCARD
+AGENT:BEGIN:VCARDVERSION:3.0N:Gump\;ForrestFN:Forrest GumpORG:Bubba Gump Shr
+ imp Co.TITLE:Shrimp ManPHOTO\;VALUE=URL\;TYPE=GIF:http://upload.wikimedia.
+ org/wikipedia/commons/thumb/a/a5/Example_svg.svg/200px-Example_svg.svg.png
+ TEL\;TYPE=WORK\,VOICE:(111) 555-1212TEL\;TYPE=HOME\,VOICE:(404) 555-1212TE
+ L\;TYPE=HOME\,TYPE=VOICE:(404) 555-1213ADR\;TYPE=WORK:\;\;100 Waters Edge\;
+ Baytown\;LA\;30314\;United States of AmericaLABEL\;TYPE=WORK:100 Waters Ed
+ ge\nBaytown\, LA 30314\nUnited States of AmericaADR\;TYPE=HOME:\;\;42 Plan
+ tation St.\;Baytown\;LA\;30314\;United States of AmericaLABEL\;TYPE=HOME:4
+ 2 Plantation St.\nBaytown\, LA 30314\nUnited States of AmericaEMAIL\;TYPE=
+ PREF\,INTERNET:forrestgump@example.comREV:20080424T195243ZEND:VCARD
 REV:20080424T195243Z
 END:VCARD
 

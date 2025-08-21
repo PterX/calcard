@@ -4,13 +4,13 @@ NOTE:Mythical Manager\nHyjinx Software Division\n BabsCo\, Inc.\n
 ROLE;LANGUAGE=tr:hoca
 TITLE;ALTID=2;LANGUAGE=en:Chief vCard Evangelist
 N;ALTID=1;LANGUAGE=en:Yamada;Taro;;;
-N;SORT-AS="Harten,Rene":van der Harten;Rene\,J.;Sir;R.D.O.N.
+N;SORT-AS="Harten,Rene":van der Harten;Rene,J.;Sir;R.D.O.N.
 N;SORT-AS="Pozo,Oscar":del Pozo Triscon;Oscar;;
-SOURCE:ldap://ldap.example.com/cn=Babs%20Jensen\,%20o=Babsco\,%20c=US
+SOURCE:ldap://ldap.example.com/cn=Babs%20Jensen,%20o=Babsco,%20c=US
 SOURCE:http://directory.example.com/addressbooks/jdoe/Jean%20Dupont.vcf
 KIND:INDIVIDUAL
 N:Mr. John Q. Public\, Esq.
-N:Stevenson;John;Philip\,Paul;Dr.;Jr.\,M.D.\,A.C.P.
+N:Stevenson;John;Philip,Paul;Dr.;Jr.,M.D.,A.C.P.
 NICKNAME;TYPE=WORK:Boss
 PHOTO:data:image/jpeg;base64\,MIICajCCAdOgAwIBAgICBEUwDQYJKoZIhvAQEEBQAwdzEL
  MAkGA1UEBhMCVVMxLDAqBgNVBAoTI05ldHNjYXBlIENvbW11bmljYXRpb25zIENvcnBvcmF0aW
@@ -28,14 +28,14 @@ GENDER:;it's complicated
 ADR;GEO="geo:12.3457,78.910";LABEL="Mr. John Q. Public, Esq.\nMail Drop: TN
  E QB\n123 Main Street\nAny Town, CA  91921-1234\nU.S.A.":;;123 Main Street;
  Any Town;CA;91921-1234;U.S.A.
-TEL;PREF=1;TYPE=VOICE,HOME;VALUE=URI:tel:+1-555-555-5555\;ext=5555
+TEL;PREF=1;TYPE=VOICE,HOME;VALUE=URI:tel:+1-555-555-5555;ext=5555
 TEL;TYPE=HOME;VALUE=URI:tel:+33-01-23-45-67
 EMAIL;TYPE=WORK:jqpublic@xyz.example.com
 IMPP;PREF=1:xmpp:alice@example.com
 LANG;TYPE=WORK;PREF=1:en
 LANG;TYPE=WORK;PREF=2:fr
 TZ;VALUE=UTC-OFFSET:-0500
-GEO:geo:37.386013\,-122.082932
+GEO:geo:37.386013,-122.082932
 LOGO:http://www.example.com/pub/logos/abccorp.jpg
 ORG:ABC\, Inc.;North American Division;Marketing
 RELATED;TYPE=FRIEND:urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6
@@ -122,7 +122,7 @@ END:VCARD
 BEGIN:VCARD
 VERSION:4.0
 FN:Simon Perreault
-N:Perreault;Simon;;;ing. jr\,M.Sc.
+N:Perreault;Simon;;;ing. jr,M.Sc.
 BDAY:--0203
 ANNIVERSARY:20090808T1430-0500
 GENDER:M
@@ -130,10 +130,10 @@ LANG;PREF=1:fr
 LANG;PREF=2:en
 ORG;TYPE=WORK:Viagenie
 ADR;TYPE=WORK:;Suite D2-630;2875 Laurier;Quebec;QC;G1V 2M2;Canada
-TEL;TYPE=WORK,VOICE;PREF=1;VALUE=URI:tel:+1-418-656-9254\;ext=102
+TEL;TYPE=WORK,VOICE;PREF=1;VALUE=URI:tel:+1-418-656-9254;ext=102
 TEL;TYPE=WORK,CELL,VOICE,VIDEO,TEXT;VALUE=URI:tel:+1-418-262-6501
 EMAIL;TYPE=WORK:simon.perreault@viagenie.ca
-GEO;TYPE=WORK:geo:46.772673\,-71.282945
+GEO;TYPE=WORK:geo:46.772673,-71.282945
 KEY;TYPE=WORK;VALUE=URI:http://www.viagenie.ca/simon.perreault/simon.asc
 TZ:-0500
 URL;TYPE=HOME:http://nomis80.org

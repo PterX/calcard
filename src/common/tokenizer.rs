@@ -33,6 +33,7 @@ impl<'x> Parser<'x> {
         self.stop_equal = true;
         self.unfold_qp = false;
         self.unquote = true;
+        self.stop_dot = false;
     }
 
     pub(crate) fn expect_single_value(&mut self) {
@@ -42,6 +43,7 @@ impl<'x> Parser<'x> {
         self.stop_semicolon = false;
         self.unquote = false;
         self.unfold_qp = false;
+        self.stop_dot = false;
     }
 
     pub(crate) fn expect_multi_value_comma(&mut self) {
@@ -51,6 +53,7 @@ impl<'x> Parser<'x> {
         self.stop_semicolon = false;
         self.unquote = false;
         self.unfold_qp = false;
+        self.stop_dot = false;
     }
 
     pub(crate) fn expect_multi_value_semicolon(&mut self) {
@@ -60,6 +63,17 @@ impl<'x> Parser<'x> {
         self.stop_semicolon = true;
         self.unquote = false;
         self.unfold_qp = false;
+        self.stop_dot = false;
+    }
+
+    pub(crate) fn expect_multi_value_semicolon_and_comma(&mut self) {
+        self.stop_colon = false;
+        self.stop_comma = true;
+        self.stop_equal = false;
+        self.stop_semicolon = true;
+        self.unquote = false;
+        self.unfold_qp = false;
+        self.stop_dot = false;
     }
 
     pub(crate) fn expect_param_value(&mut self) {
@@ -69,6 +83,7 @@ impl<'x> Parser<'x> {
         self.stop_equal = false;
         self.unfold_qp = false;
         self.unquote = true;
+        self.stop_dot = false;
     }
 
     pub(crate) fn expect_rrule_value(&mut self) {
@@ -78,14 +93,15 @@ impl<'x> Parser<'x> {
         self.stop_semicolon = true;
         self.unquote = false;
         self.unfold_qp = false;
+        self.stop_dot = false;
     }
 
     fn try_unfold(&mut self) -> bool {
-        if let Some((_, next)) = self.iter.peek() {
-            if **next == b' ' || **next == b'\t' {
-                self.iter.next();
-                return true;
-            }
+        if let Some((_, next)) = self.iter.peek()
+            && (**next == b' ' || **next == b'\t')
+        {
+            self.iter.next();
+            return true;
         }
         false
     }
@@ -113,7 +129,7 @@ impl<'x> Parser<'x> {
                 b' ' | b'\t' => {
                     // Ignore leading and trailing whitespace (unless in a quoted string, or in a value (!self.unquote))
                     if in_quote
-                        || (!self.unquote && !self.stop_comma)
+                        || (!self.unquote && (!self.stop_comma || self.stop_semicolon))
                         || buf.last().is_some_and(|lch| lch != ch)
                     {
                         if offset_start == usize::MAX {
@@ -387,7 +403,7 @@ mod tests {
                 b"".as_slice(),
             ),
             (
-                concat!("N;ALTID=1;LANGUAGE=en:Yamada;Taro;;;"),
+                "N;ALTID=1;LANGUAGE=en:Yamada;Taro;;;",
                 vec![
                     (TextOwner::Borrowed("N"), StopChar::Semicolon),
                     (TextOwner::Borrowed("ALTID"), StopChar::Equal),
@@ -402,7 +418,7 @@ mod tests {
                 b"".as_slice(),
             ),
             (
-                concat!("N;SORT-AS=\"Mann,James\":de Mann;Henry,James;;"),
+                "N;SORT-AS=\"Mann,James\":de Mann;Henry,James;;",
                 vec![
                     (TextOwner::Borrowed("N"), StopChar::Semicolon),
                     (TextOwner::Borrowed("SORT-AS"), StopChar::Equal),
@@ -415,7 +431,7 @@ mod tests {
                 b"".as_slice(),
             ),
             (
-                concat!("  hello\\ nworld\\\\"),
+                "  hello\\ nworld\\\\",
                 vec![(TextOwner::Owned("hello\nworld\\".into()), StopChar::Lf)],
                 b"".as_slice(),
             ),
@@ -439,7 +455,7 @@ mod tests {
                 b"".as_slice(),
             ),
             (
-                concat!("RDATE;VALUE=DATE:19970304,19970504,19970704,19970904"),
+                "RDATE;VALUE=DATE:19970304,19970504,19970704,19970904",
                 vec![
                     (TextOwner::Borrowed("RDATE"), StopChar::Semicolon),
                     (TextOwner::Borrowed("VALUE"), StopChar::Equal),
@@ -452,7 +468,7 @@ mod tests {
                 b"".as_slice(),
             ),
             (
-                concat!(" BEGIN; ::\n \n \n test"),
+                " BEGIN; ::\n \n \n test",
                 vec![
                     (TextOwner::Borrowed("BEGIN"), StopChar::Semicolon),
                     (TextOwner::Borrowed(""), StopChar::Colon),
@@ -566,7 +582,7 @@ mod tests {
                 b"".as_slice(),
             ),
             (
-                concat!("CATEGORIES:cat1  ,  cat2,   cat3"),
+                "CATEGORIES:cat1  ,  cat2,   cat3",
                 vec![
                     (TextOwner::Borrowed("CATEGORIES"), StopChar::Colon),
                     (TextOwner::Borrowed("cat1"), StopChar::Comma),
@@ -642,22 +658,22 @@ mod tests {
                 b"".as_slice(),
             ),
             (
-                concat!("\\"),
+                "\\",
                 vec![(TextOwner::Owned("\\".into()), StopChar::Lf)],
                 b"".as_slice(),
             ),
             (
-                concat!("\\n"),
+                "\\n",
                 vec![(TextOwner::Owned("\n".into()), StopChar::Lf)],
                 b"".as_slice(),
             ),
             (
-                concat!("\\nhello"),
+                "\\nhello",
                 vec![(TextOwner::Owned("\nhello".into()), StopChar::Lf)],
                 b"".as_slice(),
             ),
             (
-                concat!(";;\nEND:VCARD\n"),
+                ";;\nEND:VCARD\n",
                 vec![
                     (TextOwner::Borrowed(""), StopChar::Semicolon),
                     (TextOwner::Borrowed(""), StopChar::Semicolon),
@@ -667,7 +683,7 @@ mod tests {
                 ],
                 b"".as_slice(),
             ),
-            (concat!(""), vec![], b"".as_slice()),
+            ("", vec![], b"".as_slice()),
         ] {
             let mut parser = Parser::new(input);
             let mut tokens = vec![];

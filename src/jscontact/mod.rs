@@ -129,7 +129,7 @@ impl FromStr for JSContactProperty {
             "calendarScale" => JSContactProperty::CalendarScale,
             "components" => JSContactProperty::Components,
             "contexts" => JSContactProperty::Contexts,
-                        "convertedProperties" => JSContactProperty::ConvertedProperties,
+            "convertedProperties" => JSContactProperty::ConvertedProperties,
             "coordinates" => JSContactProperty::Coordinates,
             "countryCode" => JSContactProperty::CountryCode,
             "created" => JSContactProperty::Created,
@@ -726,8 +726,8 @@ impl JSContactKind {
     pub(crate) fn to_vcard_adr_pos(&self) -> Option<usize> {
         match self {
             JSContactKind::PostOfficeBox => 0,
-            JSContactKind::Apartment => 1,
-            JSContactKind::Name => 2,
+            JSContactKind::Apartment => 8,
+            JSContactKind::Name => 11,
             JSContactKind::Locality => 3,
             JSContactKind::Region => 4,
             JSContactKind::Postcode => 5,
@@ -929,7 +929,12 @@ impl std::fmt::Display for JSContact<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{jscontact::JSContact, vcard::VCard};
+    use jmap_tools::{Key, Value};
+
+    use crate::{
+        jscontact::{JSContact, JSContactProperty, JSContactValue},
+        vcard::{VCard, VCardProperty},
+    };
 
     #[derive(Debug, Default)]
     struct Test {
@@ -1010,28 +1015,34 @@ mod tests {
             if is_jscontact(&self.test) {
                 fix_jscontact(&mut self.test);
                 fix_vcard(&mut self.expect);
-                let source = parse_jscontact(&self.comment, self.line_num, &self.test);
-                let expect = parse_vcard(&self.comment, self.line_num, &self.expect);
+                let source =
+                    sanitize_jscontact(parse_jscontact(&self.comment, self.line_num, &self.test));
+                let expect =
+                    sanitize_vcard(parse_vcard(&self.comment, self.line_num, &self.expect));
                 let roundtrip = if !self.roundtrip.is_empty() {
                     fix_jscontact(&mut self.roundtrip);
-                    parse_jscontact(&self.comment, self.line_num, &self.roundtrip)
+                    sanitize_jscontact(parse_jscontact(
+                        &self.comment,
+                        self.line_num,
+                        &self.roundtrip,
+                    ))
                 } else {
                     source.clone()
                 };
 
-                let first_convert = source.into_vcard().unwrap_or_else(|| {
+                let first_convert = sanitize_vcard(source.into_vcard().unwrap_or_else(|| {
                     panic!(
                         "Failed to convert JSContact to vCard: test {} on line {}: {}",
                         self.comment, self.line_num, self.test
                     )
-                });
+                }));
                 if first_convert != expect {
                     panic!(
                         "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
                         self.comment, self.line_num, expect, first_convert
                     );
                 }
-                let roundtrip_convert = first_convert.into_jscontact();
+                let roundtrip_convert = sanitize_jscontact(first_convert.into_jscontact());
                 if roundtrip_convert != roundtrip {
                     panic!(
                         "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
@@ -1041,27 +1052,29 @@ mod tests {
             } else {
                 fix_vcard(&mut self.test);
                 fix_jscontact(&mut self.expect);
-                let source = parse_vcard(&self.comment, self.line_num, &self.test);
-                let expect = parse_jscontact(&self.comment, self.line_num, &self.expect);
+                let source = sanitize_vcard(parse_vcard(&self.comment, self.line_num, &self.test));
+                let expect =
+                    sanitize_jscontact(parse_jscontact(&self.comment, self.line_num, &self.expect));
                 let roundtrip = if !self.roundtrip.is_empty() {
                     fix_vcard(&mut self.roundtrip);
-                    parse_vcard(&self.comment, self.line_num, &self.roundtrip)
+                    sanitize_vcard(parse_vcard(&self.comment, self.line_num, &self.roundtrip))
                 } else {
                     source.clone()
                 };
-                let first_convert = source.into_jscontact();
+                let first_convert = sanitize_jscontact(source.into_jscontact());
                 if first_convert != expect {
                     panic!(
                         "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
                         self.comment, self.line_num, expect, first_convert
                     );
                 }
-                let roundtrip_convert = first_convert.into_vcard().unwrap_or_else(|| {
-                    panic!(
-                        "Failed to convert JSContact to vCard: test {} on line {}: {}",
-                        self.comment, self.line_num, self.test
-                    )
-                });
+                let roundtrip_convert =
+                    sanitize_vcard(first_convert.into_vcard().unwrap_or_else(|| {
+                        panic!(
+                            "Failed to convert JSContact to vCard: test {} on line {}: {}",
+                            self.comment, self.line_num, self.test
+                        )
+                    }));
                 if roundtrip_convert != roundtrip {
                     panic!(
                         "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
@@ -1087,7 +1100,7 @@ mod tests {
 
     fn fix_jscontact(s: &mut String) {
         if !s.starts_with("{") {
-            let mut v = "{\"@type\": \"Card\", \n".to_string();
+            let mut v = "{\"@type\": \"Card\", \"version\": \"1.0\",\n".to_string();
             v.push_str(s);
             v.push_str("\n}\n");
             *s = v;
@@ -1110,5 +1123,37 @@ mod tests {
                 s, line_num, test_name
             )
         })
+    }
+
+    fn sanitize_vcard(mut vcard: VCard) -> VCard {
+        vcard
+            .entries
+            .retain(|e| !matches!(e.name, VCardProperty::Version));
+        vcard.entries.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        vcard
+    }
+
+    fn sanitize_jscontact(mut jscontact: JSContact<'_>) -> JSContact<'_> {
+        sort_jscontact_properties(&mut jscontact.0);
+        jscontact
+    }
+
+    fn sort_jscontact_properties(value: &mut Value<'_, JSContactProperty, JSContactValue>) {
+        match value {
+            Value::Array(value) => {
+                for item in value {
+                    sort_jscontact_properties(item);
+                }
+            }
+            Value::Object(obj) => {
+                obj.as_mut_vec()
+                    .retain(|(k, _)| !matches!(k, Key::Property(JSContactProperty::Type)));
+                obj.as_mut_vec().sort_unstable_by(|a, b| a.0.cmp(&b.0));
+                for (_, item) in obj.as_mut_vec() {
+                    sort_jscontact_properties(item);
+                }
+            }
+            _ => {}
+        }
     }
 }

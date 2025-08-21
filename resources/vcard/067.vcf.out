@@ -1,9 +1,9 @@
 BEGIN:VCARD
 VERSION:2.1
 v;x1=a;x2=,a;x3=a,;x4=a,,a;x5=,a,:
-SOURCE:ldap://cn=bjorn%20Jensen\, o=university%20of%20Michigan\, c=US
+SOURCE:ldap://cn=bjorn%20Jensen, o=university%20of%20Michigan, c=US
 FN:Bj=F8rn Jensen
-other.name:Jensen;Bj=F8rn
+other.name:Jensen\;Bj=F8rn
 some.other.value:1.2.3
 some.other.value:some.other
 some.other.value:some.other.value

@@ -1,0 +1,42 @@
+> test RFC9555 FN
+FN:John Q. Public, Esq.
+> convert
+"name": {
+  "full": "John Q. Public, Esq."
+}
+
+> test RFC9555 N
+N;SORT-AS="Stevenson,John Philip":
+ Stevenson;John;Philip,Paul;Dr.;Jr.,M.D.,A.C.P.;;Jr.
+> convert
+"name": {
+  "components":[
+    { "kind": "surname", "value": "Stevenson" },
+    { "kind": "given", "value": "John" },
+    { "kind": "given2", "value": "Philip" },
+    { "kind": "given2", "value": "Paul" },
+    { "kind": "title", "value": "Dr." },
+    { "kind": "credential", "value": "M.D." },
+    { "kind": "credential", "value": "A.C.P." },
+    { "kind": "generation", "value": "Jr." }
+  ],
+  "sortAs": {
+    "surname": "Stevenson",
+    "given": "John Philip"
+  }
+}
+> convert
+N;SORT-AS="Stevenson,John Philip";JSCOMPS=";0;1;2;2,1;3;4;4,1;6":
+ Stevenson;John;Philip,Paul;Dr.;M.D.,A.C.P.,Jr.;;Jr.
+
+> test RFC9555 NICKNAME
+NICKNAME:Johnny
+> convert
+"nicknames": {
+   "k1": {
+    "name": "Johnny"
+   }
+}
+> convert
+NICKNAME;PROP-ID=k1:Johnny
+

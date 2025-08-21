@@ -5,7 +5,8 @@ FN:Mäx Mustermann
 TEL;TYPE=CELL,VOICE:+49123456789
 EMAIL;PREF=0;INTERNET:max@mustermann.de
 X-ICQ:1234
-X-ANDROID-CUSTOM:vnd.android.cursor.item/nickname;Mäx;1;;;;;;;;;;;;;
+X-ANDROID-CUSTOM:vnd.android.cursor.item/nickname\;Mäx\;1\;\;\;\;\;\;\;\;\;
+ \;\;\;\;
 END:VCARD
 
 BEGIN:VCARD
@@ -73,6 +74,7 @@ BEGIN:VCARD
 VERSION:2.1
 N:Test;Hola
 FN:Hola Test
-X-ANDROID-CUSTOM:vnd.android.cursor.item/nickname;HÖLA;;;;;;;;;;;;;;
+X-ANDROID-CUSTOM:vnd.android.cursor.item/nickname\;HÖLA\;\;\;\;\;\;\;\;\;\;
+ \;\;\;\;
 END:VCARD
 

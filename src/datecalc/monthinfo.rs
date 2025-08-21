@@ -113,10 +113,11 @@ impl MonthInfo {
                         let a = (7 - nth_first_day_weekday + weekday) as u32;
                         nth_first_day + pymod(a, 7)
                     };
-                    if first <= nth_weekday && nth_weekday <= last {
-                        if let Ok(nth_weekday) = usize::try_from(nth_weekday) {
-                            neg_weekday_mask[nth_weekday] = 1;
-                        }
+                    if first <= nth_weekday
+                        && nth_weekday <= last
+                        && let Ok(nth_weekday) = usize::try_from(nth_weekday)
+                    {
+                        neg_weekday_mask[nth_weekday] = 1;
                     }
                 }
             }
@@ -184,13 +185,15 @@ mod tests {
 
         let neg_weekday_mask = MonthInfo::get_neg_weekday_mask(&year_info, 1, &rrule);
         assert_eq!(neg_weekday_mask.len(), year_info.year_len as usize);
-        assert!(neg_weekday_mask
-            .into_iter()
-            .enumerate()
-            .all(|(idx, val)| match idx {
-                1 | 351 => val == 1,
-                _ => val == 0,
-            }));
+        assert!(
+            neg_weekday_mask
+                .into_iter()
+                .enumerate()
+                .all(|(idx, val)| match idx {
+                    1 | 351 => val == 1,
+                    _ => val == 0,
+                })
+        );
     }
 
     #[test]
@@ -211,12 +214,14 @@ mod tests {
 
         let neg_weekday_mask = MonthInfo::get_neg_weekday_mask(&year_info, 1, &rrule);
         assert_eq!(neg_weekday_mask.len(), year_info.year_len as usize);
-        assert!(neg_weekday_mask
-            .into_iter()
-            .enumerate()
-            .all(|(idx, val)| match idx {
-                1 | 22 => val == 1,
-                _ => val == 0,
-            }));
+        assert!(
+            neg_weekday_mask
+                .into_iter()
+                .enumerate()
+                .all(|(idx, val)| match idx {
+                    1 | 22 => val == 1,
+                    _ => val == 0,
+                })
+        );
     }
 }

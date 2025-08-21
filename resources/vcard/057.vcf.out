@@ -1,6 +1,6 @@
 BEGIN:VCARD
 VERSION:4.0
-SOURCE:ldap://cn=bjorn%20Jensen\, o=university%20of%20Michigan\, c=US
+SOURCE:ldap://cn=bjorn%20Jensen, o=university%20of%20Michigan, c=US
 name:Bjorn Jensen
 FN:Bj=F8rn Jensen
 N:Jensen;Bj=F8rn

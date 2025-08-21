@@ -1,7 +1,7 @@
 BEGIN:VCARD
 VERSION:3.0
 PRODID:-//Apple Inc.//iOS 5.0.1//EN
-N:Doe;John;Richter\,James;Mr.;Sr.
+N:Doe;John;Richter,James;Mr.;Sr.
 FN:Mr. John Richter James Doe Sr.
 NICKNAME:Johny
 ORG:IBM;Accounting
@@ -15,8 +15,8 @@ TEL;TYPE=WORK,FAX:905-999-1234
 TEL;TYPE=PAGER:905-111-1234
 item2.TEL:905-222-1234
 item2.X-ABLabel:_$!<AssistantPhone>!$_
-item3.ADR;TYPE=HOME,pref:;;Silicon Alley 5\,;New York;New York;12345;United 
- States of America
+item3.ADR;TYPE=HOME,pref:;;Silicon Alley 5,;New York;New York;12345;United S
+ tates of America
 item3.X-ABADR:Silicon Alley
 item4.ADR;TYPE=WORK:;;Street4\nBuilding 6\nFloor 8;New York;;12345;USA
 item4.X-ABADR:Street 4\, Building 6\,\n Floor 8\nNew York\nUSA
