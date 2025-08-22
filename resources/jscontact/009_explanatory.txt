@@ -125,7 +125,33 @@ item1.X-ABLabel:foo
 item1.TEL;PROP-ID=k1;VALUE=uri:tel:+1-555-555-5555
 item1.X-ABLabel:foo
 
-
+> test CATEGORIES with parameters
+CATEGORIES;X-PROP=1:IETF,Industry,Information Technology,internet
+CATEGORIES;X-PROP=2:Friends,Family
+> convert
+"keywords": {
+    "Family": true,
+    "Friends": true,
+    "IETF": true,
+    "Industry": true,
+    "Information Technology": true,
+    "internet": true
+  },
+  "vCard": {
+    "convertedProperties": {
+      "keywords": {
+        "parameters": {
+          "X-PROP": [
+            "1",
+            "2"
+          ]
+        }
+      }
+    }
+  }
+> convert
+CATEGORIES;X-PROP=1,2:Family,Friends,IETF,Industry,Information Technology,i
+ nternet
 
 
 

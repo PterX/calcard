@@ -1012,6 +1012,8 @@ mod tests {
                 );
             }
 
+            println!("Running test '{}' at line {}", self.comment, self.line_num);
+
             if is_jscontact(&self.test) {
                 fix_jscontact(&mut self.test);
                 fix_vcard(&mut self.expect);
@@ -1037,17 +1039,27 @@ mod tests {
                     )
                 }));
                 if first_convert != expect {
-                    panic!(
-                        "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
-                        self.comment, self.line_num, expect, first_convert
-                    );
+                    let first_convert =
+                        sanitize_vcard(VCard::parse(first_convert.to_string()).unwrap());
+
+                    if first_convert != expect {
+                        panic!(
+                            "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, expect, first_convert
+                        );
+                    }
                 }
                 let roundtrip_convert = sanitize_jscontact(first_convert.into_jscontact());
                 if roundtrip_convert != roundtrip {
-                    panic!(
-                        "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
-                        self.comment, self.line_num, roundtrip, roundtrip_convert
-                    );
+                    let roundtrip_convert = roundtrip_convert.to_string();
+                    let roundtrip = roundtrip.to_string();
+
+                    if roundtrip_convert != roundtrip {
+                        panic!(
+                            "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, roundtrip, roundtrip_convert
+                        );
+                    }
                 }
             } else {
                 fix_vcard(&mut self.test);
@@ -1063,10 +1075,15 @@ mod tests {
                 };
                 let first_convert = sanitize_jscontact(source.into_jscontact());
                 if first_convert != expect {
-                    panic!(
-                        "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
-                        self.comment, self.line_num, expect, first_convert
-                    );
+                    let first_convert = first_convert.to_string();
+                    let expect = expect.to_string();
+
+                    if first_convert != expect {
+                        panic!(
+                            "vCard to JSContact conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, expect, first_convert
+                        );
+                    }
                 }
                 let roundtrip_convert =
                     sanitize_vcard(first_convert.into_vcard().unwrap_or_else(|| {
@@ -1076,10 +1093,14 @@ mod tests {
                         )
                     }));
                 if roundtrip_convert != roundtrip {
-                    panic!(
-                        "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
-                        self.comment, self.line_num, roundtrip, roundtrip_convert
-                    );
+                    let roundtrip_convert =
+                        sanitize_vcard(VCard::parse(roundtrip_convert.to_string()).unwrap());
+                    if roundtrip_convert != roundtrip {
+                        panic!(
+                            "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, roundtrip, roundtrip_convert
+                        );
+                    }
                 }
             }
         }
@@ -1148,7 +1169,8 @@ mod tests {
             Value::Object(obj) => {
                 obj.as_mut_vec()
                     .retain(|(k, _)| !matches!(k, Key::Property(JSContactProperty::Type)));
-                obj.as_mut_vec().sort_unstable_by(|a, b| a.0.cmp(&b.0));
+                obj.as_mut_vec()
+                    .sort_unstable_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
                 for (_, item) in obj.as_mut_vec() {
                     sort_jscontact_properties(item);
                 }

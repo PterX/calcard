@@ -40,3 +40,97 @@ NICKNAME:Johnny
 > convert
 NICKNAME;PROP-ID=k1:Johnny
 
+> test RFC9555 JSCOMPS #1
+"name": {
+  "components": [
+    { "kind": "given", "value": "Jane" },
+    { "kind": "surname", "value": "Doe" }
+  ],
+  "isOrdered": true
+}
+> convert
+N;JSCOMPS=";1;0":Doe;Jane;;;;;
+
+> test RFC9555 JSCOMPS #2
+"name": {
+  "components": [
+    { "kind": "given", "value": "John" },
+    { "kind": "given2", "value": "Philip" },
+    { "kind": "given2", "value": "Paul" },
+    { "kind": "surname", "value": "Stevenson" },
+    { "kind": "generation", "value": "Jr." },
+    { "kind": "credential", "value": "M.D." }
+  ],
+  "isOrdered": true
+}
+> convert
+N;JSCOMPS=";1;2;2,1;0;6;4":
+ Stevenson;John;Philip,Paul;;M.D.,Jr.;;Jr.
+
+> test Multiple FN
+FN;X-PROP=1:John Q. Public, Esq.
+FN:Giovanni Publico
+> convert
+"name": {
+    "full": "John Q. Public, Esq."
+  },
+  "vCard": {
+    "convertedProperties": {
+      "name/full": {
+        "parameters": {
+          "X-PROP": "1"
+        }
+      }
+    },
+    "properties": [
+      [
+        "FN",
+        {},
+        "text",
+        "Giovanni Publico"
+      ]
+    ]
+  }
+> convert
+FN:Giovanni Publico
+FN;X-PROP=1:John Q. Public\, Esq.
+
+
+> test Multiple N
+N:Doe;Jane;;;;;
+N:Perez;Juana;;;;;
+> convert
+"name": {
+    "components": [
+      {
+        "kind": "surname",
+        "value": "Doe"
+      },
+      {
+        "kind": "given",
+        "value": "Jane"
+      }
+    ]
+  },
+  "vCard": {
+    "properties": [
+      [
+        "N",
+        {},
+        "text",
+        [
+          "Perez",
+          "Juana",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ]
+      ]
+    ]
+  }
+> convert
+N:Perez;Juana;;;;;
+N;JSCOMPS=";0;1":Doe;Jane;;;;;
+

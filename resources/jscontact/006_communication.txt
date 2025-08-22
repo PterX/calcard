@@ -111,3 +111,37 @@ TEL;VALUE=uri;TYPE=home:tel:+33-01-23-45-67
 > convert
 TEL;PREF=1;TYPE=HOME,VOICE;PROP-ID=k1;VALUE=URI:tel:+1-555-555-5555;ext=5555
 TEL;TYPE=HOME;PROP-ID=k2;VALUE=URI:tel:+33-01-23-45-67
+
+> test RFC9555 TEL with PROP-ID
+TEL;PROP-ID=PHONE-A;VALUE=uri;PREF=1;TYPE="voice,home":tel:+1-555-555-5555;ext=5555
+TEL;PROP-ID=PHONE-B;VALUE=uri;TYPE=home:tel:+33-01-23-45-67
+> convert
+"phones": {
+  "PHONE-A": {
+    "contexts": { "private": true },
+    "features": { "voice": true },
+    "number": "tel:+1-555-555-5555;ext=5555",
+    "pref": 1
+  },
+  "PHONE-B": {
+    "contexts": { "private": true },
+    "number": "tel:+33-01-23-45-67"
+  }
+},
+"vCard": {
+    "convertedProperties": {
+      "phones/PHONE-A/number": {
+        "parameters": {
+          "VALUE": "URI"
+        }
+      },
+      "phones/PHONE-B/number": {
+        "parameters": {
+          "VALUE": "URI"
+        }
+      }
+    }
+}
+> convert
+TEL;PREF=1;TYPE=HOME,VOICE;PROP-ID=PHONE-A;VALUE=URI:tel:+1-555-555-5555;ext=5555
+TEL;TYPE=HOME;PROP-ID=PHONE-B;VALUE=URI:tel:+33-01-23-45-67
