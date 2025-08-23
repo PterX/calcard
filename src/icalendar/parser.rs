@@ -6,12 +6,12 @@
 
 use super::*;
 use crate::{
+    Entry, Parser, StopChar, Token,
     common::{
-        parser::{parse_digits, parse_small_digits, Integer},
         CalendarScale, Encoding, PartialDateTime,
+        parser::{Integer, parse_digits, parse_small_digits},
     },
     icalendar::{ICalendarDay, ICalendarWeekday},
-    Entry, Parser, StopChar, Token,
 };
 use mail_parser::decoders::{
     base64::base64_decode, charsets::map::charset_decoder,
@@ -592,6 +592,12 @@ impl Parser<'_> {
                         param_values.push(ICalendarParameter::Linkrel(value));
                     }
                 },
+                b"JSPTR" => {
+                     param_values.push(ICalendarParameter::Jsptr(self.buf_to_string()));
+                },
+                b"JSID" => {
+                     param_values.push(ICalendarParameter::Jsid(self.buf_to_string()));
+                },
                 b"CHARSET" => {
                     for token in self.token_buf.drain(..) {
                         params.charset = token.into_string().into();
@@ -778,10 +784,10 @@ impl Parser<'_> {
                     }
                 },
                 b"BYMONTH" => {
-                    while let Some(value) = self.parse_value_until_lf::<Integer>(StopChar::Semicolon, &mut last_stop_char) {
+                    while let Some(value) = self.parse_value_until_lf::<ICalendarMonth>(StopChar::Semicolon, &mut last_stop_char) {
                         token_end = token.end;
                         if let Ok(value) = value {
-                            rrule.bymonth.push(value.0 as u8);
+                            rrule.bymonth.push(value);
                         } else if !self.strict {
                             is_valid = false;
                         }
@@ -802,6 +808,26 @@ impl Parser<'_> {
                         token_end = token.end;
                         if let Ok(value) = value {
                             rrule.wkst = Some(value);
+                        } else if !self.strict {
+                            is_valid = false;
+                        }
+                    }
+                },
+                b"RSCALE" => {
+                    while let Some(value) = self.parse_value_until_lf::<CalendarScale>(StopChar::Semicolon, &mut last_stop_char) {
+                        token_end = token.end;
+                        if let Ok(value) = value {
+                            rrule.rscale = Some(value);
+                        } else if !self.strict {
+                            is_valid = false;
+                        }
+                    }
+                },
+                b"SKIP" => {
+                    while let Some(value) = self.parse_value_until_lf::<ICalendarSkip>(StopChar::Semicolon, &mut last_stop_char) {
+                        token_end = token.end;
+                        if let Ok(value) = value {
+                            rrule.skip = Some(value);
                         } else if !self.strict {
                             is_valid = false;
                         }
@@ -915,6 +941,53 @@ impl TryFrom<&[u8]> for ICalendarPeriod {
     }
 }
 
+impl TryFrom<&[u8]> for ICalendarMonth {
+    type Error = ();
+
+    fn try_from(value: &[u8]) -> std::result::Result<Self, Self::Error> {
+        let mut num: i8 = 0;
+        let mut is_leap = false;
+
+        for (pos, ch) in value.iter().enumerate() {
+            match ch {
+                b'L' | b'l' if pos > 0 => {
+                    is_leap = true;
+                }
+                b'0'..=b'9' => {
+                    num = num.saturating_mul(10).saturating_add((*ch - b'0') as i8);
+                }
+                _ => {
+                    if !ch.is_ascii_whitespace() {
+                        return Err(());
+                    }
+                }
+            }
+        }
+
+        Ok(ICalendarMonth(if is_leap { -num } else { num }))
+    }
+}
+
+impl ICalendarMonth {
+    pub fn new(month: u8, is_leap: bool) -> Self {
+        ICalendarMonth(if is_leap { -(month as i8) } else { month as i8 })
+    }
+
+    pub fn is_leap(&self) -> bool {
+        self.0 < 0
+    }
+
+    pub fn month(&self) -> u8 {
+        self.0.unsigned_abs()
+    }
+}
+
+impl From<ICalendarMonth> for u8 {
+    fn from(value: ICalendarMonth) -> Self {
+        value.month()
+    }
+}
+
 impl ICalendarDuration {
     fn try_parse(iter: &mut Peekable<Iter<'_, u8>>) -> Option<Self> {
         let mut dur = ICalendarDuration::default();
@@ -975,11 +1048,7 @@ impl ICalendarDuration {
             }
         }
 
-        if !dur.is_empty() {
-            Some(dur)
-        } else {
-            None
-        }
+        if !dur.is_empty() { Some(dur) } else { None }
     }
 }
 
@@ -1051,6 +1120,8 @@ impl ICalendarParameterName {
                 b"DERIVED" => ICalendarParameterName::Derived,
                 b"GAP" => ICalendarParameterName::Gap,
                 b"LINKREL" => ICalendarParameterName::Linkrel,
+                b"JSPTR" => ICalendarParameterName::Jsptr,
+                b"JSID" => ICalendarParameterName::Jsid,
         )
         .unwrap_or_else(|| ICalendarParameterName::Other(input.to_string()))
     }
@@ -1193,7 +1264,7 @@ mod tests {
                 "FREQ=YEARLY;BYMONTH=1,2",
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Yearly,
-                    bymonth: vec![1, 2],
+                    bymonth: vec![ICalendarMonth(1), ICalendarMonth(2)],
                     ..Default::default()
                 },
             ),
@@ -1208,7 +1279,7 @@ mod tests {
                         ordwk: None,
                         weekday: ICalendarWeekday::Sunday,
                     }],
-                    bymonth: vec![1],
+                    bymonth: vec![ICalendarMonth(1)],
                     ..Default::default()
                 },
             ),
@@ -1247,7 +1318,7 @@ mod tests {
                         ordwk: Some(-1),
                         weekday: ICalendarWeekday::Sunday,
                     }],
-                    bymonth: vec![4],
+                    bymonth: vec![ICalendarMonth(4)],
                     ..Default::default()
                 },
             ),
@@ -1270,7 +1341,7 @@ mod tests {
                         ordwk: Some(-1),
                         weekday: ICalendarWeekday::Sunday,
                     }],
-                    bymonth: vec![10],
+                    bymonth: vec![ICalendarMonth(10)],
                     ..Default::default()
                 },
             ),
@@ -1282,7 +1353,7 @@ mod tests {
                         ordwk: Some(2),
                         weekday: ICalendarWeekday::Sunday,
                     }],
-                    bymonth: vec![3],
+                    bymonth: vec![ICalendarMonth(3)],
                     ..Default::default()
                 },
             ),
@@ -1294,7 +1365,7 @@ mod tests {
                         ordwk: Some(-1),
                         weekday: ICalendarWeekday::Sunday,
                     }],
-                    bymonth: vec![10],
+                    bymonth: vec![ICalendarMonth(10)],
                     ..Default::default()
                 },
             ),
@@ -1360,7 +1431,7 @@ mod tests {
                             weekday: ICalendarWeekday::Saturday,
                         },
                     ],
-                    bymonth: vec![1],
+                    bymonth: vec![ICalendarMonth(1)],
                     ..Default::default()
                 },
             ),
@@ -1379,7 +1450,7 @@ mod tests {
                         tz_minute: Some(0),
                         tz_minus: false,
                     }),
-                    bymonth: vec![1],
+                    bymonth: vec![ICalendarMonth(1)],
                     ..Default::default()
                 },
             ),
@@ -1598,7 +1669,7 @@ mod tests {
                 ICalendarRecurrenceRule {
                     freq: ICalendarFrequency::Yearly,
                     count: Some(10),
-                    bymonth: vec![6, 7],
+                    bymonth: vec![ICalendarMonth(6), ICalendarMonth(7)],
                     ..Default::default()
                 },
             ),
@@ -1608,7 +1679,7 @@ mod tests {
                     freq: ICalendarFrequency::Yearly,
                     count: Some(10),
                     interval: Some(2),
-                    bymonth: vec![1, 2, 3],
+                    bymonth: vec![ICalendarMonth(1), ICalendarMonth(2), ICalendarMonth(3)],
                     ..Default::default()
                 },
             ),
@@ -1653,7 +1724,7 @@ mod tests {
                         ordwk: None,
                         weekday: ICalendarWeekday::Thursday,
                     }],
-                    bymonth: vec![3],
+                    bymonth: vec![ICalendarMonth(3)],
                     ..Default::default()
                 },
             ),
@@ -1665,7 +1736,7 @@ mod tests {
                         ordwk: None,
                         weekday: ICalendarWeekday::Thursday,
                     }],
-                    bymonth: vec![6, 7, 8],
+                    bymonth: vec![ICalendarMonth(6), ICalendarMonth(7), ICalendarMonth(8)],
                     ..Default::default()
                 },
             ),
@@ -1703,7 +1774,7 @@ mod tests {
                         weekday: ICalendarWeekday::Tuesday,
                     }],
                     bymonthday: vec![2, 3, 4, 5, 6, 7, 8],
-                    bymonth: vec![11],
+                    bymonth: vec![ICalendarMonth(11)],
                     ..Default::default()
                 },
             ),
