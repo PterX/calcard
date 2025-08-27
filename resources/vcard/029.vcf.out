@@ -1,12 +1,12 @@
 BEGIN:VCARD
 VERSION:2.1
-EMAIL;PREF=0:john.doe@company.com
+EMAIL;PREF:john.doe@company.com
 CATEGORIES:My Contacts
 END:VCARD
 
 BEGIN:VCARD
 VERSION:2.1
-EMAIL;PREF=0:jane.doe@company.com
+EMAIL;PREF:jane.doe@company.com
 CATEGORIES:My Contacts
 END:VCARD
 
@@ -14,7 +14,7 @@ BEGIN:VCARD
 VERSION:2.1
 N:Ñ Ñ Ñ Ñ ;;;;
 FN:Ñ Ñ Ñ Ñ Ñ 
-TEL;TYPE=CELL;PREF=0:123456789
+TEL;TYPE=CELL;PREF:123456789
 CATEGORIES:My Contacts
 END:VCARD
 
@@ -22,7 +22,7 @@ BEGIN:VCARD
 VERSION:2.1
 N:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ;;;;
 FN:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ
-TEL;TYPE=CELL;PREF=0:123456
+TEL;TYPE=CELL;PREF:123456
 TEL;TYPE=HOME:234567
 TEL;TYPE=CELL:3456789
 TEL;TYPE=HOME:45678901
@@ -35,11 +35,11 @@ BEGIN:VCARD
 VERSION:2.1
 N:Ñ Ñ ;Ñ Ñ Ñ ;;;
 FN:Ñ Ñ Ñ Ñ 
-TEL;TYPE=CELL;PREF=0:123456
+TEL;TYPE=CELL;PREF:123456
 TEL;TYPE=WORK:123456
 TEL;TYPE=WORK,FAX:123456
-EMAIL;PREF=0;TYPE=WORK:bob@company.com
-EMAIL;PREF=0:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+EMAIL;PREF;TYPE=WORK:bob@company.com
+EMAIL;PREF:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
 ORG:ÑÑÑÑÑÑÑÑÑÑÑÑ
 ORG:ÑÑÑÑÑÑÑÑÑÑÑÑ
 URL:www.company.com
@@ -67,8 +67,8 @@ BEGIN:VCARD
 VERSION:2.1
 N:ÑÑÑÑ;;;;
 FN:ÑÑÑÑ
-TEL;TYPE=CELL;PREF=0:55556666
-EMAIL;PREF=0:henry@company.com
+TEL;TYPE=CELL;PREF:55556666
+EMAIL;PREF:henry@company.com
 ORG:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
  ÑÑÑÑÑÑÑÑ
 ORG;ENCODING=b:w5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDk

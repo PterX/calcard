@@ -31,8 +31,8 @@ ATTENDEE;ROLE=CHAIR;PARTSTAT=ACCEPTED;CN="iCal Chair/CoffeeBean";RSVP=FALSE:
 ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN="iCal Participant/Co
  ffeeBean";RSVP=TRUE:mailto:iCalParticipant@coffeebean.com
 CLASS:PUBLIC
-DESCRIPTION;ALTREP="CID:<FFFF__=0ABBE548DFE235B58f9e8a93d@coffeebean.com>":B
- ody change (update) to the meeting - all instances
+DESCRIPTION;ALTREP="CID:<FFFF__=0ABBE548DFE235B58f9e8a93d@coffeebean.com>":Bod
+ y change (update) to the meeting - all instances
 SUMMARY:5 day daily repeating meeting #2
 X-LOTUS-UPDATE-SUBJECT:Information Update - Description has changed: 5 day d
  aily repeating meeting #2

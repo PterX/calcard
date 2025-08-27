@@ -14,8 +14,8 @@ RDATE;VALUE=DATE:20121210
 DTSTAMP:20121207T183041Z
 UID:2014_BIRTHDAY_79d389868f96182e@google.com
 ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Contac
- ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfc
- tm6abj3dtmg@virtual
+ ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfct
+ m6abj3dtmg@virtual
 CLASS:PUBLIC
 CREATED:20121207T183041Z
 LAST-MODIFIED:20121207T183041Z
@@ -30,8 +30,8 @@ DTEND;VALUE=DATE:20121211
 DTSTAMP:20121207T183041Z
 UID:BIRTHDAY_79d389868f96182e@google.com
 ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Contac
- ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfc
- tm6abj3dtmg@virtual
+ ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfct
+ m6abj3dtmg@virtual
 X-GOOGLE-CALENDAR-CONTENT-ICON:https://calendar.google.com/googlecalendar/im
  ages/cake.gif
 X-GOOGLE-CALENDAR-CONTENT-DISPLAY:chip
@@ -51,8 +51,8 @@ DTEND;VALUE=DATE:20131211
 DTSTAMP:20121207T183041Z
 UID:BIRTHDAY_79d389868f96182e@google.com
 ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Contac
- ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfc
- tm6abj3dtmg@virtual
+ ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfct
+ m6abj3dtmg@virtual
 X-GOOGLE-CALENDAR-CONTENT-ICON:https://calendar.google.com/googlecalendar/im
  ages/cake.gif
 X-GOOGLE-CALENDAR-CONTENT-DISPLAY:chip
@@ -72,8 +72,8 @@ DTEND;VALUE=DATE:20141211
 DTSTAMP:20121207T183041Z
 UID:BIRTHDAY_79d389868f96182e@google.com
 ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Contac
- ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfc
- tm6abj3dtmg@virtual
+ ts;X-NUM-GUESTS=0:mailto:4dhmurjkc5hn8sq0ctp6utbg5pr2sor1dhimsp31e8n6errfct
+ m6abj3dtmg@virtual
 X-GOOGLE-CALENDAR-CONTENT-ICON:https://calendar.google.com/googlecalendar/im
  ages/cake.gif
 X-GOOGLE-CALENDAR-CONTENT-DISPLAY:chip

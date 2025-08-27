@@ -299,7 +299,7 @@ LANGUAGE:fr
 
 > test RFC6350 PHOTO
 PHOTO;ALTID=1:data:image/jpeg;base64,...
-PHOTO;ALTID=1;data:image/jp2;base64,...
+PHOTO;ALTID=1:data:image/jp2;base64,...
 > convert
 "media": {
     "k1": {
@@ -308,7 +308,7 @@ PHOTO;ALTID=1;data:image/jp2;base64,...
     },
     "k2": {
       "kind": "photo",
-      "uri": "image/jp2;base64,..."
+      "uri": "data:image/jp2;base64,..."
     }
   },
   "vCard": {
@@ -327,7 +327,7 @@ PHOTO;ALTID=1;data:image/jp2;base64,...
 }
 > convert
 PHOTO;PROP-ID=k1;ALTID=1:data:image/jpeg;base64,...
-PHOTO;PROP-ID=k2;ALTID=1:image/jp2;base64,...
+PHOTO;PROP-ID=k2;ALTID=1:data:image/jp2;base64,...
 
 > test RFC6350 N FN #1
 FN:Rene van der Harten

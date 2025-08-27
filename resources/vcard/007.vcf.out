@@ -12,7 +12,7 @@ LABEL;TYPE=WORK:100 Waters Edge\r\nBaytown\, LA 30314\r\nUnited States of Am
 ADR;TYPE=HOME:;;42 Plantation St.;Baytown;LA;30314;United States of America
 LABEL;TYPE=HOME:42 Plantation St.\r\nBaytown\, LA 30314\r\nUnited States of 
  America
-EMAIL;PREF=0;INTERNET;TYPE=HOME:forrestgump@example.com
+EMAIL;PREF;INTERNET;TYPE=HOME:forrestgump@example.com
 REV:20080424T195243Z
 END:VCARD
 

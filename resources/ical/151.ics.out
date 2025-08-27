@@ -13,22 +13,22 @@ DTSTART:20120709T160000Z
 DTEND:20120709T170000Z
 X-MICROSOFT-CDO-ALLDAYEVENT:FALSE
 URL:https://hub.partners.org/catalog/one-section?section_id=6181737
-X-TRUMBA-CUSTOMFIELD;NAME="Event Type";ID=21;TYPE=number:Harvard Medical 
- School
-X-TRUMBA-CUSTOMFIELD;NAME=Topics;ID=22995;TYPE=CustomAsset:Administrative
- \,Anesthesia\,Biochemistry\,Biomedical Science\,Biostatistics\,Cardiology\,
- Community\,Dermatology\,Education\,Endocrine\,Epidemiology\,Genetics\,Immu
- nology\,Medicine\,Molecular Biology\,Molecular Genetics\,Neurology\,Nuclea
- r Medicine\,Obstetrics\, Gynecology and Reproductive Biology\,Oncology\,Op
- thalmology\,Oral Health\,Orthopedic Surgery\,Otology-Laryngology\,Pediatri
- cs\,Physical Medicine & Rehabilitation\,Population Medicine\,Psychiatry\,P
- ublic Health\,Radiation Oncology\,Radiology\,Surgery\,Vascular Biology\,Vi
- rology\,Wellness/Worklife
+X-TRUMBA-CUSTOMFIELD;NAME="Event Type";ID=21;TYPE=number:Harvard Medical Sch
+ ool
+X-TRUMBA-CUSTOMFIELD;NAME=Topics;ID=22995;TYPE=CustomAsset:Administrative\,A
+ nesthesia\,Biochemistry\,Biomedical Science\,Biostatistics\,Cardiology\,Co
+ mmunity\,Dermatology\,Education\,Endocrine\,Epidemiology\,Genetics\,Immuno
+ logy\,Medicine\,Molecular Biology\,Molecular Genetics\,Neurology\,Nuclear 
+ Medicine\,Obstetrics\, Gynecology and Reproductive Biology\,Oncology\,Opth
+ almology\,Oral Health\,Orthopedic Surgery\,Otology-Laryngology\,Pediatrics
+ \,Physical Medicine & Rehabilitation\,Population Medicine\,Psychiatry\,Pub
+ lic Health\,Radiation Oncology\,Radiology\,Surgery\,Vascular Biology\,Viro
+ logy\,Wellness/Worklife
 X-TRUMBA-CUSTOMFIELD;NAME="Event Types";ID=25242;TYPE=CustomAsset:Seminar
-X-TRUMBA-CUSTOMFIELD;NAME=Department/Office;ID=25489;TYPE=CustomAsset:Con
- tinuing Education
-X-TRUMBA-CUSTOMFIELD;NAME=Location;ID=22993;TYPE=CustomAsset:Mass. Genera
- l Hospital
+X-TRUMBA-CUSTOMFIELD;NAME=Department/Office;ID=25489;TYPE=CustomAsset:Contin
+ uing Education
+X-TRUMBA-CUSTOMFIELD;NAME=Location;ID=22993;TYPE=CustomAsset:Mass. General H
+ ospital
 X-TRUMBA-CUSTOMFIELD;NAME="RSVP Required";ID=25241;TYPE=CustomAsset:Yes
 DTSTAMP:20120606T163256Z
 DESCRIPTION:See the IRBâ€™s QI Checklist: Clinical QI or QI Research? W
