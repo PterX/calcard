@@ -12,8 +12,8 @@ pub mod types;
 use crate::{
     common::{CalendarScale, IanaString, LinkRelation},
     icalendar::{
-        ICalendarDuration, ICalendarFrequency, ICalendarMethod, ICalendarMonth, ICalendarSkip,
-        ICalendarWeekday,
+        ICalendarComponentType, ICalendarDuration, ICalendarFrequency, ICalendarMethod,
+        ICalendarMonth, ICalendarSkip, ICalendarWeekday,
     },
 };
 use jmap_tools::{JsonPointer, Value};
@@ -349,6 +349,43 @@ impl JSCalendarDateTime {
     }
 }
 
+impl ICalendarComponentType {
+    pub fn to_jscalendar_type(&self) -> Option<JSCalendarType> {
+        match &self {
+            ICalendarComponentType::VCalendar => Some(JSCalendarType::Group),
+            ICalendarComponentType::VEvent => Some(JSCalendarType::Event),
+            ICalendarComponentType::VTodo => Some(JSCalendarType::Task),
+            ICalendarComponentType::VAlarm => Some(JSCalendarType::Alert),
+            ICalendarComponentType::Participant => Some(JSCalendarType::Participant),
+            ICalendarComponentType::VLocation => Some(JSCalendarType::Location),
+            ICalendarComponentType::Standard
+            | ICalendarComponentType::Daylight
+            | ICalendarComponentType::VAvailability
+            | ICalendarComponentType::Available
+            | ICalendarComponentType::VResource
+            | ICalendarComponentType::VStatus
+            | ICalendarComponentType::VJournal
+            | ICalendarComponentType::VFreebusy
+            | ICalendarComponentType::VTimezone
+            | ICalendarComponentType::Other(_) => None,
+        }
+    }
+}
+
+impl JSCalendarType {
+    pub fn to_icalendar_component_type(&self) -> Option<ICalendarComponentType> {
+        match &self {
+            JSCalendarType::Group => Some(ICalendarComponentType::VCalendar),
+            JSCalendarType::Event => Some(ICalendarComponentType::VEvent),
+            JSCalendarType::Task => Some(ICalendarComponentType::VTodo),
+            JSCalendarType::Alert => Some(ICalendarComponentType::VAlarm),
+            JSCalendarType::Participant => Some(ICalendarComponentType::Participant),
+            JSCalendarType::Location => Some(ICalendarComponentType::VLocation),
+            _ => None,
+        }
+    }
+}
+
 // 7f1e1965-ae73-4454-b088-232c90730ce2
 static JSCAL_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
     127, 30, 25, 101, 174, 115, 68, 84, 176, 136, 35, 44, 144, 115, 12, 226,
@@ -359,4 +396,300 @@ pub(crate) fn uuid5(text: &str) -> String {
     uuid::Uuid::new_v5(&JSCAL_NAMESPACE, text.as_bytes())
         .hyphenated()
         .to_string()
+}
+
+#[cfg(test)]
+impl std::fmt::Display for JSCalendar<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = serde_json::to_string_pretty(&self.0).map_err(|_| std::fmt::Error)?;
+        write!(f, "{}", s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use jmap_tools::{Key, Value};
+
+    use crate::{
+        icalendar::{ICalendar, ICalendarComponent, ICalendarProperty},
+        jscalendar::{JSCalendar, JSCalendarProperty, JSCalendarValue},
+    };
+
+    #[derive(Debug, Default)]
+    struct Test {
+        comment: String,
+        test: String,
+        expect: String,
+        roundtrip: String,
+        line_num: usize,
+    }
+
+    #[test]
+    fn convert_jscalendar() {
+        // Read all test files in the test directory
+        for entry in std::fs::read_dir("resources/jscalendar").unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let input = std::fs::read_to_string(&path).unwrap();
+            let mut test = Test::default();
+            let mut cur_command = "";
+            let mut cur_value = &mut test.test;
+
+            for (line_num, line) in input.lines().enumerate() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                if let Some(line) = line.strip_prefix("> ") {
+                    let (command, comment) = line.split_once(' ').unwrap_or((line, ""));
+
+                    match (command, cur_command) {
+                        ("test", _) => {
+                            if !test.test.is_empty() {
+                                test.run();
+                            }
+                            test = Test::default();
+                            cur_value = &mut test.test;
+                            cur_command = "test";
+                            test.comment = comment.to_string();
+                            test.line_num = line_num + 1;
+                        }
+                        ("convert", "test") => {
+                            cur_command = "convert";
+                            cur_value = &mut test.expect;
+                        }
+                        ("convert", "convert") => {
+                            cur_command = "convert";
+                            cur_value = &mut test.roundtrip;
+                        }
+                        _ => {
+                            panic!(
+                                "Unexpected command '{}' in file '{}' at line {}",
+                                command,
+                                path.display(),
+                                line_num + 1
+                            );
+                        }
+                    }
+                } else {
+                    cur_value.push_str(line);
+                    cur_value.push('\n');
+                }
+            }
+
+            if !test.test.is_empty() {
+                test.run();
+            }
+        }
+    }
+
+    impl Test {
+        fn run(mut self) {
+            if self.expect.is_empty() {
+                panic!(
+                    "Test '{}' at line {} has no expected output",
+                    self.comment, self.line_num
+                );
+            }
+
+            println!("Running test '{}' at line {}", self.comment, self.line_num);
+
+            if is_jscalendar(&self.test) {
+                fix_jscalendar(&mut self.test);
+                fix_icalendar(&mut self.expect);
+                let source =
+                    sanitize_jscalendar(parse_jscalendar(&self.comment, self.line_num, &self.test));
+                let expect =
+                    sanitize_icalendar(parse_icalendar(&self.comment, self.line_num, &self.expect));
+                let roundtrip = if !self.roundtrip.is_empty() {
+                    fix_jscalendar(&mut self.roundtrip);
+                    sanitize_jscalendar(parse_jscalendar(
+                        &self.comment,
+                        self.line_num,
+                        &self.roundtrip,
+                    ))
+                } else {
+                    source.clone()
+                };
+
+                let first_convert =
+                    sanitize_icalendar(source.into_icalendar().unwrap_or_else(|| {
+                        panic!(
+                            "Failed to convert JSCalendar to vCard: test {} on line {}: {}",
+                            self.comment, self.line_num, self.test
+                        )
+                    }));
+                if first_convert != expect {
+                    let first_convert =
+                        sanitize_icalendar(ICalendar::parse(first_convert.to_string()).unwrap());
+
+                    if first_convert != expect {
+                        panic!(
+                            "JSCalendar to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, expect, first_convert
+                        );
+                    }
+                }
+                let roundtrip_convert = sanitize_jscalendar(first_convert.into_jscalendar());
+                if roundtrip_convert != roundtrip {
+                    let roundtrip_convert = roundtrip_convert.to_string();
+                    let roundtrip = roundtrip.to_string();
+
+                    if roundtrip_convert != roundtrip {
+                        panic!(
+                            "vCard to JSCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, roundtrip, roundtrip_convert
+                        );
+                    }
+                }
+            } else {
+                fix_icalendar(&mut self.test);
+                fix_jscalendar(&mut self.expect);
+                let source =
+                    sanitize_icalendar(parse_icalendar(&self.comment, self.line_num, &self.test));
+                let expect = sanitize_jscalendar(parse_jscalendar(
+                    &self.comment,
+                    self.line_num,
+                    &self.expect,
+                ));
+                let roundtrip = if !self.roundtrip.is_empty() {
+                    fix_icalendar(&mut self.roundtrip);
+                    sanitize_icalendar(parse_icalendar(
+                        &self.comment,
+                        self.line_num,
+                        &self.roundtrip,
+                    ))
+                } else {
+                    source.clone()
+                };
+                let first_convert = sanitize_jscalendar(source.into_jscalendar());
+                if first_convert != expect {
+                    let first_convert = first_convert.to_string();
+                    let expect = expect.to_string();
+
+                    if first_convert != expect {
+                        panic!(
+                            "vCard to JSCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, expect, first_convert
+                        );
+                    }
+                }
+                let roundtrip_convert =
+                    sanitize_icalendar(first_convert.into_icalendar().unwrap_or_else(|| {
+                        panic!(
+                            "Failed to convert JSCalendar to vCard: test {} on line {}: {}",
+                            self.comment, self.line_num, self.test
+                        )
+                    }));
+                if roundtrip_convert != roundtrip {
+                    let roundtrip_convert = sanitize_icalendar(
+                        ICalendar::parse(roundtrip_convert.to_string()).unwrap(),
+                    );
+                    if roundtrip_convert != roundtrip {
+                        panic!(
+                            "JSCalendar to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                            self.comment, self.line_num, roundtrip, roundtrip_convert
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn is_jscalendar(s: &str) -> bool {
+        s.starts_with("{") || s.starts_with("\"")
+    }
+
+    fn fix_icalendar(s: &mut String) {
+        if s.starts_with("BEGIN:") {
+            if !s.starts_with("BEGIN:VCALENDAR") {
+                let mut v = "BEGIN:VCALENDAR\nVERSION:2.0\n".to_string();
+                v.push_str(s);
+                v.push_str("END:VCALENDAR\n");
+                *s = v;
+            }
+        } else {
+            let mut v = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\n".to_string();
+            v.push_str(s);
+            v.push_str("END:VEVENT\nEND:VCALENDAR\n");
+            *s = v;
+        }
+    }
+
+    fn fix_jscalendar(s: &mut String) {
+        let (prefix, suffix) = if !s.starts_with("{") {
+            ("{\n", "\n}\n")
+        } else {
+            ("", "")
+        };
+
+        if s.contains(r#""@type": "Group""#) {
+            if !prefix.is_empty() {
+                *s = format!("{prefix}{s}{suffix}");
+            }
+        } else if s.contains(r#""@type": "Event""#) || s.contains(r#""@type": "Task""#) {
+            *s = format!("{prefix}\"@type\": \"Group\", \"entries\": [\n{s}\n]{suffix}");
+        } else {
+            *s = format!("{prefix}\"@type\": \"Group\", \"entries\": [\n{{{s}}}\n]{suffix}");
+        }
+    }
+
+    fn parse_icalendar(test_name: &str, line_num: usize, s: &str) -> ICalendar {
+        ICalendar::parse(s).unwrap_or_else(|_| {
+            panic!(
+                "Failed to parse vCard: {} on line {}, test {}",
+                s, line_num, test_name
+            )
+        })
+    }
+
+    fn parse_jscalendar<'x>(test_name: &str, line_num: usize, s: &'x str) -> JSCalendar<'x> {
+        JSCalendar::parse(s).unwrap_or_else(|_| {
+            panic!(
+                "Failed to parse JSCalendar: {} on line {}, test {}",
+                s, line_num, test_name
+            )
+        })
+    }
+
+    fn sanitize_icalendar(mut icalendar: ICalendar) -> ICalendar {
+        for component in &mut icalendar.components {
+            sanitize_icalendar_component(component);
+        }
+
+        icalendar
+    }
+
+    fn sanitize_icalendar_component(component: &mut ICalendarComponent) {
+        component
+            .entries
+            .retain(|e| !matches!(e.name, ICalendarProperty::Version));
+        component
+            .entries
+            .sort_unstable_by(|a, b| a.name.cmp(&b.name));
+    }
+
+    fn sanitize_jscalendar(mut jscalendar: JSCalendar<'_>) -> JSCalendar<'_> {
+        sort_jscalendar_properties(&mut jscalendar.0);
+        jscalendar
+    }
+
+    fn sort_jscalendar_properties(value: &mut Value<'_, JSCalendarProperty, JSCalendarValue>) {
+        match value {
+            Value::Array(value) => {
+                for item in value {
+                    sort_jscalendar_properties(item);
+                }
+            }
+            Value::Object(obj) => {
+                obj.as_mut_vec()
+                    .retain(|(k, _)| !matches!(k, Key::Property(JSCalendarProperty::Type)));
+                obj.as_mut_vec()
+                    .sort_unstable_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+                for (_, item) in obj.as_mut_vec() {
+                    sort_jscalendar_properties(item);
+                }
+            }
+            _ => {}
+        }
+    }
 }
