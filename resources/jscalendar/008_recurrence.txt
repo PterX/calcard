@@ -1,0 +1,197 @@
+> test EXDATE
+DTSTART:20230101T130000Z
+RRULE:FREQ=MONTHLY
+EXDATE:20230801T130000Z
+> convert
+"start": "2023-01-01T13:00:00",
+"timeZone": "Etc/UTC",
+"recurrenceRule": {
+  "frequency": "monthly"
+},
+"recurrenceOverrides": {
+  "2023-08-01T13:00:00": {
+    "excluded": true
+  }
+}
+
+> test RDATE
+DTSTART:20230101T130000Z
+RRULE:FREQ=MONTHLY
+RDATE:20230805T170000Z
+> convert
+"start": "2023-01-01T13:00:00",
+"timeZone": "Etc/UTC",
+"recurrenceRule": {
+  "frequency": "monthly"
+},
+"recurrenceOverrides": {
+  "2023-08-05T17:00:00": {}
+}
+
+> test RRULE
+DTSTART;TZID=Europe/Berlin:20240101T010000
+RRULE:FREQ=YEARLY
+ ;INTERVAL=2
+ ;BYMONTH=1
+ ;BYDAY=SU
+ ;BYHOUR=8,9
+ ;BYMINUTE=30
+ ;UNTIL=20240930T120000Z
+> convert
+"recurrenceRule": {
+  "frequency": "yearly",
+  "interval": 2,
+  "byMonth": [
+    "1"
+  ],
+  "byDay": [
+    {
+      "day": "su"
+    }
+  ],
+  "byHour": [
+    8,
+    9
+  ],
+  "byMinute": [
+    30
+  ],
+  "until": "2024-09-30T14:00:00"
+},
+"start": "2024-01-01T01:00:00",
+"timeZone": "Europe/Berlin",
+"iCalComponent": {
+        "convertedProperties": {
+          "start": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          }
+        },
+        "name": "vevent"
+}
+
+> test VEVENT recurrence overrides
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:F4257E1D-5461-4EF6-840F-9DFC653EB559
+RECURRENCE-ID;TZID=Europe/Berlin:20240202T140000
+DTSTART;TZID=Europe/Berlin:20240202T160000
+END:VEVENT
+BEGIN:VEVENT
+UID:F4257E1D-5461-4EF6-840F-9DFC653EB559
+RRULE:FREQ=DAILY
+DTSTART;TZID=Europe/Berlin:20240101T140000
+END:VEVENT
+END:VCALENDAR
+> convert
+{
+  "@type": "Group",
+  "entries": [
+    {
+      "@type": "Event",
+      "recurrenceOverrides": {
+        "2024-02-02T14:00:00": {
+          "start": "2024-02-02T16:00:00",
+          "iCalComponent": {
+            "convertedProperties": {
+              "recurrenceId": {
+                "parameters": {
+                  "TZID": "Europe/Berlin"
+                }
+              },
+              "start": {
+                "parameters": {
+                  "TZID": "Europe/Berlin"
+                }
+              }
+            },
+            "name": "vevent"
+          }
+        }
+      },
+      "recurrenceRule": {
+        "frequency": "daily"
+      },
+      "start": "2024-01-01T14:00:00",
+      "timeZone": "Europe/Berlin",
+      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559",
+      "iCalComponent": {
+        "convertedProperties": {
+          "start": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          }
+        },
+        "name": "vevent"
+      }
+    }
+  ]
+}
+
+> test VEVENT recurrence instances
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:F4257E1D-5461-4EF6-840F-9DFC653EB559
+RECURRENCE-ID;TZID=Europe/Berlin:20240202T140000
+DTSTART;TZID=Europe/Berlin:20240202T160000
+END:VEVENT
+BEGIN:VEVENT
+UID:F4257E1D-5461-4EF6-840F-9DFC653EB559
+RECURRENCE-ID;TZID=Europe/Berlin:20240103T140000
+DTSTART;TZID=Europe/Berlin:20240103T170000
+END:VEVENT
+END:VCALENDAR
+> convert
+{
+  "@type": "Group",
+  "entries": [
+    {
+      "@type": "Event",
+      "recurrenceId": "2024-02-02T14:00:00",
+      "recurrenceIdTimeZone": "Europe/Berlin",
+      "start": "2024-02-02T16:00:00",
+      "timeZone": "Europe/Berlin",
+      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559",
+      "iCalComponent": {
+        "convertedProperties": {
+          "recurrenceId": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          },
+          "start": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          }
+        },
+        "name": "vevent"
+      }
+    },
+    {
+      "@type": "Event",
+      "recurrenceId": "2024-01-03T14:00:00",
+      "recurrenceIdTimeZone": "Europe/Berlin",
+      "start": "2024-01-03T17:00:00",
+      "timeZone": "Europe/Berlin",
+      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559",
+      "iCalComponent": {
+        "convertedProperties": {
+          "recurrenceId": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          },
+          "start": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          }
+        },
+        "name": "vevent"
+      }
+    }
+  ]
+}

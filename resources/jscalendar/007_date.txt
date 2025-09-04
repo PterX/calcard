@@ -1,0 +1,227 @@
+> test DTEND property with different timezones
+DTSTART;TZID=Europe/Berlin:20241017T130000
+DTEND;TZID=Asia/Bangkok:20241018T040000
+> convert
+"start": "2024-10-17T13:00:00",
+"timeZone": "Europe/Berlin",
+"duration": "PT10H",
+"endTimeZone": "Asia/Bangkok",
+"iCalComponent": {
+        "convertedProperties": {
+          "duration": {
+            "name": "DTEND",
+            "parameters": {
+              "TZID": "Asia/Bangkok"
+            }
+          },
+          "start": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          }
+        },
+        "name": "vevent"
+}
+
+> test DTEND property with same timezone
+DTSTART;TZID=Australia/Melbourne:20241002T130000
+DTEND;TZID=Australia/Melbourne:20241002T140000
+> convert
+"start": "2024-10-02T13:00:00",
+"timeZone": "Australia/Melbourne",
+"duration": "PT1H",
+"iCalComponent": {
+        "convertedProperties": {
+          "duration": {
+            "name": "DTEND",
+            "parameters": {
+              "TZID": "Australia/Melbourne"
+            }
+          },
+          "start": {
+            "parameters": {
+              "TZID": "Australia/Melbourne"
+            }
+          }
+        },
+        "name": "vevent"
+}
+
+> test DTEND property with DATE value type
+DTSTART;VALUE=DATE:20240102
+DTEND;VALUE=DATE:20240107
+> convert
+"start": "2024-01-02T00:00:00",
+"timeZone": null,
+"duration": "P5D",
+"showWithoutTime": true,
+"iCalComponent": {
+    "name": "vevent",
+    "convertedProperties": {
+          "duration": {
+            "name": "DTEND",
+            "parameters": {
+              "VALUE": "DATE"
+            }
+          },
+          "start": {
+            "parameters": {
+              "VALUE": "DATE"
+            }
+          }
+    }
+}    
+
+> test DTSTAMP
+BEGIN:VCALENDAR
+METHOD:REPLY
+BEGIN:VEVENT
+DTSTAMP:20240304T132000Z
+> convert
+{
+  "@type": "Group",
+  "entries": [
+    {
+      "@type": "Event",
+      "method": "reply",
+      "updated": "2024-03-04T13:20:00Z"
+    }
+  ]
+}
+
+> test DTSTART property with TZID parameter
+DTSTART;TZID=Europe/Berlin:20240921T105302
+> convert
+"start": "2024-09-21T10:53:02",
+"timeZone": "Europe/Berlin",
+"iCalComponent": {
+        "convertedProperties": {
+          "start": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          }
+        },
+        "name": "vevent"
+}
+
+> test DTSTART property with UTC time
+DTSTART:20240921T105302Z
+> convert
+"start": "2024-09-21T10:53:02",
+"timeZone": "Etc/UTC"
+
+> test DTSTART property with floating time
+DTSTART:20240921T105302
+> convert
+"start": "2024-09-21T10:53:02",
+"timeZone": null
+
+> test DTSTART property with value type DATE
+DTSTART;VALUE=DATE:20240921
+> convert
+"start": "2024-09-21T00:00:00",
+"timeZone": null,
+"showWithoutTime": true,
+      "iCalComponent": {
+        "convertedProperties": {
+          "start": {
+            "parameters": {
+              "VALUE": "DATE"
+            }
+          }
+        },
+        "name": "vevent"
+}
+
+> test DUE property with TZID parameter
+BEGIN:VTODO
+DUE;TZID=Europe/Berlin:20240921T105302
+> convert
+"@type": "Task",
+"due": "2024-09-21T10:53:02",
+"timeZone": "Europe/Berlin",
+"iCalComponent": {
+        "convertedProperties": {
+          "due": {
+            "parameters": {
+              "TZID": "Europe/Berlin"
+            }
+          }
+        },
+        "name": "vtodo"
+}
+
+> test DUE property with UTC time
+BEGIN:VTODO
+DUE:20240921T105302Z
+> convert
+"@type": "Task",
+"due": "2024-09-21T10:53:02",
+"timeZone": "Etc/UTC"
+
+> test DUE property with floating time
+BEGIN:VTODO
+DUE:20240921T105302
+> convert
+"@type": "Task",
+"due": "2024-09-21T10:53:02",
+"timeZone": null
+
+> test DUE property with value type DATE
+BEGIN:VTODO
+DUE;VALUE=DATE:20240921
+> convert
+"@type": "Task",
+"due": "2024-09-21T00:00:00",
+"timeZone": null,
+"showWithoutTime": true,
+"iCalComponent": {
+ "convertedProperties": {
+          "due": {
+            "parameters": {
+              "VALUE": "DATE"
+            }
+          }
+        },
+        "name": "vtodo"
+}
+
+> test DUE property with value type DATE in combination with DTSTART
+BEGIN:VTODO
+DTSTART;VALUE=DATE:20250220
+DUE;VALUE=DATE:20250221
+> convert
+"@type": "Task",
+"start": "2025-02-20T00:00:00",
+"due": "2025-02-21T00:00:00",
+"timeZone": null,
+"showWithoutTime": true,
+"iCalComponent": {
+        "convertedProperties": {
+          "due": {
+            "parameters": {
+              "VALUE": "DATE"
+            }
+          },
+          "start": {
+            "parameters": {
+              "VALUE": "DATE"
+            }
+          }
+        },
+        "name": "vtodo"
+}
+
+> test DURATION
+DURATION:PT1H
+> convert
+"duration": "PT1H"
+
+> test ESTIMATED-DURATION
+BEGIN:VTODO
+ESTIMATED-DURATION:P2D
+> convert
+"@type": "Task",
+"estimatedDuration": "P2D"
+

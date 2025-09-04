@@ -1,0 +1,57 @@
+> test JSPROP
+JSPROP;JSPTR="example.com:foo":true
+> convert
+"example.com:foo": true
+
+> test JSPROP object
+JSPROP;JSPTR="example.com:foo":{"bar":1234\,"baz":"bam"}
+> convert
+"example.com:foo": {
+  "bar": 1234,
+  "baz": "bam"
+}
+
+> test Unsupported object
+BEGIN:VEVENT
+SUMMARY;X-FOO=bar:test
+X-BAR:bam
+BEGIN:X-BAZ
+UID:507A08F9-81D8-4D16-9480-D6D75E977943
+END:X-BAZ
+> convert
+{
+  "@type": "Event",
+  "title": "test",
+  "iCalComponent": {
+    "name": "vevent",
+    "convertedProperties": {
+      "title": {
+        "parameters": {
+          "X-FOO": "bar"
+        }
+      }
+    },
+    "properties": [
+      [
+        "X-BAR",
+        {},
+        "text",
+        "bam"
+      ]
+    ],
+    "components": [
+      [
+        "X-BAZ",
+        [
+          [
+            "UID",
+            {},
+            "text",
+            "507A08F9-81D8-4D16-9480-D6D75E977943"
+          ]
+        ],
+        []
+      ]
+    ]
+  }
+}

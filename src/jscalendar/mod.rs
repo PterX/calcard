@@ -408,12 +408,11 @@ impl std::fmt::Display for JSCalendar<'_> {
 
 #[cfg(test)]
 mod tests {
-    use jmap_tools::{Key, Value};
-
     use crate::{
         icalendar::{ICalendar, ICalendarComponent, ICalendarProperty},
         jscalendar::{JSCalendar, JSCalendarProperty, JSCalendarValue},
     };
+    use jmap_tools::Value;
 
     #[derive(Debug, Default)]
     struct Test {
@@ -514,7 +513,7 @@ mod tests {
                 let first_convert =
                     sanitize_icalendar(source.into_icalendar().unwrap_or_else(|| {
                         panic!(
-                            "Failed to convert JSCalendar to vCard: test {} on line {}: {}",
+                            "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
                             self.comment, self.line_num, self.test
                         )
                     }));
@@ -524,7 +523,7 @@ mod tests {
 
                     if first_convert != expect {
                         panic!(
-                            "JSCalendar to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                            "JSCalendar to iCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
                             self.comment, self.line_num, expect, first_convert
                         );
                     }
@@ -536,7 +535,7 @@ mod tests {
 
                     if roundtrip_convert != roundtrip {
                         panic!(
-                            "vCard to JSCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
+                            "iCalendar to JSCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
                             self.comment, self.line_num, roundtrip, roundtrip_convert
                         );
                     }
@@ -561,6 +560,7 @@ mod tests {
                 } else {
                     source.clone()
                 };
+
                 let first_convert = sanitize_jscalendar(source.into_jscalendar());
                 if first_convert != expect {
                     let first_convert = first_convert.to_string();
@@ -568,7 +568,7 @@ mod tests {
 
                     if first_convert != expect {
                         panic!(
-                            "vCard to JSCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
+                            "iCalendar to JSCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
                             self.comment, self.line_num, expect, first_convert
                         );
                     }
@@ -576,7 +576,7 @@ mod tests {
                 let roundtrip_convert =
                     sanitize_icalendar(first_convert.into_icalendar().unwrap_or_else(|| {
                         panic!(
-                            "Failed to convert JSCalendar to vCard: test {} on line {}: {}",
+                            "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
                             self.comment, self.line_num, self.test
                         )
                     }));
@@ -586,7 +586,7 @@ mod tests {
                     );
                     if roundtrip_convert != roundtrip {
                         panic!(
-                            "JSCalendar to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
+                            "JSCalendar to iCalendar conversion failed: test {} on line {}, expected: {}, got: {}",
                             self.comment, self.line_num, roundtrip, roundtrip_convert
                         );
                     }
@@ -617,7 +617,7 @@ mod tests {
 
     fn fix_jscalendar(s: &mut String) {
         let (prefix, suffix) = if !s.starts_with("{") {
-            ("{\n", "\n}\n")
+            ("{", "}")
         } else {
             ("", "")
         };
@@ -627,16 +627,18 @@ mod tests {
                 *s = format!("{prefix}{s}{suffix}");
             }
         } else if s.contains(r#""@type": "Event""#) || s.contains(r#""@type": "Task""#) {
-            *s = format!("{prefix}\"@type\": \"Group\", \"entries\": [\n{s}\n]{suffix}");
+            *s = format!("{{\"@type\": \"Group\", \"entries\": [{prefix}{s}{suffix}]}}");
         } else {
-            *s = format!("{prefix}\"@type\": \"Group\", \"entries\": [\n{{{s}}}\n]{suffix}");
+            *s = format!(
+                "{{\"@type\": \"Group\", \"entries\": [{prefix}\"@type\": \"Event\", {s}{suffix}]}}"
+            );
         }
     }
 
     fn parse_icalendar(test_name: &str, line_num: usize, s: &str) -> ICalendar {
         ICalendar::parse(s).unwrap_or_else(|_| {
             panic!(
-                "Failed to parse vCard: {} on line {}, test {}",
+                "Failed to parse iCalendar: {} on line {}, test {}",
                 s, line_num, test_name
             )
         })
@@ -681,8 +683,8 @@ mod tests {
                 }
             }
             Value::Object(obj) => {
-                obj.as_mut_vec()
-                    .retain(|(k, _)| !matches!(k, Key::Property(JSCalendarProperty::Type)));
+                //obj.as_mut_vec()
+                //    .retain(|(k, _)| !matches!(k, Key::Property(JSCalendarProperty::Type)));
                 obj.as_mut_vec()
                     .sort_unstable_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
                 for (_, item) in obj.as_mut_vec() {

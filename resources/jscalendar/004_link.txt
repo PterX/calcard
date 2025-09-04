@@ -1,0 +1,107 @@
+> test ATTACH
+ATTACH:https://example.com/foo.pdf
+> convert
+"links": {
+  "245708bf-8e07-5d3b-a5da-2974a63c3b91": {
+    "@type": "Link",
+    "href": "https://example.com/foo.pdf"
+  }
+},
+"iCalComponent": {
+    "convertedProperties": {
+        "links/245708bf-8e07-5d3b-a5da-2974a63c3b91/href": {
+        "name": "ATTACH"
+        }
+    },
+    "name": "vevent"
+}
+
+> test ATTACH with FMTTYPE
+ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:iVBORw
+ 0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAAmJLR0QAAd2KE6QAA
+ AAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC
+> convert
+"links": {
+  "5cfd5bea-64f1-5bae-846b-d958abb5411e": {
+    "@type": "Link",
+    "href": "data:base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAAmJLR0QAAd2KE6QAAAAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC",
+    "contentType": "image/png"
+  } 
+},
+"iCalComponent": {
+    "convertedProperties": {
+        "links/5cfd5bea-64f1-5bae-846b-d958abb5411e/href": {
+        "name": "ATTACH",
+        "parameters": {
+            "VALUE": "BINARY"
+        }
+        }
+    },
+    "name": "vevent"
+}
+
+> test IMAGE
+IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;LABEL="An image":
+ https://example.com/images/party.png
+> convert
+"links": {
+  "2c42ac17-1eaf-5a75-a216-aef848785d79": {
+    "@type": "Link",
+    "href": "https://example.com/images/party.png",
+    "display": {
+      "badge": true,
+      "thumbnail": true
+    },
+    "contentType": "image/png",
+    "title": "An image"
+  }
+},
+"iCalComponent": {
+        "convertedProperties": {
+          "links/2c42ac17-1eaf-5a75-a216-aef848785d79/href": {
+            "name": "IMAGE"
+          }
+        },
+        "name": "vevent"
+}
+
+> test LINK
+LINK;LINKREL=preview;LABEL=Venue:
+ https://example.com/events
+> convert
+"links": {
+  "63023b12-fcf4-53fa-841d-8c1684b9f80b": {
+    "@type": "Link",
+    "href": "https://example.com/events",
+    "title": "Venue",
+    "rel": "preview"
+  }
+},
+"iCalComponent": {
+        "convertedProperties": {
+          "links/63023b12-fcf4-53fa-841d-8c1684b9f80b/href": {
+            "name": "LINK"
+          }
+        },
+        "name": "vevent"
+}
+
+> test ATTACH with JSPROP
+ATTACH;JSID=mylink1:https://www.rfc-editor.org/rfc/rfc8984.html
+JSPROP;JSPTR="links/mylink1/example.com:foo":"bar"
+> convert
+"links": {
+  "mylink1": {
+    "@type": "Link",
+    "href": "https://www.rfc-editor.org/rfc/rfc8984.html",
+    "example.com:foo": "bar"
+  }
+},
+"iCalComponent": {
+        "convertedProperties": {
+          "links/mylink1/href": {
+            "name": "ATTACH"
+          }
+        },
+        "name": "vevent"
+}
