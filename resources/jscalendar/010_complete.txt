@@ -589,4 +589,290 @@ END:VCALENDAR
   }
 }
 
+> test RRULE and non-IANA timezone
+BEGIN:VCALENDAR
+METHOD:REQUEST
+PRODID:Microsoft Exchange Server 2010
+VERSION:2.0
+BEGIN:VTIMEZONE
+TZID:W. Europe Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=10
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=3
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=Annonym Us
+ ernames:mailto:Annonym.Usernames@email.com
+ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=Testmeetin
+ g channel:mailto:Testmeeting.channel@email365.onmicrosoft.com
+DESCRIPTION;LANGUAGE=en-US:\n\n\n\n________________________________________
+ ________________________________________\nMicrosoft Teams-Besprechung\n\nN
+ ehmen Sie teil auf Ihrem Computer oder auf der mobilen App\nKlicken Sie hi
+ er\, um an der Besprechung teilzunehmen<https://url>\n\nWeitere Infos<http
+ s://aka.ms/JoinTeamsMeeting> | Besprechungsoptionen<url>\n\n______________
+ __________________________________________________________________\n
+RRULE:FREQ=DAILY;UNTIL=20201126T100000Z;INTERVAL=2
+UID:040000C08200E00074C5B7101A89E00800000000EEB3773267BEA601000000000000000
+ 01000000023B1CC4F9EF21B4BBA06F5F3B4E42720
+SUMMARY: Testmeeting ➡ ignore it!
+DTSTART;TZID=W. Europe Standard Time:20201124T110000
+DTEND;TZID=W. Europe Standard Time:20201124T113000
+CLASS:PUBLIC
+PRIORITY:5
+DTSTAMP:20201119T112915Z
+TRANSP:OPAQUE
+STATUS:CONFIRMED
+SEQUENCE:0
+LOCATION;LANGUAGE=en-US:
+BEGIN:VALARM
+DESCRIPTION:REMINDER
+TRIGGER;RELATED=START:-PT15M
+ACTION:DISPLAY
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+> convert
+{
+  "@type": "Group",
+  "entries": [
+    {
+      "@type": "Event",
+      "alerts": {
+        "k1": {
+          "@type": "Alert",
+          "action": "display",
+          "iCalComponent": {
+            "name": "valarm",
+            "properties": [
+              [
+                "DESCRIPTION",
+                {},
+                "unknown",
+                "REMINDER"
+              ]
+            ]
+          },
+          "trigger": {
+            "@type": "OffsetTrigger",
+            "offset": "-PT15M",
+            "relativeTo": "start"
+          }
+        }
+      },
+      "description": "\n\n\n\n________________________________________________________________________________\nMicrosoft Teams-Besprechung\n\nNehmen Sie teil auf Ihrem Computer oder auf der mobilen App\nKlicken Sie hier, um an der Besprechung teilzunehmen<https://url>\n\nWeitere Infos<https://aka.ms/JoinTeamsMeeting> | Besprechungsoptionen<url>\n\n________________________________________________________________________________\n",
+      "duration": "PT30M",
+      "freeBusyStatus": "busy",
+      "iCalComponent": {
+        "convertedProperties": {
+          "description": {
+            "parameters": {
+              "LANGUAGE": "en-US"
+            }
+          },
+          "duration": {
+            "name": "DTEND",
+            "parameters": {
+              "TZID": "W. Europe Standard Time"
+            }
+          },
+          "start": {
+            "parameters": {
+              "TZID": "W. Europe Standard Time"
+            }
+          }
+        },
+        "name": "vevent",
+        "properties": [
+          [
+            "LOCATION",
+            {
+              "LANGUAGE": "en-US"
+            },
+            "unknown",
+            []
+          ]
+        ]
+      },
+      "method": "request",
+      "participants": {
+        "7bbe065b-023b-52c8-87fa-428ac03879d9": {
+          "@type": "Participant",
+          "calendarAddress": "mailto:Testmeeting.channel@email365.onmicrosoft.com",
+          "expectReply": true,
+          "name": "Testmeeting channel",
+          "participationStatus": "needs-action",
+          "roles": {
+            "attendee": true,
+            "required": true
+          }
+        },
+        "c7941c86-7529-52d3-8f69-1ba8f1e9d1af": {
+          "@type": "Participant",
+          "calendarAddress": "mailto:Annonym.Usernames@email.com",
+          "expectReply": true,
+          "name": "Annonym Usernames",
+          "participationStatus": "needs-action",
+          "roles": {
+            "attendee": true,
+            "required": true
+          }
+        }
+      },
+      "priority": 5,
+      "privacy": "public",
+      "recurrenceRule": {
+        "frequency": "daily",
+        "interval": 2,
+        "until": "2020-11-26T11:00:00"
+      },
+      "sequence": 0,
+      "start": "2020-11-24T11:00:00",
+      "status": "confirmed",
+      "timeZone": "Europe/Berlin",
+      "title": " Testmeeting ➡ ignore it!",
+      "uid": "040000C08200E00074C5B7101A89E00800000000EEB3773267BEA60100000000000000001000000023B1CC4F9EF21B4BBA06F5F3B4E42720",
+      "updated": "2020-11-19T11:29:15Z"
+    }
+  ],
+  "iCalComponent": {
+    "components": [
+      [
+        "VTIMEZONE",
+        [
+          [
+            "TZID",
+            {},
+            "unknown",
+            "W. Europe Standard Time"
+          ]
+        ],
+        [
+          [
+            "STANDARD",
+            [
+              [
+                "DTSTART",
+                {},
+                "unknown",
+                "16010101T030000"
+              ],
+              [
+                "TZOFFSETFROM",
+                {},
+                "unknown",
+                "+0200"
+              ],
+              [
+                "TZOFFSETTO",
+                {},
+                "unknown",
+                "+0100"
+              ],
+              [
+                "RRULE",
+                {},
+                "unknown",
+                "FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=10"
+              ]
+            ],
+            []
+          ],
+          [
+            "DAYLIGHT",
+            [
+              [
+                "DTSTART",
+                {},
+                "unknown",
+                "16010101T020000"
+              ],
+              [
+                "TZOFFSETFROM",
+                {},
+                "unknown",
+                "+0100"
+              ],
+              [
+                "TZOFFSETTO",
+                {},
+                "unknown",
+                "+0200"
+              ],
+              [
+                "RRULE",
+                {},
+                "unknown",
+                "FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=3"
+              ]
+            ],
+            []
+          ]
+        ]
+      ]
+    ],
+    "name": "vcalendar"
+  },
+  "prodId": "Microsoft Exchange Server 2010"
+}
+> convert
+BEGIN:VCALENDAR
+METHOD:REQUEST
+PRODID:Microsoft Exchange Server 2010
+VERSION:2.0
+BEGIN:VEVENT
+ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN=Testmeetin
+ g channel:mailto:Testmeeting.channel@email365.onmicrosoft.com
+ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN=Annonym Us
+ ernames:mailto:Annonym.Usernames@email.com
+DESCRIPTION;LANGUAGE=en-US:\n\n\n\n________________________________________
+ ________________________________________\nMicrosoft Teams-Besprechung\n\nN
+ ehmen Sie teil auf Ihrem Computer oder auf der mobilen App\nKlicken Sie hi
+ er\, um an der Besprechung teilzunehmen<https://url>\n\nWeitere Infos<http
+ s://aka.ms/JoinTeamsMeeting> | Besprechungsoptionen<url>\n\n______________
+ __________________________________________________________________\n
+RRULE:FREQ=DAILY;UNTIL=20201126T100000Z;INTERVAL=2
+UID:040000C08200E00074C5B7101A89E00800000000EEB3773267BEA601000000000000000
+ 01000000023B1CC4F9EF21B4BBA06F5F3B4E42720
+SUMMARY: Testmeeting ➡ ignore it!
+DTSTART;TZID=W. Europe Standard Time:20201124T110000
+DTEND;TZID=W. Europe Standard Time:20201124T113000
+CLASS:PUBLIC
+PRIORITY:5
+DTSTAMP:20201119T112915Z
+TRANSP:OPAQUE
+STATUS:CONFIRMED
+SEQUENCE:0
+LOCATION;LANGUAGE=en-US:
+BEGIN:VALARM
+DESCRIPTION:REMINDER
+TRIGGER;RELATED=START:-PT15M
+JSID:k1
+ACTION:DISPLAY
+END:VALARM
+END:VEVENT
+BEGIN:VTIMEZONE
+TZID:W. Europe Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=10
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=3
+END:DAYLIGHT
+END:VTIMEZONE
+END:VCALENDAR
 

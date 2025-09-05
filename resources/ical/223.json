@@ -1,5 +1,19 @@
 {
-  "errors": [],
+  "errors": [
+    {
+      "comp_id": 12,
+      "error": {
+        "RRule": {
+          "ValidationError": {
+            "UntilBeforeStart": {
+              "until": "2003-03-17T00:00:00+00:00",
+              "dt_start": "2004-03-18T00:00:00+00:00"
+            }
+          }
+        }
+      }
+    }
+  ],
   "events": [
     {
       "comp_id": 1,
