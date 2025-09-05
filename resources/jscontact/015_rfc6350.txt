@@ -125,7 +125,7 @@ N;ALTID=1;LANGUAGE=en:Smith;John;;;
           "ALTID": "1",
           "LANGUAGE": "en"
         },
-        "text",
+        "unknown",
         [
           "Smith",
           "John",
@@ -657,7 +657,7 @@ GENDER:M
       [
         "GENDER",
         {},
-        "text",
+        "unknown",
         "M"
       ]
     ]
@@ -672,7 +672,7 @@ GENDER:;it's complicated
       [
         "GENDER",
         {},
-        "text",
+        "unknown",
         [
           "",
           "it's complicated"
@@ -1082,7 +1082,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "1",
           "urn:uuid:3df403f4-5924-4bb7-b077-3c711d9eb34b"
@@ -1091,7 +1091,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "2",
           "urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5"
@@ -1218,7 +1218,7 @@ END:VCARD
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "1",
           "urn:uuid:3eef374e-7179-4196-a914-27358c3e6527"
@@ -1227,7 +1227,7 @@ END:VCARD
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "2",
           "urn:uuid:42bcd5a7-1699-4514-87b4-056edf68e9cc"
@@ -1322,7 +1322,7 @@ END:VCARD
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "1",
           "urn:uuid:53e374d9-337e-4727-8803-a1e9c14e0556"
@@ -1331,7 +1331,7 @@ END:VCARD
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "2",
           "urn:uuid:1f762d2b-03c4-4a83-9a03-75ff658a6eee"
@@ -1538,7 +1538,7 @@ END:VCARD
       [
         "GENDER",
         {},
-        "text",
+        "unknown",
         "M"
       ]
     ]

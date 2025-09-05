@@ -59,17 +59,7 @@ RRULE:FREQ=YEARLY
   "until": "2024-09-30T14:00:00"
 },
 "start": "2024-01-01T01:00:00",
-"timeZone": "Europe/Berlin",
-"iCalComponent": {
-        "convertedProperties": {
-          "start": {
-            "parameters": {
-              "TZID": "Europe/Berlin"
-            }
-          }
-        },
-        "name": "vevent"
-}
+"timeZone": "Europe/Berlin"
 
 > test VEVENT recurrence overrides
 BEGIN:VCALENDAR
@@ -92,22 +82,7 @@ END:VCALENDAR
       "@type": "Event",
       "recurrenceOverrides": {
         "2024-02-02T14:00:00": {
-          "start": "2024-02-02T16:00:00",
-          "iCalComponent": {
-            "convertedProperties": {
-              "recurrenceId": {
-                "parameters": {
-                  "TZID": "Europe/Berlin"
-                }
-              },
-              "start": {
-                "parameters": {
-                  "TZID": "Europe/Berlin"
-                }
-              }
-            },
-            "name": "vevent"
-          }
+          "start": "2024-02-02T16:00:00"
         }
       },
       "recurrenceRule": {
@@ -115,17 +90,7 @@ END:VCALENDAR
       },
       "start": "2024-01-01T14:00:00",
       "timeZone": "Europe/Berlin",
-      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559",
-      "iCalComponent": {
-        "convertedProperties": {
-          "start": {
-            "parameters": {
-              "TZID": "Europe/Berlin"
-            }
-          }
-        },
-        "name": "vevent"
-      }
+      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559"
     }
   ]
 }
@@ -153,22 +118,7 @@ END:VCALENDAR
       "recurrenceIdTimeZone": "Europe/Berlin",
       "start": "2024-02-02T16:00:00",
       "timeZone": "Europe/Berlin",
-      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559",
-      "iCalComponent": {
-        "convertedProperties": {
-          "recurrenceId": {
-            "parameters": {
-              "TZID": "Europe/Berlin"
-            }
-          },
-          "start": {
-            "parameters": {
-              "TZID": "Europe/Berlin"
-            }
-          }
-        },
-        "name": "vevent"
-      }
+      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559"
     },
     {
       "@type": "Event",
@@ -176,22 +126,7 @@ END:VCALENDAR
       "recurrenceIdTimeZone": "Europe/Berlin",
       "start": "2024-01-03T17:00:00",
       "timeZone": "Europe/Berlin",
-      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559",
-      "iCalComponent": {
-        "convertedProperties": {
-          "recurrenceId": {
-            "parameters": {
-              "TZID": "Europe/Berlin"
-            }
-          },
-          "start": {
-            "parameters": {
-              "TZID": "Europe/Berlin"
-            }
-          }
-        },
-        "name": "vevent"
-      }
+      "uid": "F4257E1D-5461-4EF6-840F-9DFC653EB559"
     }
   ]
 }

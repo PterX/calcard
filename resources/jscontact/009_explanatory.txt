@@ -17,7 +17,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "1",
           "urn:uuid:3df403f4-5924-4bb7-b077-3c711d9eb34b"
@@ -26,7 +26,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
       [
         "CLIENTPIDMAP",
         {},
-        "text",
+        "unknown",
         [
           "2",
           "urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5"

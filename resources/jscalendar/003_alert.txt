@@ -39,7 +39,7 @@ JSID:k1
         [
           "ACTION",
           {},
-          "text",
+          "unknown",
           "AUDIO"
         ]
       ]
@@ -118,13 +118,13 @@ END:VALARM
         [
           "DESCRIPTION",
           {},
-          "text",
+          "unknown",
           "Event reminder"
         ],
         [
           "UID",
           {},
-          "text",
+          "unknown",
           "8297C37D-BA2D-4476-91AE-C1EAA364F8E1"
         ]
       ]
@@ -151,13 +151,13 @@ END:VALARM
         [
           "DESCRIPTION",
           {},
-          "text",
+          "unknown",
           "Event reminder"
         ],
         [
           "UID",
           {},
-          "text",
+          "unknown",
           "DE7B5C34-83FF-47FE-BE9E-FF41AE6DD097"
         ]
       ]
@@ -209,13 +209,13 @@ JSID:k1
         [
           "DESCRIPTION",
           {},
-          "text",
+          "unknown",
           "Breakfast meeting"
         ],
         [
           "UID",
           {},
-          "text",
+          "unknown",
           "04DC2968-6468-4B92-BC09-5A17D7D3D4E"
         ]
       ]

@@ -86,7 +86,7 @@ FN:Giovanni Publico
       [
         "FN",
         {},
-        "text",
+        "unknown",
         "Giovanni Publico"
       ]
     ]
@@ -117,7 +117,7 @@ N:Perez;Juana;;;;;
       [
         "N",
         {},
-        "text",
+        "unknown",
         [
           "Perez",
           "Juana",

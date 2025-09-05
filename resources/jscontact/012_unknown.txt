@@ -33,7 +33,7 @@ item1.X-FOO;X-BAR=Hello:World!
           "GROUP": "item1",
           "X-BAR": "Hello"
         },
-        "text",
+        "unknown",
         "World!"
       ]
     ]

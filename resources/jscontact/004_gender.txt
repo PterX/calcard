@@ -6,7 +6,7 @@ GENDER:O;intersex
       [
         "GENDER",
         {},
-        "text",
+        "unknown",
         [
           "O",
           "intersex"

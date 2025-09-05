@@ -405,16 +405,16 @@ N;SCRIPT=Latn;PHONETIC=JYUT;JSCOMPS=";0;1;2;2,1";ALTID=1;LANGUAGE=yue:
 LANGUAGE:zh-hant
 
 > test RFC9554 PHOTO
-PHOTO;PROP-ID=p827:data:image/jpeg;base64,MIICajCCAdOgAwIBAg
+PHOTO;PROP-ID=p827:data:image/jpeg;base64,MIICajCCAdOgAwIB
 > convert
 "media": {
     "p827": {
       "kind": "photo",
-      "uri": "data:image/jpeg;base64\\,MIICajCCAdOgAwIB"
+      "uri": "data:image/jpeg;base64,MIICajCCAdOgAwIB"
     }
 }
 > convert
-PHOTO;PROP-ID=p827:data:image/jpeg;base64\,TUlJQ2FqQ0NBZE9nQXdJQg==
+PHOTO;PROP-ID=p827:data:image/jpeg;base64\,MIICajCCAdOgAwIB
 
 > test RFC9554 SOCIALPROFILE
 SOCIALPROFILE;SERVICE-TYPE=Mastodon:https://example.com/@foo

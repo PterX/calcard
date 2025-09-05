@@ -186,7 +186,7 @@ END:VLOCATION
         [
           "UID",
           {},
-          "text",
+          "unknown",
           "4954DC22-5BD6-4E98-844D-0302982F54AC"
         ],
         [
@@ -200,3 +200,29 @@ END:VLOCATION
   }
 }
 
+> test Coordinates URI
+"locations": {
+  "loc1": {
+    "@type": "Location",
+    "name": "Taj Mahal",
+    "coordinates": "geo:27.175,78.041944;123"
+  }
+}
+> convert
+BEGIN:VEVENT
+BEGIN:VLOCATION
+NAME:Taj Mahal
+COORDINATES:geo:27.175\,78.041944\;123
+JSID:loc1
+END:VLOCATION
+> convert
+"locations": {
+  "loc1": {
+    "@type": "Location",
+    "coordinates": "geo:27.175,78.041944;123",
+    "iCalComponent": {
+      "name": "vlocation"
+    },
+    "name": "Taj Mahal"
+  }
+}

@@ -51,7 +51,7 @@ ORGANIZER:mailto:organizer@example.com
         [
           "UID",
           {},
-          "text",
+          "unknown",
           "6CF544E4-BBC7-45A2-97FF-DFD1908CCE40"
         ]
       ]
@@ -109,7 +109,7 @@ UID:47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2
         [
           "UID",
           {},
-          "text",
+          "unknown",
           "47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2"
         ]
       ]
@@ -138,7 +138,7 @@ ATTENDEE;RSVP=TRUE:mailto:bar@example.com
 }
 
 > test ORGANIZER and ATTENDEE
-ORGANIZER:mailto:foo@example.com
+ORGANIZER;CN=Jane Doe:mailto:foo@example.com
 ATTENDEE;PARTSTAT=ACCEPTED;CN=Jane Doe:mailto:foo@example.com
 ATTENDEE;RSVP=TRUE;PARTSTAT=TENTATIVE:mailto:bar@example.com
 > convert
@@ -181,7 +181,7 @@ JSID:47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2
         [
           "UID",
           {},
-          "text",
+          "unknown",
           "47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2"
         ]
       ]
@@ -206,7 +206,7 @@ JSID:858DA9AE-695B-43CD-BA4E-294C945356BC
               [
                 "UID",
                 {},
-                "text",
+                "unknown",
                 "858DA9AE-695B-43CD-BA4E-294C945356BC"
               ]
             ]
@@ -214,3 +214,49 @@ JSID:858DA9AE-695B-43CD-BA4E-294C945356BC
   }
 }
 
+> test ORGANIZER also is ATTENDEE
+ORGANIZER;CN="Bruce Roberts":MAILTO:roberts@company.com
+ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN="Sam Peter":
+ MAILTO:sam@company.com
+ATTENDEE;RSVP=TRUE;ROLE=CHAIR,REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION:MAILTO:roberts@company.com
+> convert
+{
+  "@type": "Group",
+  "entries": [
+    {
+      "@type": "Event",
+      "organizerCalendarAddress": "MAILTO:roberts@company.com",
+      "participants": {
+        "32e5f08c-6141-535c-8462-f8ff78ba0cb3": {
+          "@type": "Participant",
+          "calendarAddress": "MAILTO:sam@company.com",
+          "expectReply": true,
+          "name": "Sam Peter",
+          "participationStatus": "needs-action",
+          "roles": {
+            "attendee": true,
+            "required": true
+          }
+        },
+        "a19f19be-c464-5dcb-9851-9b656fcda246": {
+          "@type": "Participant",
+          "calendarAddress": "MAILTO:roberts@company.com",
+          "expectReply": true,
+          "name": "Bruce Roberts",
+          "participationStatus": "needs-action",
+          "roles": {
+            "attendee": true,
+            "chair": true,
+            "required": true
+          }
+        }
+      }
+    }
+  ]
+}
+> convert
+ORGANIZER;CN="Bruce Roberts":MAILTO:roberts@company.com
+ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN="Sam Peter":
+ MAILTO:sam@company.com
+ATTENDEE;RSVP=TRUE;ROLE=CHAIR,REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN="Bruce Rob
+ erts":MAILTO:roberts@company.com

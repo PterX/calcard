@@ -105,3 +105,55 @@ JSPROP;JSPTR="links/mylink1/example.com:foo":"bar"
         },
         "name": "vevent"
 }
+
+> test LINK, ATTACH and IMAGE together
+LINK;LINKREL=preview;LABEL=Venue:
+ https://example.com/events
+ATTACH:https://example.com/foo.pdf
+IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;LABEL="An image":
+ https://example.com/images/party.png
+> convert
+{
+  "@type": "Group",
+  "entries": [
+    {
+      "@type": "Event",
+      "iCalComponent": {
+        "convertedProperties": {
+          "links/245708bf-8e07-5d3b-a5da-2974a63c3b91/href": {
+            "name": "ATTACH"
+          },
+          "links/2c42ac17-1eaf-5a75-a216-aef848785d79/href": {
+            "name": "IMAGE"
+          },
+          "links/63023b12-fcf4-53fa-841d-8c1684b9f80b/href": {
+            "name": "LINK"
+          }
+        },
+        "name": "vevent"
+      },
+      "links": {
+        "245708bf-8e07-5d3b-a5da-2974a63c3b91": {
+          "@type": "Link",
+          "href": "https://example.com/foo.pdf"
+        },
+        "2c42ac17-1eaf-5a75-a216-aef848785d79": {
+          "@type": "Link",
+          "contentType": "image/png",
+          "display": {
+            "badge": true,
+            "thumbnail": true
+          },
+          "href": "https://example.com/images/party.png",
+          "title": "An image"
+        },
+        "63023b12-fcf4-53fa-841d-8c1684b9f80b": {
+          "@type": "Link",
+          "href": "https://example.com/events",
+          "rel": "preview",
+          "title": "Venue"
+        }
+      }
+    }
+  ]
+}
