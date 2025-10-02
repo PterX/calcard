@@ -260,36 +260,36 @@ END:VCALENDAR
   "entries": [
     {
       "@type": "Event",
-      "duration": "PT13H",
+      "duration": "PT4H",
       "endTimeZone": "America/Los_Angeles",
       "iCalComponent": {
         "convertedProperties": {
           "duration": {
             "name": "DTEND"
           },
+          "recurrenceOverrides/2015-07-08T15:00:00": {
+            "parameters": {
+              "TZID": "America/Los_Angeles"
+            }
+          },
+          "recurrenceOverrides/2015-07-10T15:00:00": {
+            "parameters": {
+              "TZID": "America/Los_Angeles"
+            }
+          },
           "start": {
             "parameters": {
               "TZID": "(UTC-05:00) Eastern Time (US and Canada)"
-            }
-          },
-          "recurrenceOverrides/2015-07-09T00:00:00": {
-            "parameters": {
-              "TZID": "America/Los_Angeles"
-            }
-          },
-          "recurrenceOverrides/2015-07-11T00:00:00": {
-            "parameters": {
-              "TZID": "America/Los_Angeles"
             }
           }
         },
         "name": "vevent"
       },
       "recurrenceOverrides": {
-        "2015-07-09T00:00:00": {
+        "2015-07-08T15:00:00": {
           "excluded": true
         },
-        "2015-07-11T00:00:00": {
+        "2015-07-10T15:00:00": {
           "excluded": true
         }
       },
@@ -298,7 +298,7 @@ END:VCALENDAR
         "frequency": "daily"
       },
       "start": "2015-07-06T12:00:00",
-      "timeZone": "Etc/GMT-5",
+      "timeZone": "America/New_York",
       "title": "Treasure Hunting",
       "uid": "0000001"
     }
