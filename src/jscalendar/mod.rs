@@ -19,14 +19,21 @@ use crate::{
 use jmap_tools::{JsonPointer, Value};
 use mail_parser::DateTime;
 use serde::Serialize;
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Debug, fmt::Display, hash::Hash, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[repr(transparent)]
-pub struct JSCalendar<'x>(pub Value<'x, JSCalendarProperty, JSCalendarValue>);
+pub struct JSCalendar<'x, I: JSCalendarId>(
+    pub Value<'x, JSCalendarProperty<I>, JSCalendarValue<I>>,
+);
+
+pub trait JSCalendarId:
+    FromStr + Sized + Serialize + Display + Clone + Eq + Hash + Ord + Debug + Default
+{
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum JSCalendarValue {
+pub enum JSCalendarValue<I: JSCalendarId> {
     Type(JSCalendarType),
     DateTime(JSCalendarDateTime),
     Duration(ICalendarDuration),
@@ -46,9 +53,11 @@ pub enum JSCalendarValue {
     Weekday(ICalendarWeekday),
     Month(ICalendarMonth),
     Method(ICalendarMethod),
+    Id(I),
+    IdReference(String),
 }
 
-impl Default for JSCalendarValue {
+impl<I: JSCalendarId> Default for JSCalendarValue<I> {
     fn default() -> Self {
         JSCalendarValue::Type(JSCalendarType::default())
     }
@@ -61,13 +70,23 @@ pub struct JSCalendarDateTime {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum JSCalendarProperty {
+pub enum JSCalendarProperty<I: JSCalendarId> {
+    // JMAP for Calendar Properties
+    Id,
+    BaseEventId,
+    CalendarIds,
+    IsDraft,
+    IsOrigin,
+    UtcStart,
+    UtcEnd,
+    UseDefaultAlerts,
+
+    // JSCalendar Properties
     #[default]
     Type,
     Acknowledged,
     Action,
     Alerts,
-    BaseEventId,
     ByDay,
     ByHour,
     ByMinute,
@@ -78,7 +97,6 @@ pub enum JSCalendarProperty {
     ByWeekNo,
     ByYearDay,
     CalendarAddress,
-    CalendarIds,
     Categories,
     Color,
     ContentType,
@@ -104,11 +122,8 @@ pub enum JSCalendarProperty {
     Frequency,
     HideAttendees,
     Href,
-    Id,
     Interval,
     InvitedBy,
-    IsDraft,
-    IsOrigin,
     Keywords,
     Kind,
     Links,
@@ -162,9 +177,6 @@ pub enum JSCalendarProperty {
     Until,
     Updated,
     Uri,
-    UseDefaultAlerts,
-    UtcEnd,
-    UtcStart,
     VirtualLocations,
     When,
     EndTimeZone,
@@ -183,7 +195,14 @@ pub enum JSCalendarProperty {
     ParticipantRole(JSCalendarParticipantRole),
     RelationValue(JSCalendarRelation),
     LinkRelation(LinkRelation),
-    Pointer(JsonPointer<JSCalendarProperty>),
+    Pointer(JsonPointer<JSCalendarProperty<I>>),
+    IdValue(I),
+    IdReference(String),
+}
+
+impl<T> JSCalendarId for T where
+    T: FromStr + Sized + Serialize + Display + Clone + Eq + Hash + Ord + Debug + Default
+{
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -406,7 +425,7 @@ pub(crate) fn uuid5(text: impl AsRef<[u8]>) -> String {
 }
 
 #[cfg(test)]
-impl std::fmt::Display for JSCalendar<'_> {
+impl<I: JSCalendarId> std::fmt::Display for JSCalendar<'_, I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = serde_json::to_string_pretty(&self.0).map_err(|_| std::fmt::Error)?;
         write!(f, "{}", s)
@@ -651,7 +670,11 @@ mod tests {
         })
     }
 
-    fn parse_jscalendar<'x>(test_name: &str, line_num: usize, s: &'x str) -> JSCalendar<'x> {
+    fn parse_jscalendar<'x>(
+        test_name: &str,
+        line_num: usize,
+        s: &'x str,
+    ) -> JSCalendar<'x, String> {
         JSCalendar::parse(s).unwrap_or_else(|_| {
             panic!(
                 "Failed to parse JSCalendar: {} on line {}, test {}",
@@ -677,12 +700,14 @@ mod tests {
             .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
-    fn sanitize_jscalendar(mut jscalendar: JSCalendar<'_>) -> JSCalendar<'_> {
+    fn sanitize_jscalendar(mut jscalendar: JSCalendar<'_, String>) -> JSCalendar<'_, String> {
         sort_jscalendar_properties(&mut jscalendar.0);
         jscalendar
     }
 
-    fn sort_jscalendar_properties(value: &mut Value<'_, JSCalendarProperty, JSCalendarValue>) {
+    fn sort_jscalendar_properties(
+        value: &mut Value<'_, JSCalendarProperty<String>, JSCalendarValue<String>>,
+    ) {
         match value {
             Value::Array(value) => {
                 for item in value {
