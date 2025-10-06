@@ -23,8 +23,8 @@ use std::{borrow::Cow, fmt::Debug, fmt::Display, hash::Hash, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[repr(transparent)]
-pub struct JSCalendar<'x, I: JSCalendarId>(
-    pub Value<'x, JSCalendarProperty<I>, JSCalendarValue<I>>,
+pub struct JSCalendar<'x, I: JSCalendarId, B: JSCalendarId>(
+    pub Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
 );
 
 pub trait JSCalendarId:
@@ -33,7 +33,7 @@ pub trait JSCalendarId:
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum JSCalendarValue<I: JSCalendarId> {
+pub enum JSCalendarValue<I: JSCalendarId, B: JSCalendarId> {
     Type(JSCalendarType),
     DateTime(JSCalendarDateTime),
     Duration(ICalendarDuration),
@@ -54,10 +54,11 @@ pub enum JSCalendarValue<I: JSCalendarId> {
     Month(ICalendarMonth),
     Method(ICalendarMethod),
     Id(I),
+    BlobId(B),
     IdReference(String),
 }
 
-impl<I: JSCalendarId> Default for JSCalendarValue<I> {
+impl<I: JSCalendarId, B: JSCalendarId> Default for JSCalendarValue<I, B> {
     fn default() -> Self {
         JSCalendarValue::Type(JSCalendarType::default())
     }
@@ -83,6 +84,7 @@ pub enum JSCalendarProperty<I: JSCalendarId> {
     MayInviteSelf,
     MayInviteOthers,
     HideAttendees,
+    BlobId,
 
     // JSCalendar Properties
     #[default]
@@ -211,13 +213,13 @@ impl<I: JSCalendarId> From<I> for JSCalendarProperty<I> {
     }
 }
 
-impl<I: JSCalendarId> From<I> for JSCalendarValue<I> {
+impl<I: JSCalendarId, B: JSCalendarId> From<I> for JSCalendarValue<I, B> {
     fn from(id: I) -> Self {
         JSCalendarValue::Id(id)
     }
 }
 
-impl<'x, I: JSCalendarId> Default for JSCalendar<'x, I> {
+impl<'x, I: JSCalendarId, B: JSCalendarId> Default for JSCalendar<'x, I, B> {
     fn default() -> Self {
         Self(Value::Object(jmap_tools::Map::new()))
     }
@@ -443,7 +445,7 @@ pub(crate) fn uuid5(text: impl AsRef<[u8]>) -> String {
 }
 
 #[cfg(test)]
-impl<I: JSCalendarId> std::fmt::Display for JSCalendar<'_, I> {
+impl<I: JSCalendarId, B: JSCalendarId> std::fmt::Display for JSCalendar<'_, I, B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = serde_json::to_string_pretty(&self.0).map_err(|_| std::fmt::Error)?;
         write!(f, "{}", s)
@@ -692,7 +694,7 @@ mod tests {
         test_name: &str,
         line_num: usize,
         s: &'x str,
-    ) -> JSCalendar<'x, String> {
+    ) -> JSCalendar<'x, String, String> {
         JSCalendar::parse(s).unwrap_or_else(|_| {
             panic!(
                 "Failed to parse JSCalendar: {} on line {}, test {}",
@@ -718,13 +720,15 @@ mod tests {
             .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
-    fn sanitize_jscalendar(mut jscalendar: JSCalendar<'_, String>) -> JSCalendar<'_, String> {
+    fn sanitize_jscalendar(
+        mut jscalendar: JSCalendar<'_, String, String>,
+    ) -> JSCalendar<'_, String, String> {
         sort_jscalendar_properties(&mut jscalendar.0);
         jscalendar
     }
 
     fn sort_jscalendar_properties(
-        value: &mut Value<'_, JSCalendarProperty<String>, JSCalendarValue<String>>,
+        value: &mut Value<'_, JSCalendarProperty<String>, JSCalendarValue<String, String>>,
     ) {
         match value {
             Value::Array(value) => {
