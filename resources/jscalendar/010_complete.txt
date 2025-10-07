@@ -515,14 +515,13 @@ DTSTART;TZID=Africa/Johannesburg:20200108T090000
 DURATION:PT1H
 ATTENDEE;EMAIL=tom@foobar.example.com;PARTSTAT=ACCEPTED;CN="Tom Tool";JSID=
  dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@calendar.example.com
-ATTENDEE;ROLE=CHAIR;PARTSTAT=ACCEPTED;CN="Zoe Zelda";JSID=em9lQGZvb2GFtcGxl
- LmNvbQ:mailto:zoe@foobar.example.com
+ATTENDEE;ROLE=CHAIR,OWNER;PARTSTAT=ACCEPTED;CN="Zoe Zelda";JSID=em9lQGZvb2G
+ FtcGxlLmNvbQ:mailto:zoe@foobar.example.com
 ORGANIZER:mailto:f245f875-7f63-4a5e-a2c8@schedule.example.com
 UID:ee42e41e-1046-4489-9760-c0b85f0dc176
 RRULE:FREQ=WEEKLY
 CONFERENCE;LABEL="ChatMe meeting room";JSID=0:https://chatme.example.com?id=
  1234567&pw=a8a24627b63d
-JSPROP;JSPTR=participants/em9lQGZvb2GFtcGxlLmNvbQ/roles/owner:true
 END:VEVENT
 END:VCALENDAR
 > convert
