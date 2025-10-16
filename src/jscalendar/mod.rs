@@ -460,6 +460,12 @@ impl<I: JSCalendarId, B: JSCalendarId> std::fmt::Display for JSCalendar<'_, I, B
     }
 }
 
+impl<I: JSCalendarId> Display for JSCalendarProperty<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_string().as_ref())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{

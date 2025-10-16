@@ -421,6 +421,12 @@ impl<'x, I: JSContactId, B: JSContactId> Default for JSContact<'x, I, B> {
     }
 }
 
+impl<I: JSContactId> Display for JSContactProperty<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_string().as_ref())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use jmap_tools::{Key, Value};
