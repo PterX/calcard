@@ -8,9 +8,6 @@ ORGANIZER:mailto:organizer@example.com
     "calendarAddress": "mailto:hcabot@example.com",
     "name": "Henry Cabot",
     "participationStatus": "tentative",
-    "roles": {
-      "attendee": true
-    },
     "expectReply": true
   },
   "251d3e9f-d83f-534c-8c45-c2896c75670c": {
@@ -37,19 +34,16 @@ ORGANIZER:mailto:organizer@example.com
     "participationStatus": "tentative",
     "expectReply": true,
     "description": "some description",
-    "roles": {
-       "attendee": true
-    },
     "iCalComponent": {
       "name": "participant",
       "convertedProperties": {
           "calendarAddress": {
-            "name": "CALENDAR-ADDRESS"
+            "name": "calendar-address"
         }
       },
       "properties": [
         [
-          "UID",
+          "uid",
           {},
           "unknown",
           "6CF544E4-BBC7-45A2-97FF-DFD1908CCE40"
@@ -76,10 +70,7 @@ ORGANIZER:mailto:organizer@example.com
     "calendarAddress": "mailto:foo@example.com",
     "participationStatus": "accepted",
     "progress": "completed",
-    "expectReply": true,
-    "roles": {
-        "attendee": true
-     }
+    "expectReply": true
   },
   "251d3e9f-d83f-534c-8c45-c2896c75670c": {
     "@type": "Participant",
@@ -102,12 +93,12 @@ UID:47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2
       "name": "participant",
       "convertedProperties": {
         "calendarAddress": {
-          "name": "CALENDAR-ADDRESS"
+          "name": "calendar-address"
         }
       },
       "properties": [
         [
-          "UID",
+          "uid",
           {},
           "unknown",
           "47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2"
@@ -130,10 +121,7 @@ ATTENDEE;RSVP=TRUE:mailto:bar@example.com
   "5b6f4fa0-3695-53a7-904b-d0a6f8bc326f": {
     "@type": "Participant",
     "calendarAddress": "mailto:bar@example.com",
-    "expectReply": true,
-    "roles": {
-      "attendee": true
-    }
+    "expectReply": true
   }
 }
 
@@ -148,19 +136,13 @@ ATTENDEE;RSVP=TRUE;PARTSTAT=TENTATIVE:mailto:bar@example.com
     "@type": "Participant",
     "calendarAddress": "mailto:foo@example.com",
     "name": "Jane Doe",
-    "participationStatus": "accepted",
-    "roles": {
-      "attendee": true
-    }
+    "participationStatus": "accepted"
   },
   "5b6f4fa0-3695-53a7-904b-d0a6f8bc326f": {
     "@type": "Participant",
     "calendarAddress": "mailto:bar@example.com",
     "expectReply": true,
-    "participationStatus": "tentative",
-    "roles": {
-        "attendee": true
-    }
+    "participationStatus": "tentative"
   }
 }
 
@@ -179,7 +161,7 @@ JSID:47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2
       "name": "participant",
       "properties": [
         [
-          "UID",
+          "uid",
           {},
           "unknown",
           "47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2"
@@ -204,7 +186,7 @@ JSID:858DA9AE-695B-43CD-BA4E-294C945356BC
             "name": "participant",
             "properties": [
               [
-                "UID",
+                "uid",
                 {},
                 "unknown",
                 "858DA9AE-695B-43CD-BA4E-294C945356BC"
@@ -234,7 +216,6 @@ ATTENDEE;RSVP=TRUE;ROLE=CHAIR,REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION:MAILTO:rober
           "name": "Sam Peter",
           "participationStatus": "needs-action",
           "roles": {
-            "attendee": true,
             "required": true
           }
         },
@@ -245,7 +226,6 @@ ATTENDEE;RSVP=TRUE;ROLE=CHAIR,REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION:MAILTO:rober
           "name": "Bruce Roberts",
           "participationStatus": "needs-action",
           "roles": {
-            "attendee": true,
             "chair": true,
             "required": true
           }
@@ -260,3 +240,29 @@ ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN="Sam Peter":
  MAILTO:sam@company.com
 ATTENDEE;RSVP=TRUE;ROLE=CHAIR,REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN="Bruce Rob
  erts":MAILTO:roberts@company.com
+
+> test ORGANIZER is OWNER
+ATTENDEE;RSVP=TRUE:mailto:foo@example.com
+ATTENDEE;ROLE=OWNER;RSVP=TRUE:mailto:bar@example.com
+ORGANIZER:mailto:organizer@example.com
+> convert
+"participants": {	
+  "59eb121c-e8f2-558a-9049-ef750a5976bd": {	
+    "@type": "Participant",	
+    "calendarAddress": "mailto:foo@example.com",	
+    "expectReply": true	
+  },	
+  "5b6f4fa0-3695-53a7-904b-d0a6f8bc326f": {	
+    "@type": "Participant",	
+    "calendarAddress": "mailto:bar@example.com",	
+    "expectReply": true,	
+    "roles": {	
+      "owner": true	
+    }	
+  }	
+},	
+"organizerCalendarAddress": "mailto:organizer@example.com"
+> convert
+ATTENDEE;RSVP=TRUE:mailto:foo@example.com
+ATTENDEE;RSVP=TRUE;ROLE=OWNER:mailto:bar@example.com
+ORGANIZER:mailto:organizer@example.com

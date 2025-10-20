@@ -78,13 +78,13 @@ FN:Giovanni Publico
     "convertedProperties": {
       "name/full": {
         "parameters": {
-          "X-PROP": "1"
+          "x-prop": "1"
         }
       }
     },
     "properties": [
       [
-        "FN",
+        "fn",
         {},
         "unknown",
         "Giovanni Publico"
@@ -115,7 +115,7 @@ N:Perez;Juana;;;;;
   "vCard": {
     "properties": [
       [
-        "N",
+        "n",
         {},
         "unknown",
         [

@@ -9,7 +9,7 @@ DTEND;TZID=Asia/Bangkok:20241018T040000
 "iCalComponent": {
         "convertedProperties": {
           "duration": {
-            "name": "DTEND"
+            "name": "dtend"
           }
         },
         "name": "vevent"
@@ -25,7 +25,7 @@ DTEND;TZID=Australia/Melbourne:20241002T140000
 "iCalComponent": {
         "convertedProperties": {
           "duration": {
-            "name": "DTEND"
+            "name": "dtend"
           }
         },
         "name": "vevent"
@@ -43,14 +43,14 @@ DTEND;VALUE=DATE:20240107
     "name": "vevent",
     "convertedProperties": {
           "duration": {
-            "name": "DTEND",
+            "name": "dtend",
             "parameters": {
-              "VALUE": "DATE"
+              "value": "DATE"
             }
           },
           "start": {
             "parameters": {
-              "VALUE": "DATE"
+              "value": "DATE"
             }
           }
     }
@@ -101,7 +101,7 @@ DTSTART;VALUE=DATE:20240921
         "convertedProperties": {
           "start": {
             "parameters": {
-              "VALUE": "DATE"
+              "value": "DATE"
             }
           }
         },
@@ -144,7 +144,7 @@ DUE;VALUE=DATE:20240921
  "convertedProperties": {
           "due": {
             "parameters": {
-              "VALUE": "DATE"
+              "value": "DATE"
             }
           }
         },
@@ -165,12 +165,12 @@ DUE;VALUE=DATE:20250221
         "convertedProperties": {
           "due": {
             "parameters": {
-              "VALUE": "DATE"
+              "value": "DATE"
             }
           },
           "start": {
             "parameters": {
-              "VALUE": "DATE"
+              "value": "DATE"
             }
           }
         },
@@ -216,14 +216,14 @@ END:VCALENDAR
       "iCalComponent": {
         "convertedProperties": {
           "duration": {
-            "name": "DTEND",
+            "name": "dtend",
             "parameters": {
-              "TZID": "(GMT+10:00) Canberra, Melbourne, Sydney"
+              "tzid": "(GMT+10:00) Canberra, Melbourne, Sydney"
             }
           },
           "start": {
             "parameters": {
-              "TZID": "(GMT+10:00) Canberra, Melbourne, Sydney"
+              "tzid": "(GMT+10:00) Canberra, Melbourne, Sydney"
             }
           }
         },
@@ -265,21 +265,21 @@ END:VCALENDAR
       "iCalComponent": {
         "convertedProperties": {
           "duration": {
-            "name": "DTEND"
+            "name": "dtend"
           },
           "recurrenceOverrides/2015-07-08T15:00:00": {
             "parameters": {
-              "TZID": "America/Los_Angeles"
+              "tzid": "America/Los_Angeles"
             }
           },
           "recurrenceOverrides/2015-07-10T15:00:00": {
             "parameters": {
-              "TZID": "America/Los_Angeles"
+              "tzid": "America/Los_Angeles"
             }
           },
           "start": {
             "parameters": {
-              "TZID": "(UTC-05:00) Eastern Time (US and Canada)"
+              "tzid": "(UTC-05:00) Eastern Time (US and Canada)"
             }
           }
         },
@@ -338,11 +338,11 @@ END:VCALENDAR
       "iCalComponent": {
         "convertedProperties": {
           "duration": {
-            "name": "DTEND"
+            "name": "dtend"
           },
           "recurrenceOverrides/2024-09-13T06:00:00": {
             "parameters": {
-              "TZID": "Europe/Berlin"
+              "tzid": "Europe/Berlin"
             }
           }
         },
@@ -366,12 +366,12 @@ END:VCALENDAR
         "convertedProperties": {
           "recurrenceOverrides/2019-03-08T22:00:00": {
             "parameters": {
-              "TZID": "America/Noronha"
+              "tzid": "America/Noronha"
             }
           },
           "recurrenceOverrides/2019-03-09T02:00:00": {
             "parameters": {
-              "TZID": "Mexico/General"
+              "tzid": "Mexico/General"
             }
           }
         },
@@ -414,3 +414,19 @@ BEGIN:VEVENT
 RECURRENCE-ID;TZID=Europe/Moscow:20190309T020000
 END:VEVENT
 END:VCALENDAR
+
+> test
+DTSTART;TZID="W. Europe Standard Time":20241121T105302
+> convert DTSTART property with a non-IANA TZID	parameter
+"start": "2024-11-21T10:53:02",	
+"timeZone": "Europe/Berlin",	
+"iCalComponent": {	
+  "name": "vevent",	
+  "convertedProperties": {	
+    "start": {	
+      "parameters": {	
+        "tzid": "W. Europe Standard Time"	
+      }	
+    }	
+  }	
+}

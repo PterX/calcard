@@ -10,7 +10,7 @@ ATTACH:https://example.com/foo.pdf
 "iCalComponent": {
     "convertedProperties": {
         "links/245708bf-8e07-5d3b-a5da-2974a63c3b91/href": {
-        "name": "ATTACH"
+        "name": "attach"
         }
     },
     "name": "vevent"
@@ -31,9 +31,9 @@ ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:iVBORw
 "iCalComponent": {
     "convertedProperties": {
         "links/5cfd5bea-64f1-5bae-846b-d958abb5411e/href": {
-        "name": "ATTACH",
+        "name": "attach",
         "parameters": {
-            "VALUE": "BINARY"
+            "value": "BINARY"
         }
         }
     },
@@ -59,7 +59,7 @@ IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;LABEL="An image":
 "iCalComponent": {
         "convertedProperties": {
           "links/2c42ac17-1eaf-5a75-a216-aef848785d79/href": {
-            "name": "IMAGE"
+            "name": "image"
           }
         },
         "name": "vevent"
@@ -80,7 +80,7 @@ LINK;LINKREL=preview;LABEL=Venue:
 "iCalComponent": {
         "convertedProperties": {
           "links/63023b12-fcf4-53fa-841d-8c1684b9f80b/href": {
-            "name": "LINK"
+            "name": "link"
           }
         },
         "name": "vevent"
@@ -100,7 +100,7 @@ JSPROP;JSPTR="links/mylink1/example.com:foo":"bar"
 "iCalComponent": {
         "convertedProperties": {
           "links/mylink1/href": {
-            "name": "ATTACH"
+            "name": "attach"
           }
         },
         "name": "vevent"
@@ -121,13 +121,13 @@ IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;LABEL="An image":
       "iCalComponent": {
         "convertedProperties": {
           "links/245708bf-8e07-5d3b-a5da-2974a63c3b91/href": {
-            "name": "ATTACH"
+            "name": "attach"
           },
           "links/2c42ac17-1eaf-5a75-a216-aef848785d79/href": {
-            "name": "IMAGE"
+            "name": "image"
           },
           "links/63023b12-fcf4-53fa-841d-8c1684b9f80b/href": {
-            "name": "LINK"
+            "name": "link"
           }
         },
         "name": "vevent"

@@ -27,13 +27,13 @@ END:X-BAZ
     "convertedProperties": {
       "title": {
         "parameters": {
-          "X-FOO": "bar"
+          "x-foo": "bar"
         }
       }
     },
     "properties": [
       [
-        "X-BAR",
+        "x-bar",
         {},
         "unknown",
         "bam"
@@ -41,10 +41,10 @@ END:X-BAZ
     ],
     "components": [
       [
-        "X-BAZ",
+        "x-baz",
         [
           [
-            "UID",
+            "uid",
             {},
             "unknown",
             "507A08F9-81D8-4D16-9480-D6D75E977943"
@@ -110,13 +110,13 @@ END:VCALENDAR
       "iCalComponent": {
         "convertedProperties": {
           "duration": {
-            "name": "DTEND"
+            "name": "dtend"
           }
         },
         "name": "vevent",
         "properties": [
           [
-            "URL",
+            "url",
             {},
             "unknown",
             "http://www.worklessparty.org/"
@@ -139,10 +139,10 @@ END:VCALENDAR
   "iCalComponent": {
     "components": [
       [
-        "VTIMEZONE",
+        "vtimezone",
         [
           [
-            "TZID",
+            "tzid",
             {},
             "unknown",
             "America/Vancouver"
@@ -150,34 +150,34 @@ END:VCALENDAR
         ],
         [
           [
-            "DAYLIGHT",
+            "daylight",
             [
               [
-                "DTSTART",
+                "dtstart",
                 {},
                 "unknown",
                 "20070311T020000"
               ],
               [
-                "TZNAME",
+                "tzname",
                 {},
                 "unknown",
                 "PDT"
               ],
               [
-                "TZOFFSETFROM",
+                "tzoffsetfrom",
                 {},
                 "unknown",
                 "-0800"
               ],
               [
-                "TZOFFSETTO",
+                "tzoffsetto",
                 {},
                 "unknown",
                 "-0700"
               ],
               [
-                "RRULE",
+                "rrule",
                 {},
                 "unknown",
                 "FREQ=YEARLY;BYDAY=2SU;BYMONTH=3"
@@ -186,34 +186,34 @@ END:VCALENDAR
             []
           ],
           [
-            "STANDARD",
+            "standard",
             [
               [
-                "DTSTART",
+                "dtstart",
                 {},
                 "unknown",
                 "20071104T020000"
               ],
               [
-                "TZNAME",
+                "tzname",
                 {},
                 "unknown",
                 "PST"
               ],
               [
-                "TZOFFSETFROM",
+                "tzoffsetfrom",
                 {},
                 "unknown",
                 "-0700"
               ],
               [
-                "TZOFFSETTO",
+                "tzoffsetto",
                 {},
                 "unknown",
                 "-0800"
               ],
               [
-                "RRULE",
+                "rrule",
                 {},
                 "unknown",
                 "FREQ=YEARLY;BYDAY=1SU;BYMONTH=11"
@@ -227,31 +227,31 @@ END:VCALENDAR
     "name": "vcalendar",
     "properties": [
       [
-        "X-APPLE-CALENDAR-COLOR",
+        "x-apple-calendar-color",
         {},
         "unknown",
         "#F57802"
       ],
       [
-        "X-WR-CALNAME",
+        "x-wr-calname",
         {},
         "unknown",
         "weekly"
       ],
       [
-        "X-WR-RELCALID",
+        "x-wr-relcalid",
         {},
         "unknown",
         "967F55F6-968E-49EF-A050-DAF6DB680D39"
       ],
       [
-        "X-WR-TIMEZONE",
+        "x-wr-timezone",
         {},
         "unknown",
         "America/Vancouver"
       ],
       [
-        "CALSCALE",
+        "calscale",
         {},
         "unknown",
         "GREGORIAN"

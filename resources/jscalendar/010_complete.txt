@@ -213,7 +213,7 @@ END:VCALENDAR
   "iCalComponent": {
         "convertedProperties": {
           "duration": {
-            "name": "DTEND"
+            "name": "dtend"
           }
         },
         "name": "vevent"
@@ -479,10 +479,7 @@ END:VCALENDAR
       "name": "Tom Tool",
       "email": "tom@foobar.example.com",
       "calendarAddress": "mailto:tom@calendar.example.com",
-      "participationStatus": "accepted",
-      "roles": {
-        "attendee": true
-      }
+      "participationStatus": "accepted"
     },
     "em9lQGZvb2GFtcGxlLmNvbQ": {
       "name": "Zoe Zelda",
@@ -490,7 +487,6 @@ END:VCALENDAR
       "participationStatus": "accepted",
       "roles": {
         "owner": true,
-        "attendee": true,
         "chair": true
       }
     }
@@ -549,14 +545,7 @@ END:VCALENDAR
       "name": "Tom Tool",
       "email": "tom@foobar.example.com",
       "calendarAddress": "mailto:tom@calendar.example.com",
-      "participationStatus": "accepted",
-      "roles": {
-        "attendee": true
-      }
-    },
-    "ee24caf5-8eb1-5084-9851-55b3cfd43bf0": {
-          "@type": "Participant",
-          "calendarAddress": "mailto:f245f875-7f63-4a5e-a2c8@schedule.example.com"
+      "participationStatus": "accepted"
     },
     "em9lQGZvb2GFtcGxlLmNvbQ": {
       "@type": "Participant",
@@ -565,7 +554,6 @@ END:VCALENDAR
       "participationStatus": "accepted",
       "roles": {
         "owner": true,
-        "attendee": true,
         "chair": true
       }
     }
@@ -578,10 +566,7 @@ END:VCALENDAR
               "calendarAddress": "mailto:tom@calendar.example.com",
               "email": "tom@foobar.example.com",
               "name": "Tom Tool",
-              "participationStatus": "declined",
-              "roles": {
-                "attendee": true
-              }
+              "participationStatus": "declined"
             }
         }
     }
@@ -653,7 +638,7 @@ END:VCALENDAR
             "name": "valarm",
             "properties": [
               [
-                "DESCRIPTION",
+                "description",
                 {},
                 "unknown",
                 "REMINDER"
@@ -674,27 +659,27 @@ END:VCALENDAR
         "convertedProperties": {
           "description": {
             "parameters": {
-              "LANGUAGE": "en-US"
+              "language": "en-US"
             }
           },
           "duration": {
-            "name": "DTEND",
+            "name": "dtend",
             "parameters": {
-              "TZID": "W. Europe Standard Time"
+              "tzid": "W. Europe Standard Time"
             }
           },
           "start": {
             "parameters": {
-              "TZID": "W. Europe Standard Time"
+              "tzid": "W. Europe Standard Time"
             }
           }
         },
         "name": "vevent",
         "properties": [
           [
-            "LOCATION",
+            "location",
             {
-              "LANGUAGE": "en-US"
+              "language": "en-US"
             },
             "unknown",
             []
@@ -710,7 +695,6 @@ END:VCALENDAR
           "name": "Testmeeting channel",
           "participationStatus": "needs-action",
           "roles": {
-            "attendee": true,
             "required": true
           }
         },
@@ -721,7 +705,6 @@ END:VCALENDAR
           "name": "Annonym Usernames",
           "participationStatus": "needs-action",
           "roles": {
-            "attendee": true,
             "required": true
           }
         }
@@ -745,10 +728,10 @@ END:VCALENDAR
   "iCalComponent": {
     "components": [
       [
-        "VTIMEZONE",
+        "vtimezone",
         [
           [
-            "TZID",
+            "tzid",
             {},
             "unknown",
             "W. Europe Standard Time"
@@ -756,28 +739,28 @@ END:VCALENDAR
         ],
         [
           [
-            "STANDARD",
+            "standard",
             [
               [
-                "DTSTART",
+                "dtstart",
                 {},
                 "unknown",
                 "16010101T030000"
               ],
               [
-                "TZOFFSETFROM",
+                "tzoffsetfrom",
                 {},
                 "unknown",
                 "+0200"
               ],
               [
-                "TZOFFSETTO",
+                "tzoffsetto",
                 {},
                 "unknown",
                 "+0100"
               ],
               [
-                "RRULE",
+                "rrule",
                 {},
                 "unknown",
                 "FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=10"
@@ -786,28 +769,28 @@ END:VCALENDAR
             []
           ],
           [
-            "DAYLIGHT",
+            "daylight",
             [
               [
-                "DTSTART",
+                "dtstart",
                 {},
                 "unknown",
                 "16010101T020000"
               ],
               [
-                "TZOFFSETFROM",
+                "tzoffsetfrom",
                 {},
                 "unknown",
                 "+0100"
               ],
               [
-                "TZOFFSETTO",
+                "tzoffsetto",
                 {},
                 "unknown",
                 "+0200"
               ],
               [
-                "RRULE",
+                "rrule",
                 {},
                 "unknown",
                 "FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=3"

@@ -85,7 +85,7 @@ RELATED;TYPE=friend:urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6
     "convertedProperties": {
       "relatedTo/Please contact my deputy John for any inquiries.": {
         "parameters": {
-          "VALUE": "TEXT"
+          "value": "TEXT"
         }
       }
     }
@@ -116,12 +116,12 @@ group1.ORG:ABC, Inc.
     "convertedProperties": {
       "organizations/k1/name": {
         "parameters": {
-          "GROUP": "group1"
+          "group": "group1"
         }
       },
       "titles/k2/name": {
         "parameters": {
-          "GROUP": "group1"
+          "group": "group1"
         }
       }
     }
@@ -156,12 +156,12 @@ group1.ORG;PROP-ID=k1:ABC\, Inc.
     "convertedProperties": {
       "organizations/k1/name": {
         "parameters": {
-          "GROUP": "group1"
+          "group": "group1"
         }
       },
       "titles/k2/name": {
         "parameters": {
-          "GROUP": "group1"
+          "group": "group1"
         }
       }
     }

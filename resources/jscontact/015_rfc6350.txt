@@ -13,7 +13,7 @@ ROLE;LANGUAGE=tr:hoca
     "convertedProperties": {
       "titles/k1/name": {
         "parameters": {
-          "LANGUAGE": "tr"
+          "language": "tr"
         }
       }
     }
@@ -56,13 +56,13 @@ N;ALTID=1;LANGUAGE=en:Yamada;Taro;;;
     "convertedProperties": {
       "localizations/en/name~1components": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "name/components": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "jp"
+          "altid": "1",
+          "language": "jp"
         }
       }
     }
@@ -108,22 +108,22 @@ N;ALTID=1;LANGUAGE=en:Smith;John;;;
     "convertedProperties": {
       "localizations/jp/name~1components": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "name/components": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "en"
+          "altid": "1",
+          "language": "en"
         }
       }
     },
     "properties": [
       [
-        "N",
+        "n",
         {
-          "ALTID": "1",
-          "LANGUAGE": "en"
+          "altid": "1",
+          "language": "en"
         },
         "unknown",
         [
@@ -162,13 +162,13 @@ TITLE;ALTID=1;LANGUAGE=en:Boss
     "convertedProperties": {
       "localizations/en/titles~1k1~1name": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "titles/k1/name": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "fr"
+          "altid": "1",
+          "language": "fr"
         }
       }
     }
@@ -203,19 +203,19 @@ TITLE;ALTID=2;LANGUAGE=en:Chief vCard Evangelist
     "convertedProperties": {
       "localizations/fr/titles~1k1~1name": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "titles/k1/name": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "en"
+          "altid": "1",
+          "language": "en"
         }
       },
       "titles/k2/name": {
         "parameters": {
-          "ALTID": "2",
-          "LANGUAGE": "en"
+          "altid": "2",
+          "language": "en"
         }
       }
     }
@@ -245,14 +245,14 @@ TITLE;ALTID=2;LANGUAGE=en:Boss
     "convertedProperties": {
       "titles/k1/name": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "fr"
+          "altid": "1",
+          "language": "fr"
         }
       },
       "titles/k2/name": {
         "parameters": {
-          "ALTID": "2",
-          "LANGUAGE": "en"
+          "altid": "2",
+          "language": "en"
         }
       }
     }
@@ -281,13 +281,13 @@ TITLE;LANGUAGE=en:Boss
     "convertedProperties": {
       "titles/k1/name": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "fr"
+          "altid": "1",
+          "language": "fr"
         }
       },
       "titles/k2/name": {
         "parameters": {
-          "LANGUAGE": "en"
+          "language": "en"
         }
       }
     }
@@ -315,12 +315,12 @@ PHOTO;ALTID=1:data:image/jp2;base64,...
     "convertedProperties": {
       "media/k1/uri": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "media/k2/uri": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       }
     }
@@ -623,7 +623,7 @@ BDAY;VALUE=text:circa 1800
 "vCard": {
     "properties": [
       [
-        "BDAY",
+        "bday",
         {},
         "TEXT",
         "circa 1800"
@@ -655,7 +655,7 @@ GENDER:M
 "vCard": {
     "properties": [
       [
-        "GENDER",
+        "gender",
         {},
         "unknown",
         "M"
@@ -670,7 +670,7 @@ GENDER:;it's complicated
 "vCard": {
     "properties": [
       [
-        "GENDER",
+        "gender",
         {},
         "unknown",
         [
@@ -744,12 +744,12 @@ TEL;VALUE=uri;TYPE=home:tel:+33-01-23-45-67
     "convertedProperties": {
       "phones/k1/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       },
       "phones/k2/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       }
     }
@@ -790,7 +790,7 @@ IMPP;PREF=1:xmpp:alice@example.com
   "vCard": {
     "convertedProperties": {
       "onlineServices/k1/uri": {
-        "name": "IMPP"
+        "name": "impp"
       }
     }
   }
@@ -840,7 +840,7 @@ TZ:Raleigh/North America
   "vCard": {
     "convertedProperties": {
       "addresses/k1/timeZone": {
-        "name": "TZ"
+        "name": "tz"
       }
     }
   }
@@ -856,7 +856,7 @@ TZ:-0500
   "vCard": {
     "convertedProperties": {
       "addresses/k1/timeZone": {
-        "name": "TZ"
+        "name": "tz"
       }
     }
   }
@@ -873,7 +873,7 @@ GEO:geo:37.386013,-122.082932
   "vCard": {
     "convertedProperties": {
       "addresses/k1/coordinates": {
-        "name": "GEO"
+        "name": "geo"
       }
     }
   }
@@ -978,7 +978,7 @@ RELATED;TYPE=friend:urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6
     "convertedProperties": {
       "relatedTo/Please contact my assistant JaneDoe for any inquiries.": {
         "parameters": {
-          "VALUE": "TEXT"
+          "value": "TEXT"
         }
       }
     }
@@ -1062,7 +1062,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
     "convertedProperties": {
       "emails/k1/address": {
         "parameters": {
-          "PID": [
+          "pid": [
             "4.1",
             "5.2"
           ]
@@ -1070,17 +1070,17 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
       },
       "phones/k1/number": {
         "parameters": {
-          "PID": [
+          "pid": [
             "3.1",
             "4.2"
           ],
-          "VALUE": "URI"
+          "value": "URI"
         }
       }
     },
     "properties": [
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -1089,7 +1089,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
         ]
       ],
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -1207,7 +1207,7 @@ END:VCARD
     "convertedProperties": {
       "emails/k1/address": {
         "parameters": {
-          "PID": [
+          "pid": [
             "4.2",
             "5.1"
           ]
@@ -1216,7 +1216,7 @@ END:VCARD
     },
     "properties": [
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -1225,7 +1225,7 @@ END:VCARD
         ]
       ],
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -1292,35 +1292,35 @@ END:VCARD
     "convertedProperties": {
       "emails/k1/address": {
         "parameters": {
-          "PID": "1.1"
+          "pid": "1.1"
         }
       },
       "emails/k2/address": {
         "parameters": {
-          "PID": "2.2"
+          "pid": "2.2"
         }
       },
       "name/full": {
         "parameters": {
-          "PID": "1.1"
+          "pid": "1.1"
         }
       },
       "phones/k1/number": {
         "parameters": {
-          "PID": "1.1",
-          "VALUE": "URI"
+          "pid": "1.1",
+          "value": "URI"
         }
       },
       "phones/k2/number": {
         "parameters": {
-          "PID": "2.2",
-          "VALUE": "URI"
+          "pid": "2.2",
+          "value": "URI"
         }
       }
     },
     "properties": [
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -1329,7 +1329,7 @@ END:VCARD
         ]
       ],
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -1515,28 +1515,28 @@ END:VCARD
   "vCard": {
     "convertedProperties": {
       "addresses/k1/coordinates": {
-        "name": "GEO",
+        "name": "geo",
         "parameters": {
-          "TYPE": "WORK"
+          "type": "WORK"
         }
       },
       "addresses/k1/timeZone": {
-        "name": "TZ"
+        "name": "tz"
       },
       "phones/k1/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       },
       "phones/k2/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       }
     },
     "properties": [
       [
-        "GENDER",
+        "gender",
         {},
         "unknown",
         "M"

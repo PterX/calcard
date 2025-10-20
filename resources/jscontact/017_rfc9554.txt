@@ -133,7 +133,7 @@ GRAMGENDER;LANGUAGE=de:feminine
     "convertedProperties": {
       "speakToAs/grammaticalGender": {
         "parameters": {
-          "LANGUAGE": "de"
+          "language": "de"
         }
       }
     }
@@ -167,12 +167,12 @@ PRONOUNS;LANGUAGE=en;PREF=2:they/them
     "convertedProperties": {
       "speakToAs/pronouns/k1/pronouns": {
         "parameters": {
-          "LANGUAGE": "en"
+          "language": "en"
         }
       },
       "speakToAs/pronouns/k2/pronouns": {
         "parameters": {
-          "LANGUAGE": "en"
+          "language": "en"
         }
       }
     }
@@ -204,7 +204,7 @@ SOCIALPROFILE;SERVICE-TYPE=SomeSite;VALUE=text:peter94
     "convertedProperties": {
       "onlineServices/k3/uri": {
         "parameters": {
-          "VALUE": "TEXT"
+          "value": "TEXT"
         }
       }
     }
@@ -287,7 +287,7 @@ FN;DERIVED=TRUE:Mr. John Quinlan
     "convertedProperties": {
       "name/full": {
         "parameters": {
-          "DERIVED": "true"
+          "derived": "true"
         }
       }
     }
@@ -387,13 +387,13 @@ N;ALTID=1;PHONETIC=jyut;
     "convertedProperties": {
       "localizations/yue/name~1components": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "name/components": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "zh-hant"
+          "altid": "1",
+          "language": "zh-hant"
         }
       }
     }

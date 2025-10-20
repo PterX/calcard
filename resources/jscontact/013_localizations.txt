@@ -22,18 +22,18 @@ TITLE;ALTID=1;LANGUAGE=fr:Patron
     "convertedProperties": {
       "localizations/fr/titles~1k1~1name": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "name/full": {
         "parameters": {
-          "LANGUAGE": "en"
+          "language": "en"
         }
       },
       "titles/k1/name": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "en"
+          "altid": "1",
+          "language": "en"
         }
       }
     }
@@ -67,12 +67,12 @@ TITLE;ALTID=1;LANGUAGE=fr:Patron
     "convertedProperties": {
       "localizations/fr/titles~1k1~1name": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "titles/k1/name": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       }
     }
@@ -112,13 +112,13 @@ N;ALTID=1;PHONETIC=jyut;SCRIPT=Latn;LANGUAGE=yue:syun1;zung1saan1;man4,jat6sin1;
     "convertedProperties": {
       "localizations/yue/name~1components": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "name/components": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "zh-hant"
+          "altid": "1",
+          "language": "zh-hant"
         }
       }
     }
@@ -183,13 +183,13 @@ N;SCRIPT=Latn;PHONETIC=JYUT;JSCOMPS=";0;1;2;2,1";ALTID=1;LANGUAGE=yue:syun1;zung
     "convertedProperties": {
       "localizations/yue/name~1components": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "name/components": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "zh-hant"
+          "altid": "1",
+          "language": "zh-hant"
         }
       }
     }
@@ -226,24 +226,24 @@ PRONOUNS;ALTID=2;PREF=1;LANGUAGE=es:je/jit
     "convertedProperties": {
       "localizations/es/speakToAs~1pronouns~1k1~1pronouns": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       },
       "localizations/es/speakToAs~1pronouns~1k2~1pronouns": {
         "parameters": {
-          "ALTID": "2"
+          "altid": "2"
         }
       },
       "speakToAs/pronouns/k1/pronouns": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "en"
+          "altid": "1",
+          "language": "en"
         }
       },
       "speakToAs/pronouns/k2/pronouns": {
         "parameters": {
-          "ALTID": "2",
-          "LANGUAGE": "en"
+          "altid": "2",
+          "language": "en"
         }
       }
     }
@@ -334,13 +334,13 @@ ADR;ALTID=1;TYPE=work;LANGUAGE=es;LABEL="Oficina Principal":
     "convertedProperties": {
       "addresses/k1/components": {
         "parameters": {
-          "ALTID": "1",
-          "LANGUAGE": "en"
+          "altid": "1",
+          "language": "en"
         }
       },
       "localizations/es/addresses~1k1~1components": {
         "parameters": {
-          "ALTID": "1"
+          "altid": "1"
         }
       }
     }

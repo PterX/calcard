@@ -4,7 +4,7 @@ GENDER:O;intersex
 "vCard": {
     "properties": [
       [
-        "GENDER",
+        "gender",
         {},
         "unknown",
         [

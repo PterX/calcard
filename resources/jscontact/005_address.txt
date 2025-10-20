@@ -35,10 +35,10 @@ TZ:+0100
 "vCard": {
     "convertedProperties": {
       "addresses/k1/timeZone": {
-        "name": "TZ"
+        "name": "tz"
       },
       "addresses/k2/coordinates": {
-        "name": "GEO"
+        "name": "geo"
       }
     }
 }
@@ -148,10 +148,10 @@ TZ:-0300
   "vCard": {
     "convertedProperties": {
       "addresses/k2/timeZone": {
-        "name": "TZ"
+        "name": "tz"
       },
       "addresses/k3/coordinates": {
-        "name": "GEO"
+        "name": "geo"
       }
     }
   }

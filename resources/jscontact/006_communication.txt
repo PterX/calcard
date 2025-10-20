@@ -28,7 +28,7 @@ IMPP;PREF=1:xmpp:alice@example.com
 "vCard": {
   "convertedProperties": {
     "onlineServices/k1/uri": {
-      "name": "IMPP"
+      "name": "impp"
     }
   }
 }
@@ -98,12 +98,12 @@ TEL;VALUE=uri;TYPE=home:tel:+33-01-23-45-67
     "convertedProperties": {
       "phones/k1/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       },
       "phones/k2/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       }
     }
@@ -132,12 +132,12 @@ TEL;PROP-ID=PHONE-B;VALUE=uri;TYPE=home:tel:+33-01-23-45-67
     "convertedProperties": {
       "phones/PHONE-A/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       },
       "phones/PHONE-B/number": {
         "parameters": {
-          "VALUE": "URI"
+          "value": "URI"
         }
       }
     }

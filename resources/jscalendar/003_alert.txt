@@ -37,7 +37,7 @@ JSID:k1
       "name": "valarm",
       "properties": [
         [
-          "ACTION",
+          "action",
           {},
           "unknown",
           "AUDIO"
@@ -81,7 +81,7 @@ JSID:k1
             "convertedProperties": {
               "trigger": {
                 "parameters": {
-                  "VALUE": "DATE-TIME"
+                  "value": "DATE-TIME"
                 }
               }
             },
@@ -116,13 +116,13 @@ END:VALARM
       "name": "valarm",
       "properties": [
         [
-          "DESCRIPTION",
+          "description",
           {},
           "unknown",
           "Event reminder"
         ],
         [
-          "UID",
+          "uid",
           {},
           "unknown",
           "8297C37D-BA2D-4476-91AE-C1EAA364F8E1"
@@ -143,19 +143,19 @@ END:VALARM
       "convertedProperties": {
               "trigger": {
                 "parameters": {
-                  "VALUE": "DATE-TIME"
+                  "value": "DATE-TIME"
                 }
               }
       },
       "properties": [
         [
-          "DESCRIPTION",
+          "description",
           {},
           "unknown",
           "Event reminder"
         ],
         [
-          "UID",
+          "uid",
           {},
           "unknown",
           "DE7B5C34-83FF-47FE-BE9E-FF41AE6DD097"
@@ -207,13 +207,13 @@ JSID:k1
       "name": "valarm",
       "properties": [
         [
-          "DESCRIPTION",
+          "description",
           {},
           "unknown",
           "Breakfast meeting"
         ],
         [
-          "UID",
+          "uid",
           {},
           "unknown",
           "04DC2968-6468-4B92-BC09-5A17D7D3D4E"

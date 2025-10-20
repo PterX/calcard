@@ -28,10 +28,10 @@ item1.X-FOO;X-BAR=Hello:World!
 "vCard": {
     "properties": [
       [
-        "X-FOO",
+        "x-foo",
         {
-          "GROUP": "item1",
-          "X-BAR": "Hello"
+          "group": "item1",
+          "x-bar": "Hello"
         },
         "unknown",
         "World!"
@@ -51,7 +51,7 @@ EMAIL;X-FOO=Bar:jane_doe@example.com
     "convertedProperties": {
       "emails/k1/address": {
         "parameters": {
-          "X-FOO": "Bar"
+          "x-foo": "Bar"
         }
       }
     }

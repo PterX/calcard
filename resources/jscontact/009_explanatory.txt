@@ -15,7 +15,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
 "vCard": {
     "properties": [
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -24,7 +24,7 @@ CLIENTPIDMAP:2;urn:uuid:d89c9c7a-2e1b-4832-82de-7e992d95faa5
         ]
       ],
       [
-        "CLIENTPIDMAP",
+        "clientpidmap",
         {},
         "unknown",
         [
@@ -108,22 +108,22 @@ item1.X-ABLabel:foo
 "vCard": {
     "convertedProperties": {
       "phones/k1/label": {
-        "name": "X-ABLabel",
+        "name": "x-ablabel",
         "parameters": {
-          "GROUP": "item1"
+          "group": "item1"
         }
       },
       "phones/k1/number": {
         "parameters": {
-          "GROUP": "item1",
-          "VALUE": "URI"
+          "group": "item1",
+          "value": "URI"
         }
       }
     }
 }
 > convert
 item1.TEL;PROP-ID=k1;VALUE=uri:tel:+1-555-555-5555
-item1.X-ABLabel:foo
+item1.X-ABLABEL:foo
 
 > test CATEGORIES with parameters
 CATEGORIES;X-PROP=1:IETF,Industry,Information Technology,internet
@@ -141,7 +141,7 @@ CATEGORIES;X-PROP=2:Friends,Family
     "convertedProperties": {
       "keywords": {
         "parameters": {
-          "X-PROP": [
+          "x-prop": [
             "1",
             "2"
           ]

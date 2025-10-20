@@ -86,24 +86,24 @@ BIRTHPLACE;ALT-ID=1;LANGUAGE=es:Calle Principal 123\nCualquier Ciudad\, CA 91921
     "convertedProperties": {
       "anniversaries/k1/place/full": {
         "parameters": {
-          "ALT-ID": "1",
-          "LANGUAGE": "en"
+         "alt-id": "1",
+          "language": "en"
         }
       },
       "anniversaries/k2/place/full": {
         "parameters": {
-          "ALT-ID": "1",
-          "LANGUAGE": "en"
+         "alt-id": "1",
+          "language": "en"
         }
       },
       "localizations/es/anniversaries~1k1~1place~1full": {
         "parameters": {
-          "ALT-ID": "1"
+         "alt-id": "1"
         }
       },
       "localizations/es/anniversaries~1k2~1place~1full": {
         "parameters": {
-          "ALT-ID": "1"
+         "alt-id": "1"
         }
       }
     }

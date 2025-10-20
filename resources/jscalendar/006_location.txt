@@ -40,7 +40,7 @@ GEO;JSID=loc1:45.5;-93.3
   "name": "vevent",
   "convertedProperties": {
     "locations/loc1/coordinates": {
-      "name": "GEO"
+      "name": "geo"
     }
   }
 }
@@ -60,7 +60,7 @@ GEO;JSID=loc1:27.175;78.041944
   "name": "vevent",
   "convertedProperties": {
     "locations/loc1/coordinates": {
-      "name": "GEO"
+      "name": "geo"
     }
   }
 }
@@ -80,7 +80,7 @@ GEO:48.858222;2.2945
       "name": "vlocation",
       "convertedProperties": {
         "coordinates": {
-          "name": "GEO"
+          "name": "geo"
         }
       }
     }
@@ -184,13 +184,13 @@ END:VLOCATION
       "name": "vlocation",
       "properties": [
         [
-          "UID",
+          "uid",
           {},
           "unknown",
           "4954DC22-5BD6-4E98-844D-0302982F54AC"
         ],
         [
-          "STRUCTURED-DATA",
+          "structured-data",
           {},
           "URI",
           "http://dir.example.com/venues/big-hall.vcf"
