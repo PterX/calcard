@@ -1494,7 +1494,7 @@ END:VCARD
         "work": true
       },
       "features": {
-        "cell": true,
+        "mobile": true,
         "text": true,
         "video": true,
         "voice": true
