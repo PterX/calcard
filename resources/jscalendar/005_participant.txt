@@ -34,7 +34,7 @@ ORGANIZER:mailto:organizer@example.com
     "participationStatus": "tentative",
     "expectReply": true,
     "description": "some description",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "participant",
       "convertedProperties": {
           "calendarAddress": {
@@ -89,7 +89,7 @@ UID:47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2
   "59eb121c-e8f2-558a-9049-ef750a5976bd": {
     "@type": "Participant",
     "calendarAddress": "mailto:foo@example.com",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "participant",
       "convertedProperties": {
         "calendarAddress": {
@@ -157,7 +157,7 @@ JSID:47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2
   "47AD2E1C-49D4-45DF-BD83-8398ACC7D8E2": {
     "@type": "Participant",
     "description": "A participant",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "participant",
       "properties": [
         [
@@ -182,7 +182,7 @@ JSID:858DA9AE-695B-43CD-BA4E-294C945356BC
   "858DA9AE-695B-43CD-BA4E-294C945356BC": {
     "@type": "Participant",
     "name": "John",
-    "iCalComponent": {
+    "iCalendar": {
             "name": "participant",
             "properties": [
               [

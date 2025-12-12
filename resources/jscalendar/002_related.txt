@@ -17,7 +17,7 @@ CATEGORIES;X-NAME=world:Meeting
   "Favorites": true,
   "Meeting": true
 },
-"iCalComponent": {
+"iCalendar": {
     "convertedProperties": {
         "keywords": {
         "parameters": {
@@ -60,7 +60,7 @@ RELATED-TO;RELTYPE=CHILD;X-NAME=world:4E05861C-A0C9-46AC-9A66-760FC1E0E167
   "4120A9B1-1133-4AC0-9185-C4C8396048ED": {
   }
 },
-"iCalComponent": {
+"iCalendar": {
     "convertedProperties": {
         "relatedTo/4120A9B1-1133-4AC0-9185-C4C8396048ED": {
             "parameters": {

@@ -33,7 +33,7 @@ JSID:k1
 "alerts": {
   "k1": {
     "@type": "Alert",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "valarm",
       "properties": [
         [
@@ -77,7 +77,7 @@ JSID:k1
       "@type": "AbsoluteTrigger",
       "when": "2025-03-02T01:02:03Z"
     },
-    "iCalComponent": {
+    "iCalendar": {
             "convertedProperties": {
               "trigger": {
                 "parameters": {
@@ -112,7 +112,7 @@ END:VALARM
 "alerts": {
   "alert1": {
     "@type": "Alert",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "valarm",
       "properties": [
         [
@@ -138,7 +138,7 @@ END:VALARM
   },
   "alert2": {
     "@type": "Alert",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "valarm",
       "convertedProperties": {
               "trigger": {
@@ -203,7 +203,7 @@ JSID:k1
 "alerts": {
   "k1": {
     "@type": "Alert",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "valarm",
       "properties": [
         [

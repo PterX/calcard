@@ -7,7 +7,7 @@ ATTACH:https://example.com/foo.pdf
     "href": "https://example.com/foo.pdf"
   }
 },
-"iCalComponent": {
+"iCalendar": {
     "convertedProperties": {
         "links/245708bf-8e07-5d3b-a5da-2974a63c3b91/href": {
         "name": "attach"
@@ -28,7 +28,7 @@ ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:iVBORw
     "contentType": "image/png"
   } 
 },
-"iCalComponent": {
+"iCalendar": {
     "convertedProperties": {
         "links/5cfd5bea-64f1-5bae-846b-d958abb5411e/href": {
         "name": "attach",
@@ -56,7 +56,7 @@ IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;LABEL="An image":
     "title": "An image"
   }
 },
-"iCalComponent": {
+"iCalendar": {
         "convertedProperties": {
           "links/2c42ac17-1eaf-5a75-a216-aef848785d79/href": {
             "name": "image"
@@ -77,7 +77,7 @@ LINK;LINKREL=preview;LABEL=Venue:
     "rel": "preview"
   }
 },
-"iCalComponent": {
+"iCalendar": {
         "convertedProperties": {
           "links/63023b12-fcf4-53fa-841d-8c1684b9f80b/href": {
             "name": "link"
@@ -97,7 +97,7 @@ JSPROP;JSPTR="links/mylink1/example.com:foo":"bar"
     "example.com:foo": "bar"
   }
 },
-"iCalComponent": {
+"iCalendar": {
         "convertedProperties": {
           "links/mylink1/href": {
             "name": "attach"
@@ -118,7 +118,7 @@ IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;LABEL="An image":
   "entries": [
     {
       "@type": "Event",
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "links/245708bf-8e07-5d3b-a5da-2974a63c3b91/href": {
             "name": "attach"

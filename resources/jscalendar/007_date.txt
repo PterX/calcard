@@ -6,7 +6,7 @@ DTEND;TZID=Asia/Bangkok:20241018T040000
 "timeZone": "Europe/Berlin",
 "duration": "PT10H",
 "endTimeZone": "Asia/Bangkok",
-"iCalComponent": {
+"iCalendar": {
         "convertedProperties": {
           "duration": {
             "name": "dtend"
@@ -22,7 +22,7 @@ DTEND;TZID=Australia/Melbourne:20241002T140000
 "start": "2024-10-02T13:00:00",
 "timeZone": "Australia/Melbourne",
 "duration": "PT1H",
-"iCalComponent": {
+"iCalendar": {
         "convertedProperties": {
           "duration": {
             "name": "dtend"
@@ -39,7 +39,7 @@ DTEND;VALUE=DATE:20240107
 "timeZone": null,
 "duration": "P5D",
 "showWithoutTime": true,
-"iCalComponent": {
+"iCalendar": {
     "name": "vevent",
     "convertedProperties": {
           "duration": {
@@ -97,7 +97,7 @@ DTSTART;VALUE=DATE:20240921
 "start": "2024-09-21T00:00:00",
 "timeZone": null,
 "showWithoutTime": true,
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "start": {
             "parameters": {
@@ -140,7 +140,7 @@ DUE;VALUE=DATE:20240921
 "due": "2024-09-21T00:00:00",
 "timeZone": null,
 "showWithoutTime": true,
-"iCalComponent": {
+"iCalendar": {
  "convertedProperties": {
           "due": {
             "parameters": {
@@ -161,7 +161,7 @@ DUE;VALUE=DATE:20250221
 "due": "2025-02-21T00:00:00",
 "timeZone": null,
 "showWithoutTime": true,
-"iCalComponent": {
+"iCalendar": {
         "convertedProperties": {
           "due": {
             "parameters": {
@@ -213,7 +213,7 @@ END:VCALENDAR
       "@type": "Event",
       "duration": "PT1H30M",
       "freeBusyStatus": "busy",
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "duration": {
             "name": "dtend",
@@ -262,7 +262,7 @@ END:VCALENDAR
       "@type": "Event",
       "duration": "PT4H",
       "endTimeZone": "America/Los_Angeles",
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "duration": {
             "name": "dtend"
@@ -335,7 +335,7 @@ END:VCALENDAR
       "@type": "Event",
       "duration": "PT3H",
       "endTimeZone": "America/Los_Angeles",
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "duration": {
             "name": "dtend"
@@ -362,7 +362,7 @@ END:VCALENDAR
     },
     {
       "@type": "Event",
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "recurrenceOverrides/2019-03-08T22:00:00": {
             "parameters": {
@@ -420,7 +420,7 @@ DTSTART;TZID="W. Europe Standard Time":20241121T105302
 > convert DTSTART property with a non-IANA TZID	parameter
 "start": "2024-11-21T10:53:02",	
 "timeZone": "Europe/Berlin",	
-"iCalComponent": {	
+"iCalendar": {	
   "name": "vevent",	
   "convertedProperties": {	
     "start": {	

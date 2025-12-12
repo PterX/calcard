@@ -205,12 +205,12 @@ END:VCALENDAR
     "2": {
       "@type": "Location",
       "name": "Narita International Airport (NRT)",
-      "iCalComponent": {
+      "iCalendar": {
             "name": "vlocation"
         }
     }
   },
-  "iCalComponent": {
+  "iCalendar": {
         "convertedProperties": {
           "duration": {
             "name": "dtend"
@@ -313,7 +313,7 @@ END:VCALENDAR
       "name": "The Music Bowl",
       "description": "Music Bowl, Central Park, New York",
       "coordinates": "geo:40.7829,-73.9654",
-      "iCalComponent": {
+      "iCalendar": {
             "name": "vlocation"
       }
     },
@@ -324,7 +324,7 @@ END:VCALENDAR
       "locationTypes": {
         "parking": true
       },
-      "iCalComponent": {
+      "iCalendar": {
             "name": "vlocation"
       }
     }
@@ -422,7 +422,7 @@ END:VCALENDAR
       "@type": "Location",
       "name": "Math lab room 1",
       "description": "Math Lab I, Department of Mathematics",
-      "iCalComponent": {
+      "iCalendar": {
           "name": "vlocation"
        }
     }
@@ -447,7 +447,7 @@ END:VCALENDAR
           "@type": "Location",
           "name": "Big Auditorium",
           "description": "Big Auditorium, Other Road",
-          "iCalComponent": {
+          "iCalendar": {
                 "name": "vlocation"
           }
         }
@@ -634,7 +634,7 @@ END:VCALENDAR
         "k1": {
           "@type": "Alert",
           "action": "display",
-          "iCalComponent": {
+          "iCalendar": {
             "name": "valarm",
             "properties": [
               [
@@ -655,7 +655,7 @@ END:VCALENDAR
       "description": "\n\n\n\n________________________________________________________________________________\nMicrosoft Teams-Besprechung\n\nNehmen Sie teil auf Ihrem Computer oder auf der mobilen App\nKlicken Sie hier, um an der Besprechung teilzunehmen<https://url>\n\nWeitere Infos<https://aka.ms/JoinTeamsMeeting> | Besprechungsoptionen<url>\n\n________________________________________________________________________________\n",
       "duration": "PT30M",
       "freeBusyStatus": "busy",
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "description": {
             "parameters": {
@@ -725,7 +725,7 @@ END:VCALENDAR
       "updated": "2020-11-19T11:29:15Z"
     }
   ],
-  "iCalComponent": {
+  "iCalendar": {
     "components": [
       [
         "vtimezone",

@@ -22,7 +22,7 @@ END:X-BAZ
 {
   "@type": "Event",
   "title": "test",
-  "iCalComponent": {
+  "iCalendar": {
     "name": "vevent",
     "convertedProperties": {
       "title": {
@@ -107,7 +107,7 @@ END:VCALENDAR
       "description": "It will pay the bills.",
       "duration": "PT8H",
       "freeBusyStatus": "busy",
-      "iCalComponent": {
+      "iCalendar": {
         "convertedProperties": {
           "duration": {
             "name": "dtend"
@@ -136,7 +136,7 @@ END:VCALENDAR
       "updated": "2009-03-10T03:43:03Z"
     }
   ],
-  "iCalComponent": {
+  "iCalendar": {
     "components": [
       [
         "vtimezone",

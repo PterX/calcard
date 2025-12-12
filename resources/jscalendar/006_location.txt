@@ -36,7 +36,7 @@ GEO;JSID=loc1:45.5;-93.3
     "coordinates": "geo:45.5,-93.3"
   }
 },
-"iCalComponent": {
+"iCalendar": {
   "name": "vevent",
   "convertedProperties": {
     "locations/loc1/coordinates": {
@@ -56,7 +56,7 @@ GEO;JSID=loc1:27.175;78.041944
     "coordinates": "geo:27.175,78.041944"
   }
 },
-"iCalComponent": {
+"iCalendar": {
   "name": "vevent",
   "convertedProperties": {
     "locations/loc1/coordinates": {
@@ -76,7 +76,7 @@ GEO:48.858222;2.2945
     "@type": "Location",
     "name": "Eiffel Tower",
     "coordinates": "geo:48.858222,2.2945",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "vlocation",
       "convertedProperties": {
         "coordinates": {
@@ -118,7 +118,7 @@ END:VLOCATION
       "parking": true
     },
     "coordinates": "geo:40.71427,-74.00597",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "vlocation"
     }
   },    
@@ -128,7 +128,7 @@ END:VLOCATION
     "locationTypes": {
       "bar": true
     },
-    "iCalComponent": {
+    "iCalendar": {
       "name": "vlocation"
     }    
   }
@@ -161,7 +161,7 @@ END:VLOCATION
   "591b1fd1-35dc-5a58-a966-9f19a17258b2": {
     "@type": "Location",
     "name": "Room B",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "vlocation"
     }
   }
@@ -180,7 +180,7 @@ END:VLOCATION
   "93cae32f-1384-54ca-980e-b97e667dfdaf": {
     "@type": "Location",
     "name": "The venue",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "vlocation",
       "properties": [
         [
@@ -220,7 +220,7 @@ END:VLOCATION
   "loc1": {
     "@type": "Location",
     "coordinates": "geo:27.175,78.041944;123",
-    "iCalComponent": {
+    "iCalendar": {
       "name": "vlocation"
     },
     "name": "Taj Mahal"
