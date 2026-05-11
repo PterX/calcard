@@ -1015,6 +1015,7 @@ impl ICalendarDuration {
         }
 
         let mut num: u32 = 0;
+        let mut saw_component = false;
         for ch in iter {
             match ch {
                 b'0'..=b'9' => {
@@ -1024,22 +1025,27 @@ impl ICalendarDuration {
                 b'W' | b'w' => {
                     dur.weeks = num;
                     num = 0;
+                    saw_component = true;
                 }
                 b'D' | b'd' => {
                     dur.days = num;
                     num = 0;
+                    saw_component = true;
                 }
                 b'H' | b'h' => {
                     dur.hours = num;
                     num = 0;
+                    saw_component = true;
                 }
                 b'M' | b'm' => {
                     dur.minutes = num;
                     num = 0;
+                    saw_component = true;
                 }
                 b'S' | b's' => {
                     dur.seconds = num;
                     num = 0;
+                    saw_component = true;
                 }
                 _ => {
                     if !ch.is_ascii_whitespace() {
@@ -1049,7 +1055,7 @@ impl ICalendarDuration {
             }
         }
 
-        if !dur.is_empty() { Some(dur) } else { None }
+        if saw_component { Some(dur) } else { None }
     }
 }
 
@@ -2142,6 +2148,17 @@ mod tests {
                     seconds: 0,
                 },
             ),
+            (
+                "PT0S",
+                ICalendarDuration {
+                    neg: false,
+                    weeks: 0,
+                    days: 0,
+                    hours: 0,
+                    minutes: 0,
+                    seconds: 0,
+                },
+            ),
         ] {
             let mut parser = Parser::new(rule);
             let token = parser.token().unwrap();
@@ -2152,5 +2169,14 @@ mod tests {
                 "Failed to parse: {rule}",
             );
         }
+
+        assert!(ICalendarDuration::parse(b"P").is_none());
+
+        // Duration zero
+        let zero = ICalendarDuration::default();
+        assert_eq!(zero.to_string(), "PT0S");
+
+        let reparsed = ICalendarDuration::parse(zero.to_string().as_bytes()).unwrap();
+        assert_eq!(reparsed, zero);
     }
 }
