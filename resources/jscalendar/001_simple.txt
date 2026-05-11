@@ -131,6 +131,15 @@ STATUS:IN-PROCESS
   "progress": "in-process"
 }
 
+> test STATUS:CANCELLED -> progress
+BEGIN:VTODO
+STATUS:CANCELLED
+> convert
+{
+  "@type": "Task",
+  "progress": "cancelled"
+}
+
 > test SOURCE
 BEGIN:VCALENDAR
 SOURCE:https://example.com/holidays.ics
