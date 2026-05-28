@@ -12,36 +12,38 @@ END:VCARD
 
 BEGIN:VCARD
 VERSION:2.1
-N:Ñ Ñ Ñ Ñ ;;;;
-FN:Ñ Ñ Ñ Ñ Ñ 
+N;CHARSET=UTF-8:Ñ Ñ Ñ Ñ ;;;;
+FN;CHARSET=UTF-8:Ñ Ñ Ñ Ñ Ñ 
 TEL;TYPE=CELL;PREF:123456789
 CATEGORIES:My Contacts
 END:VCARD
 
 BEGIN:VCARD
 VERSION:2.1
-N:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ;;;;
-FN:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ
+N;CHARSET=UTF-8:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ;;;;
+FN;CHARSET=UTF-8:Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ Ñ
 TEL;TYPE=CELL;PREF:123456
 TEL;TYPE=HOME:234567
 TEL;TYPE=CELL:3456789
 TEL;TYPE=HOME:45678901
 CATEGORIES:My Contacts
-NOTE:Ñ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ 
-NOTE:Ñ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ 
+NOTE;CHARSET=UTF-8:Ñ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ
+  Ñ 
+NOTE;CHARSET=UTF-8:Ñ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ Ñ Ñ Ñ ÑÑ Ñ Ñ Ñ
+  Ñ 
 END:VCARD
 
 BEGIN:VCARD
 VERSION:2.1
-N:Ñ Ñ ;Ñ Ñ Ñ ;;;
-FN:Ñ Ñ Ñ Ñ 
+N;CHARSET=UTF-8:Ñ Ñ ;Ñ Ñ Ñ ;;;
+FN;CHARSET=UTF-8:Ñ Ñ Ñ Ñ 
 TEL;TYPE=CELL;PREF:123456
 TEL;TYPE=WORK:123456
 TEL;TYPE=WORK,FAX:123456
 EMAIL;PREF;TYPE=WORK:bob@company.com
-EMAIL;PREF:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
-ORG:ÑÑÑÑÑÑÑÑÑÑÑÑ
-ORG:ÑÑÑÑÑÑÑÑÑÑÑÑ
+EMAIL;PREF;CHARSET=UTF-8:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+ORG;CHARSET=UTF-8:ÑÑÑÑÑÑÑÑÑÑÑÑ
+ORG;CHARSET=UTF-8:ÑÑÑÑÑÑÑÑÑÑÑÑ
 URL:www.company.com
 URL:http://www.company.com
 PHOTO;JPEG;ENCODING=b:/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICA
@@ -65,16 +67,16 @@ END:VCARD
 
 BEGIN:VCARD
 VERSION:2.1
-N:ÑÑÑÑ;;;;
-FN:ÑÑÑÑ
+N;CHARSET=UTF-8:ÑÑÑÑ;;;;
+FN;CHARSET=UTF-8:ÑÑÑÑ
 TEL;TYPE=CELL;PREF:55556666
 EMAIL;PREF:henry@company.com
-ORG:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
- ÑÑÑÑÑÑÑÑ
+ORG;CHARSET=UTF-8:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+ ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
 ORG;ENCODING=b:w5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDk
  cORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkcORw5HDkYA=
-ORG:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
- ÑÑÑÑÑÑÑÑ
+ORG;CHARSET=UTF-8:ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
+ ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ
 CATEGORIES:My Contacts
 END:VCARD
 

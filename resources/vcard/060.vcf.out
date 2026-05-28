@@ -10,6 +10,7 @@ EMAIL:email@email.com
 EMAIL:work@work.com
 URL:www.email.com
 URL:www.work.com
-LABEL:Box 1234\nWorkvägen   2\nWorkvägen 1\nUmeå\nVästerbotten\n12345\nS
+LABEL;CHARSET=UTF-8:Box 1234\nWorkvägen   2\nWorkvägen 1\nUmeå\nVästerbo
+ tten\n12345\nS
 END:VCARD
 

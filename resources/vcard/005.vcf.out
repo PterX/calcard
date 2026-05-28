@@ -14,7 +14,7 @@ FN:Lenn Biernoth
 N:Biernoth;Lenn;;;
 X-MAIDENNAME:Iser
 BDAY:1951-11-22
-BIRTHPLACE:Hörstel
+BIRTHPLACE;CHARSET=UTF-8:Hörstel
 TITLE:Strassenreiniger
 CATEGORIES:Familie
 TZ:+01:00
@@ -25,8 +25,8 @@ END:VCARD
 
 BEGIN:VCARD
 VERSION:3.0
-FN:Ludwig-Götz Graßl
-N:Graßl;Ludwig-Götz;;;
+FN;CHARSET=UTF-8:Ludwig-Götz Graßl
+N;CHARSET=UTF-8:Graßl;Ludwig-Götz;;;
 X-MAIDENNAME:Schoen
 BDAY:1943-02-07
 BIRTHPLACE:Kaltennordheim
@@ -47,8 +47,8 @@ BDAY:1943-07-26
 TITLE:Rentnerin
 CATEGORIES:CCC
 TZ:+01:00
-NOTE:Interessen: Handarbeiten\nLieblingsfarbe: Weiß\nLieblingsessen: Orange
- n
+NOTE;CHARSET=UTF-8:Interessen: Handarbeiten\nLieblingsfarbe: Weiß\nLiebling
+ sessen: Orangen
 END:VCARD
 
 BEGIN:VCARD
