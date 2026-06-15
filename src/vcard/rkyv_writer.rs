@@ -128,14 +128,28 @@ impl ArchivedVCardEntry {
             }
         }
 
-        if !is_v4
-            && self
+        if !is_v4 {
+            if self
                 .values
                 .iter()
                 .any(|v| matches!(v, ArchivedVCardValue::Binary(_)))
-        {
-            write!(out, ";ENCODING=b")?;
-            line_len += 11;
+            {
+                write!(out, ";ENCODING=b")?;
+                line_len += 11;
+            }
+
+            if self.values.iter().any(|v| match v {
+                ArchivedVCardValue::Text(s) => !s.is_ascii(),
+                ArchivedVCardValue::Component(items) => items.iter().any(|s| !s.is_ascii()),
+                _ => false,
+            }) {
+                if line_len + 14 > 75 {
+                    write!(out, "\r\n ")?;
+                    line_len = 1;
+                }
+                write!(out, ";CHARSET=UTF-8")?;
+                line_len += 14;
+            }
         }
 
         write!(out, ":")?;
@@ -248,6 +262,38 @@ impl ArchivedVCardEntry {
             }
         }
         write!(out, "\r\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Entry, Parser,
+        vcard::{ArchivedVCard, VCardVersion},
+    };
+
+    #[test]
+    fn archived_v3_emits_charset_for_non_ascii() {
+        let input = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:José\r\nEND:VCARD\r\n".to_string();
+        let mut parser = Parser::new(&input);
+        let Entry::VCard(vcard) = parser.entry() else {
+            panic!("expected vcard");
+        };
+
+        let mut owned = String::new();
+        vcard.write_to(&mut owned, VCardVersion::V3_0).unwrap();
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).unwrap();
+        let archived = rkyv::access::<ArchivedVCard, rkyv::rancor::Error>(&bytes).unwrap();
+        let mut archived_out = String::new();
+        archived.write_to(&mut archived_out, VCardVersion::V3_0).unwrap();
+
+        assert!(owned.contains(";CHARSET=UTF-8"), "owned missing charset: {owned}");
+        assert!(
+            archived_out.contains(";CHARSET=UTF-8"),
+            "archived missing charset: {archived_out}"
+        );
+        assert_eq!(owned, archived_out);
     }
 }
 
