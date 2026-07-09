@@ -265,43 +265,6 @@ impl ArchivedVCardEntry {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{
-        Entry, Parser,
-        vcard::{ArchivedVCard, VCardVersion},
-    };
-
-    #[test]
-    fn archived_v3_emits_charset_for_non_ascii() {
-        let input = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:José\r\nEND:VCARD\r\n".to_string();
-        let mut parser = Parser::new(&input);
-        let Entry::VCard(vcard) = parser.entry() else {
-            panic!("expected vcard");
-        };
-
-        let mut owned = String::new();
-        vcard.write_to(&mut owned, VCardVersion::V3_0).unwrap();
-
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).unwrap();
-        let archived = rkyv::access::<ArchivedVCard, rkyv::rancor::Error>(&bytes).unwrap();
-        let mut archived_out = String::new();
-        archived
-            .write_to(&mut archived_out, VCardVersion::V3_0)
-            .unwrap();
-
-        assert!(
-            owned.contains(";CHARSET=UTF-8"),
-            "owned missing charset: {owned}"
-        );
-        assert!(
-            archived_out.contains(";CHARSET=UTF-8"),
-            "archived missing charset: {archived_out}"
-        );
-        assert_eq!(owned, archived_out);
-    }
-}
-
 impl crate::common::ArchivedPartialDateTime {
     pub fn format_as_vcard(
         &self,
@@ -633,4 +596,41 @@ pub(crate) fn write_jscomps(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Entry, Parser,
+        vcard::{ArchivedVCard, VCardVersion},
+    };
+
+    #[test]
+    fn archived_v3_emits_charset_for_non_ascii() {
+        let input = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:José\r\nEND:VCARD\r\n".to_string();
+        let mut parser = Parser::new(&input);
+        let Entry::VCard(vcard) = parser.entry() else {
+            panic!("expected vcard");
+        };
+
+        let mut owned = String::new();
+        vcard.write_to(&mut owned, VCardVersion::V3_0).unwrap();
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).unwrap();
+        let archived = rkyv::access::<ArchivedVCard, rkyv::rancor::Error>(&bytes).unwrap();
+        let mut archived_out = String::new();
+        archived
+            .write_to(&mut archived_out, VCardVersion::V3_0)
+            .unwrap();
+
+        assert!(
+            owned.contains(";CHARSET=UTF-8"),
+            "owned missing charset: {owned}"
+        );
+        assert!(
+            archived_out.contains(";CHARSET=UTF-8"),
+            "archived missing charset: {archived_out}"
+        );
+        assert_eq!(owned, archived_out);
+    }
 }
