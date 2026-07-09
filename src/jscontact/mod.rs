@@ -19,6 +19,21 @@ pub mod import;
 pub mod parser;
 pub mod types;
 
+#[cfg(test)]
+thread_local! {
+    static FN_DERIVATION_DISABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn fn_derivation_disabled() -> bool {
+    FN_DERIVATION_DISABLED.with(|flag| flag.get())
+}
+
+#[cfg(test)]
+pub(crate) fn set_fn_derivation_disabled(disabled: bool) {
+    FN_DERIVATION_DISABLED.with(|flag| flag.set(disabled));
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[repr(transparent)]
 pub struct JSContact<'x, I, B>(pub Value<'x, JSContactProperty<I>, JSContactValue<I, B>>)
@@ -452,6 +467,9 @@ mod tests {
             let entry = entry.unwrap();
             let path = entry.path();
             let input = std::fs::read_to_string(&path).unwrap();
+            super::set_fn_derivation_disabled(
+                path.file_name().and_then(|name| name.to_str()) != Some("003_names.txt"),
+            );
             let mut test = Test::default();
             let mut cur_command = "";
             let mut cur_value = &mut test.test;

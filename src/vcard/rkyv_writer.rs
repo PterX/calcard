@@ -286,9 +286,14 @@ mod tests {
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).unwrap();
         let archived = rkyv::access::<ArchivedVCard, rkyv::rancor::Error>(&bytes).unwrap();
         let mut archived_out = String::new();
-        archived.write_to(&mut archived_out, VCardVersion::V3_0).unwrap();
+        archived
+            .write_to(&mut archived_out, VCardVersion::V3_0)
+            .unwrap();
 
-        assert!(owned.contains(";CHARSET=UTF-8"), "owned missing charset: {owned}");
+        assert!(
+            owned.contains(";CHARSET=UTF-8"),
+            "owned missing charset: {owned}"
+        );
         assert!(
             archived_out.contains(";CHARSET=UTF-8"),
             "archived missing charset: {archived_out}"
