@@ -130,3 +130,36 @@ END:VCALENDAR
     }
   ]
 }
+
+> test JSCalendar - RRULE with RSCALE and SKIP
+{
+  "@type": "Event",
+  "uid": "4bd6ba4a-1c40-4dc0-a4f8-c1c4d3a97a2e",
+  "start": "2026-07-16T10:00:00",
+  "timeZone": "Etc/UTC",
+  "duration": "PT1H",
+  "recurrenceRule": {
+    "frequency": "monthly",
+    "rscale": "gregorian",
+    "skip": "omit"
+  }
+}
+> convert
+BEGIN:VEVENT
+DTSTART:20260716T100000Z
+DURATION:PT1H
+UID:4bd6ba4a-1c40-4dc0-a4f8-c1c4d3a97a2e
+RRULE:FREQ=MONTHLY;RSCALE=GREGORIAN;SKIP=OMIT
+END:VEVENT
+END:VCALENDAR
+
+> test RRULE with SKIP and no RSCALE
+DTSTART:20230101T130000Z
+RRULE:FREQ=MONTHLY;SKIP=OMIT
+> convert
+"start": "2023-01-01T13:00:00",
+"timeZone": "Etc/UTC",
+"recurrenceRule": {
+  "frequency": "monthly",
+  "skip": "omit"
+}
