@@ -11,7 +11,10 @@ use crate::{
         parser::Timestamp,
         writer::{write_bytes, write_jscomps, write_param_value, write_text},
     },
-    vcard::{VCardParameterName, VCardParameterValue, VCardProperty, VCardValue, ValueSeparator},
+    vcard::{
+        VCardParameterName, VCardParameterValue, VCardProperty, VCardValue, ValueSeparator,
+        media_type::legacy_media_type,
+    },
 };
 use std::fmt::{Display, Write};
 
@@ -123,13 +126,27 @@ impl VCardEntry {
         }
 
         if !is_v4 {
-            if self
-                .values
-                .iter()
-                .any(|v| matches!(v, VCardValue::Binary(_)))
-            {
+            if let Some(data) = self.values.iter().find_map(|v| match v {
+                VCardValue::Binary(data) => Some(data),
+                _ => None,
+            }) {
                 write!(out, ";ENCODING=b")?;
                 line_len += 11;
+
+                if let Some(media_type) = data.content_type.as_deref()
+                    && !self
+                        .params
+                        .iter()
+                        .any(|param| param.name == VCardParameterName::Type)
+                    && let Some(token) = legacy_media_type(self.name.as_str(), media_type)
+                {
+                    if line_len + token.len() + 6 > 75 {
+                        write!(out, "\r\n ")?;
+                        line_len = 1;
+                    }
+                    write!(out, ";TYPE={token}")?;
+                    line_len += token.len() + 6;
+                }
             }
 
             if self.values.iter().any(|v| match v {
@@ -224,14 +241,9 @@ impl VCardEntry {
                 }
                 VCardValue::Binary(v) => {
                     if is_v4 {
-                        write!(out, "data:")?;
-                        line_len += 5;
-                        if let Some(ct) = &v.content_type {
-                            write!(out, "{ct};")?;
-                            line_len += ct.len() + 1;
-                        }
-                        write!(out, "base64\\,")?;
-                        line_len += 8;
+                        let media_type = v.content_type.as_deref().unwrap_or_default();
+                        write!(out, "data:{media_type};base64\\,")?;
+                        line_len += media_type.len() + 14;
                     }
                     write_bytes(out, Some(&mut line_len), &v.data)?;
                 }
@@ -523,5 +535,86 @@ impl Display for VCardVersion {
             VCardVersion::V3_0 => write!(f, "3.0"),
             VCardVersion::V4_0 => write!(f, "4.0"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Entry, Parser,
+        vcard::{VCard, VCardVersion},
+    };
+
+    fn parse(input: &str) -> VCard {
+        let mut parser = Parser::new(input);
+        let Entry::VCard(vcard) = parser.entry() else {
+            panic!("expected vcard for {input}");
+        };
+        vcard
+    }
+
+    fn write(vcard: &VCard, version: VCardVersion) -> String {
+        let mut out = String::new();
+        vcard.write_to(&mut out, version).unwrap();
+        out
+    }
+
+    #[test]
+    fn test_write_binary_data_uri() {
+        let photo = "iVBORw0KGgoAAAANSUhEUgAAAAsAAAALCAQAAAADpb+tAAAAQklEQVQI122PQQ4AMAj\
+                     CKv//Mzs4M0zmRYKkamEwWQVoRJogk4PuRoOoMC/EK8nYb+l08WGvSxKlNHO5kxnp/\
+                     WXrAzsSERN1N6q5AAAAAElFTkSuQmCC";
+
+        for (input, version, expect) in [
+            (
+                format!("PHOTO;TYPE=JPEG;ENCODING=b:{photo}"),
+                VCardVersion::V4_0,
+                format!("PHOTO;TYPE=JPEG:data:image/jpeg;base64\\,{photo}"),
+            ),
+            (
+                format!("PHOTO;TYPE=JPEG;ENCODING=b:{photo}"),
+                VCardVersion::V3_0,
+                format!("PHOTO;TYPE=JPEG;ENCODING=b:{photo}"),
+            ),
+            (
+                format!("PHOTO;ENCODING=b:{photo}"),
+                VCardVersion::V4_0,
+                format!("PHOTO:data:;base64\\,{photo}"),
+            ),
+            (
+                format!("SOUND;TYPE=WAVE;ENCODING=b:{photo}"),
+                VCardVersion::V4_0,
+                format!("SOUND;TYPE=WAVE:data:audio/wav;base64\\,{photo}"),
+            ),
+            (
+                format!("PHOTO;TYPE=WORK;ENCODING=b:{photo}"),
+                VCardVersion::V4_0,
+                format!("PHOTO;TYPE=WORK:data:;base64\\,{photo}"),
+            ),
+        ] {
+            let vcard = parse(&format!(
+                "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:T\r\n{input}\r\nEND:VCARD\r\n"
+            ));
+            let out = write(&vcard, version).replace("\r\n ", "");
+
+            assert!(
+                out.contains(expect.as_str()),
+                "expected {expect} in {out} for {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_write_binary_data_uri_v4_to_v3() {
+        let vcard = parse(
+            "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\n\
+             PHOTO:data:image/png;base64\\,iVBORw0KGgo=\r\nEND:VCARD\r\n",
+        );
+
+        assert!(
+            write(&vcard, VCardVersion::V3_0).contains("PHOTO;ENCODING=b;TYPE=PNG:iVBORw0KGgo="),
+            "{}",
+            write(&vcard, VCardVersion::V3_0)
+        );
     }
 }

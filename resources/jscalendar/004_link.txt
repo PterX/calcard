@@ -22,15 +22,15 @@ ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:iVBORw
  AAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC
 > convert
 "links": {
-  "5cfd5bea-64f1-5bae-846b-d958abb5411e": {
+  "ac521dc6-ccfa-56e1-9ecc-94ced0a5b4ea": {
     "@type": "Link",
-    "href": "data:base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAAmJLR0QAAd2KE6QAAAAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC",
+    "href": "data:;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAAmJLR0QAAd2KE6QAAAAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC",
     "contentType": "image/png"
   } 
 },
 "iCalendar": {
     "convertedProperties": {
-        "links/5cfd5bea-64f1-5bae-846b-d958abb5411e/href": {
+        "links/ac521dc6-ccfa-56e1-9ecc-94ced0a5b4ea/href": {
         "name": "attach",
         "parameters": {
             "value": "BINARY"
