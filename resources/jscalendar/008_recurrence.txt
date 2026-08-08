@@ -28,6 +28,103 @@ RDATE:20230805T170000Z
   "2023-08-05T17:00:00": {}
 }
 
+> test RDATE with value type PERIOD
+DTSTART:20230101T130000Z
+DURATION:PT1H
+RRULE:FREQ=MONTHLY
+RDATE;VALUE=PERIOD:20231223T150000Z/PT2H
+> convert
+"start": "2023-01-01T13:00:00",
+"duration": "PT1H",
+"timeZone": "Etc/UTC",
+"recurrenceRule": {
+  "frequency": "monthly"
+},
+"recurrenceOverrides": {
+  "2023-12-23T15:00:00": {
+    "duration": "PT2H"
+  }
+},
+"iCalendar": {
+  "convertedProperties": {
+    "recurrenceOverrides/2023-12-23T15:00:00": {
+      "name": "rdate",
+      "parameters": {
+        "value": "PERIOD"
+      }
+    }
+  },
+  "name": "vevent"
+}
+
+> test RDATE with multiple PERIOD values
+DTSTART:20230101T130000Z
+DURATION:PT1H
+RDATE;VALUE=PERIOD:20231223T150000Z/PT2H,20231224T150000Z/PT3H
+> convert
+"start": "2023-01-01T13:00:00",
+"duration": "PT1H",
+"timeZone": "Etc/UTC",
+"recurrenceOverrides": {
+  "2023-12-23T15:00:00": {
+    "duration": "PT2H"
+  },
+  "2023-12-24T15:00:00": {
+    "duration": "PT3H"
+  }
+},
+"iCalendar": {
+  "convertedProperties": {
+    "recurrenceOverrides/2023-12-23T15:00:00": {
+      "name": "rdate",
+      "parameters": {
+        "value": "PERIOD"
+      }
+    },
+    "recurrenceOverrides/2023-12-24T15:00:00": {
+      "name": "rdate",
+      "parameters": {
+        "value": "PERIOD"
+      }
+    }
+  },
+  "name": "vevent"
+}
+> convert
+DTSTART:20230101T130000Z
+DURATION:PT1H
+RDATE;VALUE=PERIOD:20231223T150000Z/PT2H
+RDATE;VALUE=PERIOD:20231224T150000Z/PT3H
+
+> test RDATE with value type PERIOD and explicit end
+DTSTART:20230101T130000Z
+DURATION:PT1H
+RDATE;VALUE=PERIOD:20231223T150000Z/20231223T170000Z
+> convert
+"start": "2023-01-01T13:00:00",
+"duration": "PT1H",
+"timeZone": "Etc/UTC",
+"recurrenceOverrides": {
+  "2023-12-23T15:00:00": {
+    "duration": "PT2H"
+  }
+},
+"iCalendar": {
+  "convertedProperties": {
+    "recurrenceOverrides/2023-12-23T15:00:00": {
+      "name": "rdate",
+      "parameters": {
+        "value": "PERIOD"
+      }
+    }
+  },
+  "name": "vevent"
+}
+> convert
+DTSTART:20230101T130000Z
+DURATION:PT1H
+RDATE;VALUE=PERIOD:20231223T150000Z/PT2H
+
 > test RRULE
 DTSTART;TZID=Europe/Berlin:20240101T010000
 RRULE:FREQ=YEARLY

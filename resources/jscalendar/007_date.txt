@@ -36,7 +36,6 @@ DTSTART;VALUE=DATE:20240102
 DTEND;VALUE=DATE:20240107
 > convert
 "start": "2024-01-02T00:00:00",
-"timeZone": null,
 "duration": "P5D",
 "showWithoutTime": true,
 "iCalendar": {
@@ -55,6 +54,31 @@ DTEND;VALUE=DATE:20240107
           }
     }
 }    
+
+> test DTEND property with DATE value type across a DST transition
+DTSTART;TZID=Europe/Berlin;VALUE=DATE:20240328
+DTEND;TZID=Europe/Berlin;VALUE=DATE:20240404
+> convert
+"start": "2024-03-28T00:00:00",
+"timeZone": "Europe/Berlin",
+"duration": "P1W",
+"showWithoutTime": true,
+"iCalendar": {
+    "name": "vevent",
+    "convertedProperties": {
+          "duration": {
+            "name": "dtend",
+            "parameters": {
+              "value": "DATE"
+            }
+          },
+          "start": {
+            "parameters": {
+              "value": "DATE"
+            }
+          }
+    }
+}
 
 > test DTSTAMP
 BEGIN:VCALENDAR
@@ -88,14 +112,12 @@ DTSTART:20240921T105302Z
 > test DTSTART property with floating time
 DTSTART:20240921T105302
 > convert
-"start": "2024-09-21T10:53:02",
-"timeZone": null
+"start": "2024-09-21T10:53:02"
 
 > test DTSTART property with value type DATE
 DTSTART;VALUE=DATE:20240921
 > convert
 "start": "2024-09-21T00:00:00",
-"timeZone": null,
 "showWithoutTime": true,
       "iCalendar": {
         "convertedProperties": {
@@ -129,8 +151,7 @@ BEGIN:VTODO
 DUE:20240921T105302
 > convert
 "@type": "Task",
-"due": "2024-09-21T10:53:02",
-"timeZone": null
+"due": "2024-09-21T10:53:02"
 
 > test DUE property with value type DATE
 BEGIN:VTODO
@@ -138,7 +159,6 @@ DUE;VALUE=DATE:20240921
 > convert
 "@type": "Task",
 "due": "2024-09-21T00:00:00",
-"timeZone": null,
 "showWithoutTime": true,
 "iCalendar": {
  "convertedProperties": {
@@ -159,7 +179,6 @@ DUE;VALUE=DATE:20250221
 "@type": "Task",
 "start": "2025-02-20T00:00:00",
 "due": "2025-02-21T00:00:00",
-"timeZone": null,
 "showWithoutTime": true,
 "iCalendar": {
         "convertedProperties": {
@@ -430,3 +449,71 @@ DTSTART;TZID="W. Europe Standard Time":20241121T105302
     }	
   }	
 }
+> test JSCalendar - all-day Event converts to the DATE value type
+"title": "April Fool's Day",
+"showWithoutTime": true,
+"start": "1900-04-01T00:00:00",
+"duration": "P1D",
+"recurrenceRule": {
+  "frequency": "weekly",
+  "until": "1900-04-29T00:00:00"
+},
+"recurrenceOverrides": {
+  "1900-04-08T00:00:00": {
+    "excluded": true
+  }
+}
+> convert
+DTSTART;VALUE=DATE:19000401
+SUMMARY:April Fool's Day
+DURATION:P1D
+RRULE:FREQ=WEEKLY;UNTIL=19000429
+EXDATE;VALUE=DATE:19000408
+> convert
+"title": "April Fool's Day",
+"showWithoutTime": true,
+"start": "1900-04-01T00:00:00",
+"duration": "P1D",
+"recurrenceRule": {
+  "frequency": "weekly",
+  "until": "1900-04-29T00:00:00"
+},
+"recurrenceOverrides": {
+  "1900-04-08T00:00:00": {
+    "excluded": true
+  }
+},
+"iCalendar": {
+  "convertedProperties": {
+    "start": {
+      "parameters": {
+        "value": "DATE"
+      }
+    },
+    "recurrenceOverrides/1900-04-08T00:00:00": {
+      "parameters": {
+        "value": "DATE"
+      }
+    }
+  },
+  "name": "vevent"
+}
+
+> test JSCalendar - showWithoutTime with a time zone keeps the SHOW-WITHOUT-TIME property
+"start": "2025-05-21T08:00:00",
+"timeZone": "America/Chicago",
+"duration": "PT12H",
+"showWithoutTime": true
+> convert
+DTSTART;TZID=America/Chicago:20250521T080000
+DURATION:PT12H
+SHOW-WITHOUT-TIME:TRUE
+
+> test JSCalendar - showWithoutTime with a non-zero time component keeps the SHOW-WITHOUT-TIME property
+"start": "2025-05-21T00:00:00",
+"duration": "PT12H",
+"showWithoutTime": true
+> convert
+DTSTART:20250521T000000
+DURATION:PT12H
+SHOW-WITHOUT-TIME:TRUE

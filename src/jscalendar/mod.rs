@@ -179,6 +179,7 @@ pub enum JSCalendarProperty<I: JSCalendarId> {
     Until,
     Updated,
     Uri,
+    Version,
     VirtualLocations,
     When,
     EndTimeZone,
@@ -390,6 +391,10 @@ impl JSCalendarDateTime {
         }
     }
 
+    pub fn is_start_of_day(&self) -> bool {
+        self.timestamp.rem_euclid(86400) == 0
+    }
+
     pub fn to_rfc3339(&self) -> String {
         let dt = DateTime::from_timestamp(self.timestamp);
         if !self.is_local {
@@ -481,6 +486,35 @@ mod tests {
         expect: String,
         roundtrip: String,
         line_num: usize,
+    }
+
+    #[test]
+    fn export_version_property() {
+        let js = JSCalendar::<String, String>::parse(
+            r#"{"@type": "Group", "version": "2.0", "prodId": "-//Example//EN",
+                "entries": [{"@type": "Event", "uid": "a", "title": "b"}]}"#,
+        )
+        .unwrap();
+        let ical = js.into_icalendar().unwrap().to_string();
+
+        assert!(ical.contains("VERSION:2.0"), "{ical}");
+        assert!(ical.contains("PRODID:-//Example//EN"), "{ical}");
+        assert!(!ical.contains("JSPROP"), "{ical}");
+
+        // The VERSION property restored from the iCalendar property is not duplicated
+        let ical = ICalendar::parse(concat!(
+            "BEGIN:VCALENDAR\r\n",
+            "VERSION:2.0\r\n",
+            "BEGIN:VEVENT\r\nUID:a\r\nSUMMARY:b\r\nEND:VEVENT\r\n",
+            "END:VCALENDAR\r\n"
+        ))
+        .unwrap()
+        .into_jscalendar::<String, String>()
+        .into_icalendar()
+        .unwrap()
+        .to_string();
+
+        assert_eq!(ical.matches("VERSION:2.0").count(), 1, "{ical}");
     }
 
     #[test]

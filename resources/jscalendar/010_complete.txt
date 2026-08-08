@@ -125,7 +125,6 @@ END:VCALENDAR
 "showWithoutTime": true,
 "start": "1900-04-01T00:00:00",
 "duration": "P1D",
-"timeZone": null,
 "recurrenceRule": {
 "frequency": "yearly"
 }
@@ -133,12 +132,29 @@ END:VCALENDAR
 BEGIN:VCALENDAR
 BEGIN:VEVENT
 SUMMARY:April Fool's Day
-DTSTART:19000401T000000
+DTSTART;VALUE=DATE:19000401
 DURATION:P1D
 RRULE:FREQ=YEARLY
-SHOW-WITHOUT-TIME:TRUE
 END:VEVENT
 END:VCALENDAR
+> convert
+"title": "April Fool's Day",
+"showWithoutTime": true,
+"start": "1900-04-01T00:00:00",
+"duration": "P1D",
+"recurrenceRule": {
+"frequency": "yearly"
+},
+"iCalendar": {
+  "convertedProperties": {
+    "start": {
+      "parameters": {
+        "value": "DATE"
+      }
+    }
+  },
+  "name": "vevent"
+}
 
 > test JSCalendar - Task with a Due Date
 {
@@ -226,7 +242,6 @@ END:VCALENDAR
   "title": "Yoga",
   "start": "2020-01-01T07:00:00",
   "duration": "PT30M",
-  "timeZone": null,
   "recurrenceRule": {
     "frequency": "daily"
   }
