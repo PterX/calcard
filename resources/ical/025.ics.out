@@ -58,14 +58,14 @@ ORGANIZER:MAILTO:jsmith@host.com
 STATUS:DRAFT
 CLASS:PUBLIC
 CATEGORY:Project Report\, XYZ\, Weekly Meeting
-DESCRIPTION:Project xyz Review Meeting Minutes\n Agenda\n1. Review of projec
- t version 1.0 requirements.\n2.Definition of project processes.\n3. Review
-  of project schedule.\n Participants: John Smith\, Jane Doe\, Jim Dandy\n-
- It was  decided that the requirements need to be signed off by  product ma
- rketing.\n-Project processes were accepted.\n -Project schedule needs to a
- ccount for scheduled holidays  and employee vacation time. Check with HR f
- or specific  dates.\n-New schedule will be distributed by Friday.\n- Next 
- weeks meeting is cancelled. No meeting until 3/23.
+DESCRIPTION:Project xyz Review Meeting Minutes\n Agenda\n1. Review of proje
+ ct version 1.0 requirements.\n2.Definition of project processes.\n3. Revie
+ w of project schedule.\n Participants: John Smith\, Jane Doe\, Jim Dandy\n
+ -It was  decided that the requirements need to be signed off by  product m
+ arketing.\n-Project processes were accepted.\n -Project schedule needs to 
+ account for scheduled holidays  and employee vacation time. Check with HR 
+ for specific  dates.\n-New schedule will be distributed by Friday.\n- Next
+  weeks meeting is cancelled. No meeting until 3/23.
 END:VJOURNAL
 BEGIN:VFREEBUSY
 ORGANIZER:MAILTO:jsmith@host.com

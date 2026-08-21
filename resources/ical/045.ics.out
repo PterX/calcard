@@ -21,9 +21,9 @@ END:VTIMEZONE
 BEGIN:VEVENT
 CLASS:PUBLIC
 CREATED:20210511T063845Z
-DESCRIPTION:Einwahldaten folgen in der Veranstaltungswoche \nSeminartitel: S
- oftware-QS-Cast - Application Performance Monitoring\nDatum: 27.Mai 2021\n
- Uhrzeit: 10:30 - ca.12:00 Uhr  \n \n
+DESCRIPTION:Einwahldaten folgen in der Veranstaltungswoche \nSeminartitel: 
+ Software-QS-Cast - Application Performance Monitoring\nDatum: 27.Mai 2021
+ \nUhrzeit: 10:30 - ca.12:00 Uhr  \n \n
 DTEND;TZID="W. Europe Standard Time":20210527T120000
 DTSTAMP:20210511T063845Z
 DTSTART;TZID="W. Europe Standard Time":20210527T103000
@@ -32,8 +32,8 @@ PRIORITY:5
 SEQUENCE:0
 SUMMARY;LANGUAGE=de:Software-QS-Cast Application Performance Monitoring
 TRANSP:OPAQUE
-UID:040000008200E000*************00800000000*****************000000000000000
- 10000000********************************
+UID:040000008200E000*************00800000000*****************00000000000000
+ 010000000********************************
 X-MICROSOFT-CDO-BUSYSTATUS:BUSY
 X-MICROSOFT-CDO-IMPORTANCE:1
 X-MICROSOFT-DISALLOW-COUNTER:FALSE

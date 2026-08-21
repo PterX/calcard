@@ -1779,8 +1779,8 @@ DTEND;VALUE=DATE:20090102
 TRANSP:TRANSPARENT
 X-MOZ-GENERATION:9
 SEQUENCE:2
-DESCRIPTION:Uusaastale vahetult eelnevat tööpäeva lühendatakse kolme tun
- ni võrra.
+DESCRIPTION:Uusaastale vahetult eelnevat tööpäeva lühendatakse kolme tu
+ nni võrra.
 END:VEVENT
 BEGIN:VEVENT
 CREATED:20090224T170210Z
@@ -1794,8 +1794,8 @@ DTSTART;VALUE=DATE:20090623
 DTEND;VALUE=DATE:20090624
 TRANSP:TRANSPARENT
 X-MOZ-GENERATION:2
-DESCRIPTION:Võidupühale vahetult eelnevat tööpäeva lühendatakse kolme 
- tunni võrra.
+DESCRIPTION:Võidupühale vahetult eelnevat tööpäeva lühendatakse kolme
+  tunni võrra.
 END:VEVENT
 BEGIN:VEVENT
 CREATED:20090224T141634Z
@@ -1809,8 +1809,8 @@ CATEGORIES:Riigipüha
 DTSTART;VALUE=DATE:20091224
 DTEND;VALUE=DATE:20091225
 TRANSP:TRANSPARENT
-DESCRIPTION:Jõululaupäevale vahetult eelnevat tööpäeva lühendatakse ko
- lme tunni võrra.
+DESCRIPTION:Jõululaupäevale vahetult eelnevat tööpäeva lühendatakse k
+ olme tunni võrra.
 X-MOZ-GENERATION:1
 END:VEVENT
 BEGIN:VEVENT

@@ -3,8 +3,8 @@ PRODID:-//flaimo.com//iCal Class MIMEDIR//EN
 VERSION:2.0
 METHOD:REQUEST
 BEGIN:VEVENT
-ORGANIZER;CN="TMS -- Calendar Publisher":MAILTO:cal_publisher@xxxx.xxxx.xxxx
- .com
+ORGANIZER;CN="TMS -- Calendar Publisher":MAILTO:cal_publisher@xxxx.xxxx.xxx
+ x.com
 DTSTART:20030620T220000Z
 DTEND:20030620T220000Z
 TRANSP:TRANSPARENT
@@ -12,10 +12,11 @@ SEQUENCE:0
 UID:TPACTIDSTREAMTASKID
 DTSTAMP:20030410T113400Z
 CATEGORIES;LANGUAGE=en:TMS Dates
-DESCRIPTION;LANGUAGE=en:View the status of this ACT ID:\nhttp://xxxx.xxxx.xx
- xx.com/public/view_detailed_status.php?act_id=ACTID&stream=STREAM&task_id=
- TASKID\n
-SUMMARY;LANGUAGE=en:TP for Act ID XXXXX -- Not important : Stream -- Task ID
+DESCRIPTION;LANGUAGE=en:View the status of this ACT ID:\nhttp://xxxx.xxxx.x
+ xxx.com/public/view_detailed_status.php?act_id=ACTID&stream=STREAM&task_id
+ =TASKID\n
+SUMMARY;LANGUAGE=en:TP for Act ID XXXXX -- Not important : Stream -- Task I
+ D
 PRIORITY:5
 CLASS:PUBLIC
 URL:http://xxxx.xxxx.xxxx.com/

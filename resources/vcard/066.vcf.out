@@ -8,10 +8,10 @@ X-SKYPE;TYPE=WORK:skype.john
 X-MSN;TYPE=WORK:msn.john
 X-JABBER;TYPE=WORK:jabber.john
 N:Doe;John;;;
-ADR;TYPE=WORK:;;456 Grandview Building\, Wide Street;San Diego;CA;90204;Unit
- ed States
-ADR;TYPE=HOME:;;123 Sweet Home\, Narrow Street;New York;NY;91102;United Stat
- es
+ADR;TYPE=WORK:;;456 Grandview Building\, Wide Street;San Diego;CA;90204;Uni
+ ted States
+ADR;TYPE=HOME:;;123 Sweet Home\, Narrow Street;New York;NY;91102;United Sta
+ tes
 URL;TYPE=OTHER:http://www.homepage.com
 URL;TYPE=HOME:http://www.home.com
 URL;TYPE=WORK:http://www.work.com

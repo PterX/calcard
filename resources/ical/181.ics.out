@@ -13,10 +13,10 @@ UID:9C89C5BA-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20041023
 SUMMARY:Creation
-DESCRIPTION:According to Bishop James Ussher (1581-1656)\, God created the u
- niverse on October 23\, 4004 BC. That would make the universe 6000 years o
- ld in 1997 AD. James Ussher was an Irish Archbishop whose chronology of Bi
- blical history was widely accepted throughout Christianity.
+DESCRIPTION:According to Bishop James Ussher (1581-1656)\, God created the 
+ universe on October 23\, 4004 BC. That would make the universe 6000 years 
+ old in 1997 AD. James Ussher was an Irish Archbishop whose chronology of B
+ iblical history was widely accepted throughout Christianity.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -26,9 +26,9 @@ UID:9C89C89C-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20040325
 SUMMARY:Annunciation
-DESCRIPTION:The announcement by the angel Gabriel to the Virgin Mary of the 
- incarnation of Christ. It was placed in this day in order to be nine month
- s before Chirstmas day. 
+DESCRIPTION:The announcement by the angel Gabriel to the Virgin Mary of the
+  incarnation of Christ. It was placed in this day in order to be nine mont
+ hs before Chirstmas day. 
 RRULE:FREQ=YEARLY;UNTIL=20050324;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -38,8 +38,8 @@ UID:9C89CA5A-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20040815
 SUMMARY:Assumption Day
-DESCRIPTION:A feast commemorating the Virgin Mary being taken up into heaven
- .
+DESCRIPTION:A feast commemorating the Virgin Mary being taken up into heave
+ n.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -49,9 +49,9 @@ UID:9C89CC3C-4E3C-11D9-A619-000A958A3252
 SEQUENCE:9
 DTSTART;VALUE=DATE:20041128
 SUMMARY:Advent Sunday
-DESCRIPTION:Sunday closest to St Andrew's Day begins the Advent season and t
- he beginning of the ecclesiastical year.  There are four Advent Sundays be
- fore Christmas.
+DESCRIPTION:Sunday closest to St Andrew's Day begins the Advent season and 
+ the beginning of the ecclesiastical year.  There are four Advent Sundays b
+ efore Christmas.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=-1SU;BYMONTH=11
 END:VEVENT
 BEGIN:VEVENT
@@ -61,8 +61,8 @@ UID:9C89CE02-4E3C-11D9-A619-000A958A3252
 SEQUENCE:7
 DTSTART;VALUE=DATE:20041208
 SUMMARY:Immaculate Conception
-DESCRIPTION:Honors the unique priveledge by which Mary was conceived by her 
- mother without the stain of original sin. 
+DESCRIPTION:Honors the unique priveledge by which Mary was conceived by her
+  mother without the stain of original sin. 
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -82,11 +82,11 @@ UID:9C89D190-4E3C-11D9-A619-000A958A3252
 SEQUENCE:7
 DTSTART;VALUE=DATE:20041228
 SUMMARY:Childermas
-DESCRIPTION:By orders of King Herod\, the children of Bethlehem were massacr
- ed in an attempt to kill the baby Jesus. The Irish call this Cross Day and
-  believe that anything begun on this day will turn out badly. In Belgium\,
-  Mexico\, and Columbia children play April Fools type pranks on this day. 
- Also known as Holy Innocents' Day. 
+DESCRIPTION:By orders of King Herod\, the children of Bethlehem were massac
+ red in an attempt to kill the baby Jesus. The Irish call this Cross Day an
+ d believe that anything begun on this day will turn out badly. In Belgium
+ \, Mexico\, and Columbia children play April Fools type pranks on this day
+ . Also known as Holy Innocents' Day. 
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -106,14 +106,14 @@ UID:9C89D50A-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20040106
 SUMMARY:Epiphany
-DESCRIPTION:This is a Catholic holiday celebrating the baptism of Christ in 
- the Jordan River by John the Baptist\, (especially) the visit of the Three
-  Kings to the manger in Bethleham\, and the miracle at Cana\, where Christ
- 's power to perform miracles was shown (he changed water into wine at the 
- marriage feast). The name means "manifistation." Also known as Old Christm
- as\, because it once commemorated the birthday of Christ\, before the Chri
- stmas holiday was established. Also calledFeast of the Three Kings and Twe
- lfth Tide.
+DESCRIPTION:This is a Catholic holiday celebrating the baptism of Christ in
+  the Jordan River by John the Baptist\, (especially) the visit of the Thre
+ e Kings to the manger in Bethleham\, and the miracle at Cana\, where Chris
+ t's power to perform miracles was shown (he changed water into wine at the
+  marriage feast). The name means "manifistation." Also known as Old Christ
+ mas\, because it once commemorated the birthday of Christ\, before the Chr
+ istmas holiday was established. Also calledFeast of the Three Kings and Tw
+ elfth Tide.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -123,9 +123,9 @@ UID:9C89D6C2-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20040806
 SUMMARY:Transfiguration
-DESCRIPTION: Commemoration of the biblical event when Christ is changed in a
- ppearance on the mountain. Observed by Roman Catholic and Anglican churche
- s on August 6. Observed by Lutherans on the sixth Sunday after Epiphany.
+DESCRIPTION: Commemoration of the biblical event when Christ is changed in 
+ appearance on the mountain. Observed by Roman Catholic and Anglican church
+ es on August 6. Observed by Lutherans on the sixth Sunday after Epiphany.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -135,11 +135,12 @@ UID:9C89D887-4E3C-11D9-A619-000A958A3252
 SEQUENCE:18
 DTSTART;VALUE=DATE:20040303
 SUMMARY:Ash Wednesday
-DESCRIPTION:46 days before Easter. The Day of Ashes\, is the first day of Le
- nt\, occuring forty days before Easter not counting Sundays. The ancient c
- ustom on this day is for the faithful to receive on the forehead the sign 
- of a cross marked with blessed ashes. The palms from the previous Palm Sun
- day are burned and the ashes are blessed for the ceremony before the Mass.
+DESCRIPTION:46 days before Easter. The Day of Ashes\, is the first day of L
+ ent\, occuring forty days before Easter not counting Sundays. The ancient 
+ custom on this day is for the faithful to receive on the forehead the sign
+  of a cross marked with blessed ashes. The palms from the previous Palm Su
+ nday are burned and the ashes are blessed for the ceremony before the Mass
+ .
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=2WE;BYMONTH=2
 END:VEVENT
 BEGIN:VEVENT
@@ -150,8 +151,8 @@ UID:9C89DC40-4E3C-11D9-A619-000A958A3252
 SEQUENCE:9
 DTSTART;VALUE=DATE:20040224
 SUMMARY:Shrove Tuesday (Mardi Gras)
-DESCRIPTION:Today is the last day of Shrovetide\, and a time of merrymaking 
- before Lent. Also known as Mardi Gras.
+DESCRIPTION:Today is the last day of Shrovetide\, and a time of merrymaking
+  before Lent. Also known as Mardi Gras.
 RRULE:FREQ=YEARLY;UNTIL=20050228;INTERVAL=1;BYDAY=1TU;BYMONTH=3
 END:VEVENT
 BEGIN:VEVENT
@@ -161,9 +162,9 @@ UID:9C89DE22-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20040223
 SUMMARY:Shrove Monday
-DESCRIPTION:Monday before Ash Wednesday. Also called Rose Monday. In Denmark
- \, today is calledFastelavn. In Germany and Austria today coincides with F
- asching (or Feast of Fools). 
+DESCRIPTION:Monday before Ash Wednesday. Also called Rose Monday. In Denmar
+ k\, today is calledFastelavn. In Germany and Austria today coincides with 
+ Fasching (or Feast of Fools). 
 RRULE:FREQ=YEARLY;UNTIL=20050227;INTERVAL=1;BYDAY=4MO;BYMONTH=2
 END:VEVENT
 BEGIN:VEVENT
@@ -173,11 +174,11 @@ UID:9C89E000-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20040229
 SUMMARY:Lent: first sunday
-DESCRIPTION:Lent is the penitential season preceding Easter\, observed with 
- forty days of fast in memory of Christ's forty days of fast in the desert.
-  Lent consists of forty weekdays and six Sundays. The name is derived from
-  the Middle English Lente\, and refers to the lengthening of the daylight 
- hours.
+DESCRIPTION:Lent is the penitential season preceding Easter\, observed with
+  forty days of fast in memory of Christ's forty days of fast in the desert
+ . Lent consists of forty weekdays and six Sundays. The name is derived fro
+ m the Middle English Lente\, and refers to the lengthening of the daylight
+  hours.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1
 END:VEVENT
 BEGIN:VEVENT
@@ -205,8 +206,8 @@ UID:9C89E562-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20040408
 SUMMARY:Thursday before Easter
-DESCRIPTION:Commemorates Christ's Last Supper and His washing of the discipl
- es' feet on that day.
+DESCRIPTION:Commemorates Christ's Last Supper and His washing of the discip
+ les' feet on that day.
 RRULE:FREQ=YEARLY;UNTIL=20050413;INTERVAL=1;BYDAY=2TH;BYMONTH=4
 END:VEVENT
 BEGIN:VEVENT
@@ -225,8 +226,8 @@ UID:9C89E8D4-4E3C-11D9-A619-000A958A3252
 SEQUENCE:11
 DTSTART;VALUE=DATE:20040409
 SUMMARY:Good Friday
-DESCRIPTION:The anniversary of the crucifixion of Christ. Also known as Holy
-  Friday.
+DESCRIPTION:The anniversary of the crucifixion of Christ. Also known as Hol
+ y Friday.
 RRULE:FREQ=YEARLY;UNTIL=20040425;INTERVAL=1;BYDAY=4MO;BYMONTH=4
 END:VEVENT
 BEGIN:VEVENT
@@ -236,8 +237,8 @@ UID:9C89EAAC-4E3C-11D9-A619-000A958A3252
 SEQUENCE:11
 DTSTART;VALUE=DATE:20040411
 SUMMARY:Easter Sunday(c)
-DESCRIPTION:Easter is the celebration of Christ's ressurection. The ressurec
- tion took place on Sunday\, which was from then on the "Lord's Day".
+DESCRIPTION:Easter is the celebration of Christ's ressurection. The ressure
+ ction took place on Sunday\, which was from then on the "Lord's Day".
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=4SU;BYMONTH=3
 END:VEVENT
 BEGIN:VEVENT
@@ -278,10 +279,10 @@ SEQUENCE:8
 DTSTART;VALUE=DATE:20041031
 SUMMARY:Reformation Day(p)
 DTEND;VALUE=DATE:20041101
-DESCRIPTION:Protestant day (Oct 31). On this day in 1517 Martin Luther poste
- d his Ninety-five Theses on the door of the church in Wittenberg Germany\,
-  thereby beginning the Protestant Reformation. Lutherans observe this day 
- on the preceding of following Sunday.
+DESCRIPTION:Protestant day (Oct 31). On this day in 1517 Martin Luther post
+ ed his Ninety-five Theses on the door of the church in Wittenberg Germany
+ \, thereby beginning the Protestant Reformation. Lutherans observe this da
+ y on the preceding of following Sunday.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=-1SU;BYMONTH=10
 END:VEVENT
 BEGIN:VEVENT
@@ -320,8 +321,8 @@ UID:9C89F882-4E3C-11D9-A619-000A958A3252
 SEQUENCE:8
 DTSTART;VALUE=DATE:20060416
 SUMMARY:Easter Sunday
-DESCRIPTION:Easter is the celebration of Christ's ressurection. The ressurec
- tion took place on Sunday\, which was from then on the "Lord's Day".
+DESCRIPTION:Easter is the celebration of Christ's ressurection. The ressure
+ ction took place on Sunday\, which was from then on the "Lord's Day".
 RRULE:FREQ=YEARLY;UNTIL=20070414;INTERVAL=1;BYDAY=3SU;BYMONTH=4
 END:VEVENT
 BEGIN:VEVENT
@@ -369,8 +370,8 @@ UID:9C8A0150-4E3C-11D9-A619-000A958A3252
 SEQUENCE:10
 DTSTART;VALUE=DATE:20050324
 SUMMARY:Thursday before Easter
-DESCRIPTION:Commemorates Christ's Last Supper and His washing of the discipl
- es' feet on that day.
+DESCRIPTION:Commemorates Christ's Last Supper and His washing of the discip
+ les' feet on that day.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=4TH;BYMONTH=3
 END:VEVENT
 BEGIN:VEVENT
@@ -380,8 +381,8 @@ UID:9C8A0304-4E3C-11D9-A619-000A958A3252
 SEQUENCE:9
 DTSTART;VALUE=DATE:20050325
 SUMMARY:Good Friday
-DESCRIPTION:The anniversary of the crucifixion of Christ. Also known as Holy
-  Friday.
+DESCRIPTION:The anniversary of the crucifixion of Christ. Also known as Hol
+ y Friday.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=4FR;BYMONTH=3
 END:VEVENT
 BEGIN:VEVENT
@@ -391,8 +392,8 @@ UID:9C8A04BC-4E3C-11D9-A619-000A958A3252
 SEQUENCE:10
 DTSTART;VALUE=DATE:20050208
 SUMMARY:Shrove Tuesday (Mardi Gras)
-DESCRIPTION:Today is the last day of Shrovetide\, and a time of merrymaking 
- before Lent. Also known as Mardi Gras.
+DESCRIPTION:Today is the last day of Shrovetide\, and a time of merrymaking
+  before Lent. Also known as Mardi Gras.
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=2TU;BYMONTH=2
 END:VEVENT
 BEGIN:VEVENT
@@ -402,9 +403,9 @@ UID:9C8A0690-4E3C-11D9-A619-000A958A3252
 SEQUENCE:9
 DTSTART;VALUE=DATE:20050207
 SUMMARY:Shrove Monday
-DESCRIPTION:Monday before Ash Wednesday. Also called Rose Monday. In Denmark
- \, today is calledFastelavn. In Germany and Austria today coincides with F
- asching (or Feast of Fools). 
+DESCRIPTION:Monday before Ash Wednesday. Also called Rose Monday. In Denmar
+ k\, today is calledFastelavn. In Germany and Austria today coincides with 
+ Fasching (or Feast of Fools). 
 RRULE:FREQ=YEARLY;UNTIL=20051231;INTERVAL=1;BYDAY=1MO;BYMONTH=2
 END:VEVENT
 BEGIN:VEVENT

@@ -2274,8 +2274,8 @@ END:VEVENT
 BEGIN:VEVENT
 UID:89a39e3a-5049-11da-b46f-fc4b893bd824
 SUMMARY:natisni dopis za MemoryStick
-DESCRIPTION:dva maila\nen A4 list\, kam naj pošlje novi MS\netiketi za kuve
- rto
+DESCRIPTION:dva maila\nen A4 list\, kam naj pošlje novi MS\netiketi za kuv
+ erto
 STATUS:TENTATIVE
 CLASS:PRIVATE
 X-MOZILLA-ALARM-DEFAULT-LENGTH:0

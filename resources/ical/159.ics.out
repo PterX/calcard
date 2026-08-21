@@ -5,53 +5,53 @@ X-WR-CALNAME:Last.fm Events
 X-WR-CALDESC:Event listing - supplied by http://www.Last.fm
 BEGIN:VEVENT
 UID:LFMEVENT-1407206
-URL;VALUE=URI:http://www.last.fm/event/1407206+Gerard+van+Maasakkers+en+de+v
- aste+mannen+-+Deze+Jongen
+URL;VALUE=URI:http://www.last.fm/event/1407206+Gerard+van+Maasakkers+en+de+
+ vaste+mannen+-+Deze+Jongen
 DTSTAMP:20100210T203000Z
 DTSTART:20100210T203000
 DTEND:20100210T235900
 SUMMARY:Gerard van Maasakkers en de vaste mannen - Deze Jongen
-DESCRIPTION:Gerard van Maasakkers\n\nhttp://www.last.fm/event/1407206+Gerard
- +van+Maasakkers+en+de+vaste+mannen+-+Deze+Jongen
+DESCRIPTION:Gerard van Maasakkers\n\nhttp://www.last.fm/event/1407206+Gerar
+ d+van+Maasakkers+en+de+vaste+mannen+-+Deze+Jongen
 LOCATION:Deventer Schouwburg\, Netherlands
 GEO:6.161613;52.255862
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1361665
-URL;VALUE=URI:http://www.last.fm/event/1361665+Millennium+Jazz+Orchestra+en+
- Frank+Marocco
+URL;VALUE=URI:http://www.last.fm/event/1361665+Millennium+Jazz+Orchestra+en
+ +Frank+Marocco
 DTSTAMP:20100212T200000Z
 DTSTART:20100212T200000
 DTEND:20100212T235900
 SUMMARY:Millennium Jazz Orchestra en Frank Marocco
-DESCRIPTION:Millennium Jazz Orchestra\, Frank Marocco\n\nhttp://www.last.fm/
- event/1361665+Millennium+Jazz+Orchestra+en+Frank+Marocco
+DESCRIPTION:Millennium Jazz Orchestra\, Frank Marocco\n\nhttp://www.last.fm
+ /event/1361665+Millennium+Jazz+Orchestra+en+Frank+Marocco
 LOCATION:Deventer Schouwburg\, Netherlands
 GEO:6.161613;52.255862
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1358028
-URL;VALUE=URI:http://www.last.fm/event/1358028+Zu+at+Burgerweeshuis+on+12+Fe
- bruary+2010
+URL;VALUE=URI:http://www.last.fm/event/1358028+Zu+at+Burgerweeshuis+on+12+F
+ ebruary+2010
 DTSTAMP:20100212T210000Z
 DTSTART:20100212T210000
 DTEND:20100212T235900
 SUMMARY:Zu + The New Earth Group at Burgerweeshuis
-DESCRIPTION:Zu\, The New Earth Group\n\nhttp://www.last.fm/event/1358028+Zu+
- at+Burgerweeshuis+on+12+February+2010
+DESCRIPTION:Zu\, The New Earth Group\n\nhttp://www.last.fm/event/1358028+Zu
+ +at+Burgerweeshuis+on+12+February+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1319333
-URL;VALUE=URI:http://www.last.fm/event/1319333+Fink+at+Burgerweeshuis+on+13+
- February+2010
+URL;VALUE=URI:http://www.last.fm/event/1319333+Fink+at+Burgerweeshuis+on+13
+ +February+2010
 DTSTAMP:20100213T210000Z
 DTSTART:20100213T210000
 DTEND:20100213T235900
 SUMMARY:Fink at Burgerweeshuis
-DESCRIPTION:Fink\n\nhttp://www.last.fm/event/1319333+Fink+at+Burgerweeshuis+
- on+13+February+2010
+DESCRIPTION:Fink\n\nhttp://www.last.fm/event/1319333+Fink+at+Burgerweeshuis
+ +on+13+February+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -68,27 +68,27 @@ GEO:6.161613;52.255862
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1361649
-URL;VALUE=URI:http://www.last.fm/event/1361649+Amsterdam+Klezmer+Band+at+The
- ater+Bouwkunde+on+19+February+2010
+URL;VALUE=URI:http://www.last.fm/event/1361649+Amsterdam+Klezmer+Band+at+Th
+ eater+Bouwkunde+on+19+February+2010
 DTSTAMP:20100219T203000Z
 DTSTART:20100219T203000
 DTEND:20100219T235900
 SUMMARY:Amsterdam Klezmer Band at Theater Bouwkunde
-DESCRIPTION:Amsterdam Klezmer Band\n\nhttp://www.last.fm/event/1361649+Amste
- rdam+Klezmer+Band+at+Theater+Bouwkunde+on+19+February+2010
+DESCRIPTION:Amsterdam Klezmer Band\n\nhttp://www.last.fm/event/1361649+Amst
+ erdam+Klezmer+Band+at+Theater+Bouwkunde+on+19+February+2010
 LOCATION:Theater Bouwkunde\, Netherlands
 GEO:6.153074;52.253485
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1334619
-URL;VALUE=URI:http://www.last.fm/event/1334619+Bettie+Serveert+at+Burgerwees
- huis+on+19+February+2010
+URL;VALUE=URI:http://www.last.fm/event/1334619+Bettie+Serveert+at+Burgerwee
+ shuis+on+19+February+2010
 DTSTAMP:20100219T210000Z
 DTSTART:20100219T210000
 DTEND:20100219T235900
 SUMMARY:Bettie Serveert + The Monroes at Burgerweeshuis
-DESCRIPTION:Bettie Serveert\, The Monroes\n\nhttp://www.last.fm/event/133461
- 9+Bettie+Serveert+at+Burgerweeshuis+on+19+February+2010
+DESCRIPTION:Bettie Serveert\, The Monroes\n\nhttp://www.last.fm/event/13346
+ 19+Bettie+Serveert+at+Burgerweeshuis+on+19+February+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -99,34 +99,34 @@ DTSTAMP:20100219T210000Z
 DTSTART:20100219T210000
 DTEND:20100219T235900
 SUMMARY:Ethisch Reveil
-DESCRIPTION:Gentle Veincut\, Fine China Superbone\n\nhttp://www.last.fm/even
- t/1358751+Ethisch+Reveil
+DESCRIPTION:Gentle Veincut\, Fine China Superbone\n\nhttp://www.last.fm/eve
+ nt/1358751+Ethisch+Reveil
 LOCATION:Havenkwartier\, Netherlands
 GEO:6.168775;52.24939
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1392314
-URL;VALUE=URI:http://www.last.fm/event/1392314+The+Monolith+Deathcult+at+Bur
- gerweeshuis+on+26+February+2010
+URL;VALUE=URI:http://www.last.fm/event/1392314+The+Monolith+Deathcult+at+Bu
+ rgerweeshuis+on+26+February+2010
 DTSTAMP:20100226T150100Z
 DTSTART:20100226T000000
 DTEND:20100226T235900
 SUMMARY:The Monolith Deathcult + Erebus at Burgerweeshuis
-DESCRIPTION:The Monolith Deathcult\, Erebus\n\nhttp://www.last.fm/event/1392
- 314+The+Monolith+Deathcult+at+Burgerweeshuis+on+26+February+2010
+DESCRIPTION:The Monolith Deathcult\, Erebus\n\nhttp://www.last.fm/event/139
+ 2314+The+Monolith+Deathcult+at+Burgerweeshuis+on+26+February+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1264138
-URL;VALUE=URI:http://www.last.fm/event/1264138+Loefah+at+Burgerweeshuis+on+2
- 7+February+2010
+URL;VALUE=URI:http://www.last.fm/event/1264138+Loefah+at+Burgerweeshuis+on+
+ 27+February+2010
 DTSTAMP:20100227T163800Z
 DTSTART:20100227T000000
 DTEND:20100227T235900
 SUMMARY:Loefah + 2562 + more at Burgerweeshuis
-DESCRIPTION:Loefah\, 2562\, Cavemen\n\nhttp://www.last.fm/event/1264138+Loef
- ah+at+Burgerweeshuis+on+27+February+2010
+DESCRIPTION:Loefah\, 2562\, Cavemen\n\nhttp://www.last.fm/event/1264138+Loe
+ fah+at+Burgerweeshuis+on+27+February+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -137,48 +137,49 @@ DTSTAMP:20100227T203000Z
 DTSTART:20100227T203000
 DTEND:20100227T235900
 SUMMARY:JW Roy weet het zeker
-DESCRIPTION:JW Roy\n\nhttp://www.last.fm/event/1391634+JW+Roy+weet+het+zeker
+DESCRIPTION:JW Roy\n\nhttp://www.last.fm/event/1391634+JW+Roy+weet+het+zeke
+ r
 LOCATION:theater bouwkunde\, Netherlands
 GEO:6.153073;52.253485
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1361670
-URL;VALUE=URI:http://www.last.fm/event/1361670+Millennium+Jazz+Orchestra+at+
- Theater+Bouwkunde+on+3+March+2010
+URL;VALUE=URI:http://www.last.fm/event/1361670+Millennium+Jazz+Orchestra+at
+ +Theater+Bouwkunde+on+3+March+2010
 DTSTAMP:20100303T210000Z
 DTSTART:20100303T210000
 DTEND:20100303T235900
 SUMMARY:Millennium Jazz Orchestra + Grant Stewart at Theater Bouwkunde
-DESCRIPTION:Millennium Jazz Orchestra\, Grant Stewart\n\nhttp://www.last.fm/
- event/1361670+Millennium+Jazz+Orchestra+at+Theater+Bouwkunde+on+3+March+20
- 10
+DESCRIPTION:Millennium Jazz Orchestra\, Grant Stewart\n\nhttp://www.last.fm
+ /event/1361670+Millennium+Jazz+Orchestra+at+Theater+Bouwkunde+on+3+March+2
+ 010
 LOCATION:Theater Bouwkunde\, Netherlands
 GEO:6.153074;52.253485
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1283011
-URL;VALUE=URI:http://www.last.fm/event/1283011+Suimasen+at+Burgerweeshuis+on
- +6+March+2010
+URL;VALUE=URI:http://www.last.fm/event/1283011+Suimasen+at+Burgerweeshuis+o
+ n+6+March+2010
 DTSTAMP:20100306T103300Z
 DTSTART:20100306T000000
 DTEND:20100306T235900
 SUMMARY:Suimasen at Burgerweeshuis
-DESCRIPTION:Suimasen\n\nhttp://www.last.fm/event/1283011+Suimasen+at+Burgerw
- eeshuis+on+6+March+2010
+DESCRIPTION:Suimasen\n\nhttp://www.last.fm/event/1283011+Suimasen+at+Burger
+ weeshuis+on+6+March+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1302136
-URL;VALUE=URI:http://www.last.fm/event/1302136+El+Pino+and+the+Volunteers+at
- +Burgerweeshuis+on+6+March+2010
+URL;VALUE=URI:http://www.last.fm/event/1302136+El+Pino+and+the+Volunteers+a
+ t+Burgerweeshuis+on+6+March+2010
 DTSTAMP:20100306T203000Z
 DTSTART:20100306T203000
 DTEND:20100306T235900
 SUMMARY:El Pino and the Volunteers + Coparck + more at Burgerweeshuis
-DESCRIPTION:El Pino and the Volunteers\, Coparck\, Suimasen\n\nhttp://www.la
- st.fm/event/1302136+El+Pino+and+the+Volunteers+at+Burgerweeshuis+on+6+Marc
- h+2010
+DESCRIPTION:El Pino and the Volunteers\, Coparck\, Suimasen\n\nhttp://www.l
+ ast.fm/event/1302136+El+Pino+and+the+Volunteers+at+Burgerweeshuis+on+6+Mar
+ ch+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -189,8 +190,8 @@ DTSTAMP:20100311T200000Z
 DTSTART:20100311T200000
 DTEND:20100311T235900
 SUMMARY:Wouter Hamel theatertour
-DESCRIPTION:Wouter Hamel\n\nhttp://www.last.fm/event/1323437+Wouter+Hamel+th
- eatertour
+DESCRIPTION:Wouter Hamel\n\nhttp://www.last.fm/event/1323437+Wouter+Hamel+t
+ heatertour
 LOCATION:Deventer Schouwburg\, Netherlands
 GEO:6.161613;52.255862
 END:VEVENT
@@ -201,8 +202,8 @@ DTSTAMP:20100312T192400Z
 DTSTART:20100312T000000
 DTEND:20100312T235900
 SUMMARY:Dobet Gnahoré
-DESCRIPTION:Dobet Gnahoré\n\nhttp://www.last.fm/event/1400318+Dobet+Gnahor%
- C3%A9
+DESCRIPTION:Dobet Gnahoré\n\nhttp://www.last.fm/event/1400318+Dobet+Gnahor
+ %C3%A9
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -224,21 +225,21 @@ DTSTAMP:20100320T113800Z
 DTSTART:20100320T000000
 DTEND:20100320T235900
 SUMMARY:NO blues @ Bouwkunde
-DESCRIPTION:No Blues\n\nhttp://www.last.fm/event/1359365+NO+blues+%40+Bouwku
- nde
+DESCRIPTION:No Blues\n\nhttp://www.last.fm/event/1359365+NO+blues+%40+Bouwk
+ unde
 LOCATION:Theater Bouwkunde\, Netherlands
 GEO:6.153074;52.253485
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1394328
-URL;VALUE=URI:http://www.last.fm/event/1394328+Schwarzblut+at+Burgerweeshuis
- +on+20+March+2010
+URL;VALUE=URI:http://www.last.fm/event/1394328+Schwarzblut+at+Burgerweeshui
+ s+on+20+March+2010
 DTSTAMP:20100320T200000Z
 DTSTART:20100320T200000
 DTEND:20100320T235900
 SUMMARY:Schwarzblut + Deadcell + more at Burgerweeshuis
-DESCRIPTION:Schwarzblut\, Deadcell\, animAdverto\n\nhttp://www.last.fm/event
- /1394328+Schwarzblut+at+Burgerweeshuis+on+20+March+2010
+DESCRIPTION:Schwarzblut\, Deadcell\, animAdverto\n\nhttp://www.last.fm/even
+ t/1394328+Schwarzblut+at+Burgerweeshuis+on+20+March+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -249,8 +250,8 @@ DTSTAMP:20100326T200000Z
 DTSTART:20100326T200000
 DTEND:20100326T235900
 SUMMARY:King Me & Cords Live
-DESCRIPTION:King Me\, Cords\n\nhttp://www.last.fm/event/1352883+King+Me+-+Co
- rds+Live
+DESCRIPTION:King Me\, Cords\n\nhttp://www.last.fm/event/1352883+King+Me+-+C
+ ords+Live
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -267,27 +268,27 @@ GEO:;
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1387725
-URL;VALUE=URI:http://www.last.fm/event/1387725+Isbells+at+Burgerweeshuis+on+
- 17+April+2010
+URL;VALUE=URI:http://www.last.fm/event/1387725+Isbells+at+Burgerweeshuis+on
+ +17+April+2010
 DTSTAMP:20100417T210000Z
 DTSTART:20100417T210000
 DTEND:20100417T235900
 SUMMARY:Isbells at Burgerweeshuis
-DESCRIPTION:Isbells\n\nhttp://www.last.fm/event/1387725+Isbells+at+Burgerwee
- shuis+on+17+April+2010
+DESCRIPTION:Isbells\n\nhttp://www.last.fm/event/1387725+Isbells+at+Burgerwe
+ eshuis+on+17+April+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1326470
-URL;VALUE=URI:http://www.last.fm/event/1326470+Anathema+at+Burgerweeshuis+on
- +22+April+2010
+URL;VALUE=URI:http://www.last.fm/event/1326470+Anathema+at+Burgerweeshuis+o
+ n+22+April+2010
 DTSTAMP:20100422T210000Z
 DTSTART:20100422T210000
 DTEND:20100422T235900
 SUMMARY:Anathema at Burgerweeshuis
-DESCRIPTION:Anathema\n\nhttp://www.last.fm/event/1326470+Anathema+at+Burgerw
- eeshuis+on+22+April+2010
+DESCRIPTION:Anathema\n\nhttp://www.last.fm/event/1326470+Anathema+at+Burger
+ weeshuis+on+22+April+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -298,34 +299,34 @@ DTSTAMP:20100423T210000Z
 DTSTART:20100423T210000
 DTEND:20100423T235900
 SUMMARY:Michiel Borstlap Eldorado
-DESCRIPTION:Michiel Borstlap\n\nhttp://www.last.fm/event/1400310+Michiel+Bor
- stlap+Eldorado
+DESCRIPTION:Michiel Borstlap\n\nhttp://www.last.fm/event/1400310+Michiel+Bo
+ rstlap+Eldorado
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1067247
-URL;VALUE=URI:http://www.last.fm/event/1067247+Heideroosjes+at+Burgerweeshui
- s+on+9+May+2010
+URL;VALUE=URI:http://www.last.fm/event/1067247+Heideroosjes+at+Burgerweeshu
+ is+on+9+May+2010
 DTSTAMP:20100509T203000Z
 DTSTART:20100509T203000
 DTEND:20100509T235900
 SUMMARY:Heideroosjes at Burgerweeshuis
-DESCRIPTION:Heideroosjes\n\nhttp://www.last.fm/event/1067247+Heideroosjes+at
- +Burgerweeshuis+on+9+May+2010
+DESCRIPTION:Heideroosjes\n\nhttp://www.last.fm/event/1067247+Heideroosjes+a
+ t+Burgerweeshuis+on+9+May+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1334621
-URL;VALUE=URI:http://www.last.fm/event/1334621+Roosbeef+at+Deventer+Schouwbu
- rg+on+11+May+2010
+URL;VALUE=URI:http://www.last.fm/event/1334621+Roosbeef+at+Deventer+Schouwb
+ urg+on+11+May+2010
 DTSTAMP:20100511T200000Z
 DTSTART:20100511T200000
 DTEND:20100511T235900
 SUMMARY:Roosbeef at Deventer Schouwburg
-DESCRIPTION:Roosbeef\n\nhttp://www.last.fm/event/1334621+Roosbeef+at+Devente
- r+Schouwburg+on+11+May+2010
+DESCRIPTION:Roosbeef\n\nhttp://www.last.fm/event/1334621+Roosbeef+at+Devent
+ er+Schouwburg+on+11+May+2010
 LOCATION:Deventer Schouwburg\, Netherlands
 GEO:6.161613;52.255862
 END:VEVENT
@@ -336,33 +337,34 @@ DTSTAMP:20100519T203000Z
 DTSTART:20100519T203000
 DTEND:20100519T235900
 SUMMARY:Heideroosjes
-DESCRIPTION:De Heideroosjes\n\nhttp://www.last.fm/event/1136119+Heideroosjes
+DESCRIPTION:De Heideroosjes\n\nhttp://www.last.fm/event/1136119+Heideroosje
+ s
 LOCATION:Deventer Schouwburg\, Netherlands
 GEO:6.161613;52.255862
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1327278
-URL;VALUE=URI:http://www.last.fm/event/1327278+Aesun+at+Burgerweeshuis+on+9+
- June+2010
+URL;VALUE=URI:http://www.last.fm/event/1327278+Aesun+at+Burgerweeshuis+on+9
+ +June+2010
 DTSTAMP:20100609T112900Z
 DTSTART:20100609T000000
 DTEND:20100609T235900
 SUMMARY:Aesun at Burgerweeshuis
-DESCRIPTION:Aesun\n\nhttp://www.last.fm/event/1327278+Aesun+at+Burgerweeshui
- s+on+9+June+2010
+DESCRIPTION:Aesun\n\nhttp://www.last.fm/event/1327278+Aesun+at+Burgerweeshu
+ is+on+9+June+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1334624
-URL;VALUE=URI:http://www.last.fm/event/1334624+Peter+Pan+Speedrock+at+Burger
- weeshuis+on+11+June+2010
+URL;VALUE=URI:http://www.last.fm/event/1334624+Peter+Pan+Speedrock+at+Burge
+ rweeshuis+on+11+June+2010
 DTSTAMP:20100611T203000Z
 DTSTART:20100611T203000
 DTEND:20100611T235900
 SUMMARY:Peter Pan Speedrock + Paceshifters at Burgerweeshuis
-DESCRIPTION:Peter Pan Speedrock\, Paceshifters\n\nhttp://www.last.fm/event/1
- 334624+Peter+Pan+Speedrock+at+Burgerweeshuis+on+11+June+2010
+DESCRIPTION:Peter Pan Speedrock\, Paceshifters\n\nhttp://www.last.fm/event/
+ 1334624+Peter+Pan+Speedrock+at+Burgerweeshuis+on+11+June+2010
 LOCATION:Burgerweeshuis\, Netherlands
 GEO:6.155862;52.254341
 END:VEVENT
@@ -384,21 +386,21 @@ DTSTAMP:20100819T191900Z
 DTSTART:20100819T000000
 DTEND:20100822T235900
 SUMMARY:Xnoizz Flevo Festival
-DESCRIPTION:Nog Onbekend\n\nhttp://www.last.fm/event/1398450+Xnoizz+Flevo+Fe
- stival
+DESCRIPTION:Nog Onbekend\n\nhttp://www.last.fm/event/1398450+Xnoizz+Flevo+F
+ estival
 LOCATION:Recreatieplas Bussloo\, Netherlands
 GEO:6.1333333;52.2
 END:VEVENT
 BEGIN:VEVENT
 UID:LFMEVENT-1135861
-URL;VALUE=URI:http://www.last.fm/event/1135861+A+Campingflight+to+Lowlands+P
- aradise+2010
+URL;VALUE=URI:http://www.last.fm/event/1135861+A+Campingflight+to+Lowlands+
+ Paradise+2010
 DTSTAMP:20100820T160500Z
 DTSTART:20100820T000000
 DTEND:20100822T235900
 SUMMARY:A Campingflight to Lowlands Paradise 2010
-DESCRIPTION:Kees van Hondt\n\nhttp://www.last.fm/event/1135861+A+Campingflig
- ht+to+Lowlands+Paradise+2010
+DESCRIPTION:Kees van Hondt\n\nhttp://www.last.fm/event/1135861+A+Campingfli
+ ght+to+Lowlands+Paradise+2010
 LOCATION:Evenemententerrein Walibi World\, Netherlands
 GEO:6.227748;52.24453
 END:VEVENT
@@ -409,8 +411,8 @@ DTSTAMP:20100917T141500Z
 DTSTART:20100917T000000
 DTEND:20100917T235900
 SUMMARY:Clock live@ Kajak
-DESCRIPTION:Clockrockz\n\nhttp://www.last.fm/event/1397948+Clock+live%40+Kaj
- ak
+DESCRIPTION:Clockrockz\n\nhttp://www.last.fm/event/1397948+Clock+live%40+Ka
+ jak
 LOCATION:Kajak\, Netherlands
 GEO:6.092868;52.236304
 END:VEVENT

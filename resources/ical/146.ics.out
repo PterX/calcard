@@ -13,8 +13,8 @@ DTEND:19970324T210000Z
 CATEGORIES:MEETING,PROJECT
 CLASS:PUBLIC
 SUMMARY:Calendaring Interoperability Planning Meeting
-DESCRIPTION:Discuss how we can test c&s interoperability\nusing iCalendar an
- d other IETF standards.
+DESCRIPTION:Discuss how we can test c&s interoperability\nusing iCalendar a
+ nd other IETF standards.
 LOCATION:LDB Lobby
 ATTACH;FMTTYPE=application/postscript:ftp://xyzCorp.com/pub/conf/bkgrnd.ps
 END:VEVENT

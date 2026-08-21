@@ -31,19 +31,19 @@ BEGIN:VEVENT
 CREATED:20240229T160626Z
 LAST-MODIFIED:20231221T141000Z
 DTSTAMP:20231221T141000Z
-UID:040000008200E00074C5B7101A82E008000000008D1F7DAB8632DA010000000000000000
- 100000008EF89A92C90D1342BF1F2CB714276CCC
+UID:040000008200E00074C5B7101A82E008000000008D1F7DAB8632DA01000000000000000
+ 0100000008EF89A92C90D1342BF1F2CB714276CCC
 SUMMARY:Atelier groupes portail/Nuage
 PRIORITY:5
 STATUS:CONFIRMED
 DTSTART;TZID=1:20240108T110000
 DTEND;TZID=1:20240108T120000
 CLASS:PUBLIC
-DESCRIPTION;LANGUAGE=fr-FR:Désolé pour ces changements de date\, j'espère
-  que ce dernier créneau conviendra à tout le monde. \n\nJe vous propose 
- cette date pour un atelier sur les soucis avec les commandes à passer sur
-  les serveurs nextcloud pour la mise en place des groupes. Dites moi si ç
- a ne convient pas. Merci !\n
+DESCRIPTION;LANGUAGE=fr-FR:Désolé pour ces changements de date\, j'espèr
+ e que ce dernier créneau conviendra à tout le monde. \n\nJe vous propose
+  cette date pour un atelier sur les soucis avec les commandes à passer su
+ r les serveurs nextcloud pour la mise en place des groupes. Dites moi si 
+ ça ne convient pas. Merci !\n
 TRANSP:OPAQUE
 SEQUENCE:3
 LOCATION;LANGUAGE=fr-FR:https://visio-agents.education.fr/

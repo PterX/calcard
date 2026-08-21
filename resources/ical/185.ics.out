@@ -1,10 +1,10 @@
 BEGIN:VCALENDAR
 CALSCALE:GREGORIAN
 X-WR-TIMEZONE;VALUE=TEXT:America/Anchorage
-X-WR-CALDESC;VALUE=TEXT:This calendar contains all of the Vernal Equinox (st
- art of spring)\, Summer Solstice (start of summer)\, Autumal Equinox (star
- t of autumn)\, and Winter Solstice (start of winter) times through the yea
- r 2020.
+X-WR-CALDESC;VALUE=TEXT:This calendar contains all of the Vernal Equinox (s
+ tart of spring)\, Summer Solstice (start of summer)\, Autumal Equinox (sta
+ rt of autumn)\, and Winter Solstice (start of winter) times through the ye
+ ar 2020.
 PRODID:-//Apple Computer\, Inc//iCal 1.0//EN
 X-WR-RELCALID:02D91CAF-6873-11D7-AB01-000393AF7662-CALP
 X-WR-CALNAME:Earth Seasons

@@ -296,8 +296,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030131
-SUMMARY:"Ham" the chimpanzee soars into space aboard Mercury-Redstone 2\, 19
- 61
+SUMMARY:"Ham" the chimpanzee soars into space aboard Mercury-Redstone 2\, 1
+ 961
 UID:60BDF852-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -576,8 +576,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030314
-SUMMARY:Teddy Roosevelt excludes Japanese laborers from continental US\, 190
- 7
+SUMMARY:Teddy Roosevelt excludes Japanese laborers from continental US\, 19
+ 07
 UID:60BE2241-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -622,8 +622,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030316
-SUMMARY:MyLai Massacre\; 300 non-combatant villagers killed by U.S. infantry
- men
+SUMMARY:MyLai Massacre\; 300 non-combatant villagers killed by U.S. infantr
+ ymen
 UID:60BE2880-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -632,8 +632,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030316
-SUMMARY:Robert Goddard launches first liquid-fueled rocket\, Auburn MA\, 192
- 6
+SUMMARY:Robert Goddard launches first liquid-fueled rocket\, Auburn MA\, 19
+ 26
 UID:60BE29C0-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -669,8 +669,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030320
-SUMMARY:Radio Caroline\, the original British pirate radio station\, sinks\,
-  1980
+SUMMARY:Radio Caroline\, the original British pirate radio station\, sinks
+ \, 1980
 UID:60BE2F83-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -832,7 +832,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030412
-SUMMARY:Confederate troops fire first shots of Civil War at Ft Sumter\, 1861
+SUMMARY:Confederate troops fire first shots of Civil War at Ft Sumter\, 186
+ 1
 UID:60BE4A00-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -985,7 +986,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030426
-SUMMARY:William Shakespeare baptised in Stratford-on-Avon\, England\, 1564\,
+SUMMARY:William Shakespeare baptised in Stratford-on-Avon\, England\, 1564
+ \,
 UID:60BE6252-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -1345,7 +1347,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030610
-SUMMARY:Denver police tear gas Jethro Tull and 2000 fans at Red Rocks\, 1971
+SUMMARY:Denver police tear gas Jethro Tull and 2000 fans at Red Rocks\, 197
+ 1
 UID:60BEA216-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -1534,8 +1537,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030626
-SUMMARY:St. Lawrence Seaway dedicated by Eisenhower & Queen Elizabeth II\, 1
- 959
+SUMMARY:St. Lawrence Seaway dedicated by Eisenhower & Queen Elizabeth II\, 
+ 1959
 UID:60BEBDB0-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -1688,8 +1691,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030708
-SUMMARY:Liberty Bell cracks while being rung at funeral of John Marshall\, 1
- 835
+SUMMARY:Liberty Bell cracks while being rung at funeral of John Marshall\, 
+ 1835
 UID:60BED460-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -1779,8 +1782,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030721
-SUMMARY:First Train Robbery\, Jesse James gets $3000 near Adair\, Iowa\, 187
- 3
+SUMMARY:First Train Robbery\, Jesse James gets $3000 near Adair\, Iowa\, 18
+ 73
 UID:60BEE181-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -1825,8 +1828,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030731
-SUMMARY:Harry S. Truman dedicates N.Y. Int'l Airport @ Idlewild Field\, 1948
- \, later JFK
+SUMMARY:Harry S. Truman dedicates N.Y. Int'l Airport @ Idlewild Field\, 194
+ 8\, later JFK
 UID:60BEE7C0-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -1835,8 +1838,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030801
-SUMMARY:Lughnasa\; Feast of the god Lugh\, a 30 day Celtic feast centers on 
- this day
+SUMMARY:Lughnasa\; Feast of the god Lugh\, a 30 day Celtic feast centers on
+  this day
 UID:60BEE8FC-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2070,7 +2073,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030815
-SUMMARY:Gandhi's movement obtains independence for Pakistan and India\, 1947
+SUMMARY:Gandhi's movement obtains independence for Pakistan and India\, 194
+ 7
 UID:60BF0F0A-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2115,8 +2119,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030819
-SUMMARY:Air Force cargo plane snares payload from Discoverer 14 spy satellit
- e\, marking start of practical military reconnaissance from space\, 1960
+SUMMARY:Air Force cargo plane snares payload from Discoverer 14 spy satelli
+ te\, marking start of practical military reconnaissance from space\, 1960
 UID:60BF152D-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2233,7 +2237,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030828
-SUMMARY:King leads over 200K in civil rights rally in Washington\, DC\, 1963
+SUMMARY:King leads over 200K in civil rights rally in Washington\, DC\, 196
+ 3
 UID:60BF5C90-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2242,8 +2247,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030829
-SUMMARY:Star in Cygnus goes nova and becomes 4th brightest in sky\, 1975\; N
- ova Cygni 1975.
+SUMMARY:Star in Cygnus goes nova and becomes 4th brightest in sky\, 1975\; 
+ Nova Cygni 1975.
 UID:60BF5EF0-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2288,7 +2293,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030831
-SUMMARY:269 people killed after Korean Airlines 747 shot down by USSR\, 1983
+SUMMARY:269 people killed after Korean Airlines 747 shot down by USSR\, 198
+ 3
 UID:60BF654F-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2342,8 +2348,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030902
-SUMMARY:Japan signs unconditional surrender on US battleship `Missouri'\, 19
- 45
+SUMMARY:Japan signs unconditional surrender on US battleship `Missouri'\, 1
+ 945
 UID:60BF6F0C-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2541,8 +2547,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030914
-SUMMARY:The Selective Service Act establishes the first peacetime draft\, 19
- 40
+SUMMARY:The Selective Service Act establishes the first peacetime draft\, 1
+ 940
 UID:60C1C424-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2551,8 +2557,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030915
-SUMMARY:Soviet Premier Nikita Khrushchev begins his 13 day tour of the US\, 
- 1959
+SUMMARY:Soviet Premier Nikita Khrushchev begins his 13 day tour of the US\,
+  1959
 UID:60C1C557-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2561,8 +2567,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030915
-SUMMARY:The U.S. Foreign Affairs Dept. becomes the U.S. State Department\, 1
- 789
+SUMMARY:The U.S. Foreign Affairs Dept. becomes the U.S. State Department\, 
+ 1789
 UID:60C1C689-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2571,8 +2577,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030916
-SUMMARY:The village of Shawmut\, Massachusetts\, becomes the city of Boston\,
-  1630
+SUMMARY:The village of Shawmut\, Massachusetts\, becomes the city of Boston
+ \, 1630
 UID:60C1C7C0-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2608,8 +2614,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030920
-SUMMARY:First meeting of the American Association for the Advancement of Sci
- ence\, 1848
+SUMMARY:First meeting of the American Association for the Advancement of Sc
+ ience\, 1848
 UID:60C1CD72-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2690,8 +2696,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030923
-SUMMARY:The New York Knickerbockers becomes the first U.S. Baseball club\, 1
- 845
+SUMMARY:The New York Knickerbockers becomes the first U.S. Baseball club\, 
+ 1845
 UID:60C1D990-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2700,8 +2706,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030923
-SUMMARY:V.P. Nixon denies campaign fund fraud with his "Checkers" speech\, 1
- 952
+SUMMARY:V.P. Nixon denies campaign fund fraud with his "Checkers" speech\, 
+ 1952
 UID:60C1DAC8-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2737,8 +2743,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030928
-SUMMARY:A Greek soldier runs 26+ miles after the Persian defeat at Marathon\,
-  490BC
+SUMMARY:A Greek soldier runs 26+ miles after the Persian defeat at Marathon
+ \, 490BC
 UID:60C1DFBE-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2747,7 +2753,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030930
-SUMMARY:Red Jack kills 2\, Elizabeth Stride (#3) and Catherine Eddowes (#4)\,
+SUMMARY:Red Jack kills 2\, Elizabeth Stride (#3) and Catherine Eddowes (#4)
+ \,
 UID:60C1E0FA-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2756,8 +2763,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20030930
-SUMMARY:The first tooth is extracted under anesthesia in Charleston\, Mass\,
-  1846
+SUMMARY:The first tooth is extracted under anesthesia in Charleston\, Mass
+ \, 1846
 UID:60C1E24E-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2784,8 +2791,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031002
-SUMMARY:Thurgood Marshall sworn as the first black Supreme Court Justice\, 1
- 967
+SUMMARY:Thurgood Marshall sworn as the first black Supreme Court Justice\, 
+ 1967
 UID:60C1E6D2-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2821,8 +2828,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031006
-SUMMARY:Antioch College is the first public school to admit men and women\, 
- 1853
+SUMMARY:Antioch College is the first public school to admit men and women\,
+  1853
 UID:60C1EBBE-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2867,8 +2874,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031007
-SUMMARY:Maryland Governor Marvin Mandel sent to prison on fraud charges\, 19
- 77
+SUMMARY:Maryland Governor Marvin Mandel sent to prison on fraud charges\, 1
+ 977
 UID:60C1F1EA-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2931,8 +2938,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031010
-SUMMARY:Mercury at Superior Conjunction with Sun.  Moves into night sky. (19
- 84)
+SUMMARY:Mercury at Superior Conjunction with Sun.  Moves into night sky. (1
+ 984)
 UID:60C1FB36-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2941,8 +2948,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031010
-SUMMARY:Spiro T. Agnew resigns as Vice-President due to income tax fraud\, 1
- 973
+SUMMARY:Spiro T. Agnew resigns as Vice-President due to income tax fraud\, 
+ 1973
 UID:60C1FC72-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2969,8 +2976,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031011
-SUMMARY:The first steam powered ferry ran between New York and Hoboken\, 181
- 1
+SUMMARY:The first steam powered ferry ran between New York and Hoboken\, 18
+ 11
 UID:60C200EB-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2988,8 +2995,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031012
-SUMMARY:Bahama Natives discover Columbus of Europe lost on their shores\, 14
- 92
+SUMMARY:Bahama Natives discover Columbus of Europe lost on their shores\, 1
+ 492
 UID:60C20388-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -2998,8 +3005,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031012
-SUMMARY:Khrushchev pounds his desk with shoe during a speech to the UN\, 196
- 0
+SUMMARY:Khrushchev pounds his desk with shoe during a speech to the UN\, 19
+ 60
 UID:60C204C5-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3026,8 +3033,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031013
-SUMMARY:U.S. Navy born\, 1775\, authorized by the Second Continental Congres
- s
+SUMMARY:U.S. Navy born\, 1775\, authorized by the Second Continental Congre
+ ss
 UID:60C20891-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3036,8 +3043,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031014
-SUMMARY:Battle of Hastings won by William the Conqueror and the Normans\, 10
- 66
+SUMMARY:Battle of Hastings won by William the Conqueror and the Normans\, 1
+ 066
 UID:60C209D0-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3073,8 +3080,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031018
-SUMMARY:Soviets anounce their probe took photos of the Moon's far side\, 195
- 9
+SUMMARY:Soviets anounce their probe took photos of the Moon's far side\, 19
+ 59
 UID:60C20F8B-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3164,8 +3171,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031025
-SUMMARY:The UN removes Taiwan and admits the People's Republic of China\, 19
- 71
+SUMMARY:The UN removes Taiwan and admits the People's Republic of China\, 1
+ 971
 UID:60C21CBC-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3210,8 +3217,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031028
-SUMMARY:Constantine's army defeats forces of Maxentius at Mulvian Bridge\, 3
- 12
+SUMMARY:Constantine's army defeats forces of Maxentius at Mulvian Bridge\, 
+ 312
 UID:60C2230D-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3274,8 +3281,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031101
-SUMMARY:Puerto Rican nationalists try to kill Truman at the Blair House\, 19
- 50
+SUMMARY:Puerto Rican nationalists try to kill Truman at the Blair House\, 1
+ 950
 UID:60C22C6B-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3284,8 +3291,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031102
-SUMMARY:Luftwaffe completes 57 consecutive nights of bombing of London\, 194
- 0
+SUMMARY:Luftwaffe completes 57 consecutive nights of bombing of London\, 19
+ 40
 UID:60C22DA6-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3357,7 +3364,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031106
-SUMMARY:Anniversary of the October Socialist Revolution (2 days) in U.S.S.R.
+SUMMARY:Anniversary of the October Socialist Revolution (2 days) in U.S.S.R
+ .
 UID:60C2385E-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3429,8 +3437,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031110
-SUMMARY:41 Women arrested in suffragette demonstartions near White House\, 1
- 917
+SUMMARY:41 Women arrested in suffragette demonstartions near White House\, 
+ 1917
 UID:60C244A7-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3448,8 +3456,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031110
-SUMMARY:Henry Stanley asks David Livingston\, "Dr. Livingston\, I presume?"\,
-  1871
+SUMMARY:Henry Stanley asks David Livingston\, "Dr. Livingston\, I presume?"
+ \, 1871
 UID:60C24838-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3485,9 +3493,9 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031114
-SUMMARY:Quarter Pounder price raised from $0.53 to $0.55 in violation of Nix
- on price controls (but okayed by Price Commission after formal request fro
- m McDonald's)\, 1971
+SUMMARY:Quarter Pounder price raised from $0.53 to $0.55 in violation of Ni
+ xon price controls (but okayed by Price Commission after formal request fr
+ om McDonald's)\, 1971
 UID:60C26A72-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3649,8 +3657,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031201
-SUMMARY:Martin Luther King Jr.\, leads black boycott of Montgomery buses\, 1
- 955
+SUMMARY:Martin Luther King Jr.\, leads black boycott of Montgomery buses\, 
+ 1955
 UID:60C287A9-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3659,8 +3667,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031201
-SUMMARY:Rosa Parks refuses to move to back of the bus (Montgomery\, AL)\, 19
- 53
+SUMMARY:Rosa Parks refuses to move to back of the bus (Montgomery\, AL)\, 1
+ 953
 UID:60C288DF-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3696,8 +3704,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031204
-SUMMARY:Washington takes leave of his officers at Fraunce's Tavern\, NYC\, 1
- 783
+SUMMARY:Washington takes leave of his officers at Fraunce's Tavern\, NYC\, 
+ 1783
 UID:60C28DD2-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3769,8 +3777,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031213
-SUMMARY:Apollo 17 leaves the moon\, with "last" men to walk on moon aboard\,
-  1972
+SUMMARY:Apollo 17 leaves the moon\, with "last" men to walk on moon aboard
+ \, 1972
 UID:60C299CA-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1
@@ -3842,8 +3850,8 @@ DURATION:P1D
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;VALUE=DATE:20031221
-SUMMARY:Phileas Fogg completes his trip around the world in less than 80 day
- s
+SUMMARY:Phileas Fogg completes his trip around the world in less than 80 da
+ ys
 UID:60C2A4D2-90AC-11D9-9672-00112474B410
 DTSTAMP:20050309T143956Z
 RRULE:FREQ=YEARLY;INTERVAL=1

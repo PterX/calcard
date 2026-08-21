@@ -18,9 +18,9 @@ DTSTART;TZID="Arabian Standard Time":20210331T140000
 SEQUENCE:0
 SUMMARY:Webinar - Middle East M&A: How new tax rules impact M&A deals
 UID:421182d9-2d9c-4659-9b7d-d2b17b4c57e0
-X-ALT-DESC;FMTTYPE=text/html:Click here to join the webnar:<br /><ahref="htt
- ps://attendee.gotowebinar.com/register/XXX">https://attendee.gotowebinar.c
- om/register/XXX</a>
+X-ALT-DESC;FMTTYPE=text/html:Click here to join the webnar:<br /><ahref="ht
+ tps://attendee.gotowebinar.com/register/XXX">https://attendee.gotowebinar.
+ com/register/XXX</a>
 X-MICROSOFT-CDO-BUSYSTATUS:BUSY
 CREATED:20210323T063157Z
 LAST-MODIFIED:20210323T063157Z

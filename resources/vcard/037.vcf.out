@@ -16,12 +16,12 @@ EMAIL;TYPE=WORK:work@example.com
 EMAIL;TYPE=school:school@example.com
 EMAIL;TYPE=other:other@example.com
 EMAIL;TYPE=customtype:custom@example.com
-PHOTO:https://d3m0kzytmr41b1.cloudfront.net/c335e945d1b60edd9d75eb4837c432f6
- 37e95c8a
-PHOTO:https://d3m0kzytmr41b1.cloudfront.net/c335e945d1b60edd9d75eb4837c432f6
- 37e95c8a
-PHOTO:https://d2ojpxxtu63wzl.cloudfront.net/static/aa915d1f29f19baf560e5491d
- ecdd30a_67c95da9133249fde8b0da7ceebc298bf680117e6f52054f7f5f7a95e8377238
+PHOTO:https://d3m0kzytmr41b1.cloudfront.net/c335e945d1b60edd9d75eb4837c432f
+ 637e95c8a
+PHOTO:https://d3m0kzytmr41b1.cloudfront.net/c335e945d1b60edd9d75eb4837c432f
+ 637e95c8a
+PHOTO:https://d2ojpxxtu63wzl.cloudfront.net/static/aa915d1f29f19baf560e5491
+ decdd30a_67c95da9133249fde8b0da7ceebc298bf680117e6f52054f7f5f7a95e8377238
 ORG:Organization1;Department1
 ORG:Organization2;Department2
 TITLE:Title1
@@ -44,12 +44,13 @@ X-FCENCODED-582D46432D52656C617465644E616D65733A467269656E64:Friend
 X-FCENCODED-582D46432D52656C617465644E616D65733A53706F757365:Spouse
 X-FCENCODED-582D46432D52656C617465644E616D65733A4669616E63C3A9:Fiance
 X-FCENCODED-582D46432D52656C617465644E616D65733A506172746E6572:Partner
-X-FCENCODED-582D46432D52656C617465644E616D65733A417373697374616E74:Assistant
+X-FCENCODED-582D46432D52656C617465644E616D65733A417373697374616E74:Assistan
+ t
 X-FCENCODED-582D46432D52656C617465644E616D65733A4D616E61676572:Manager
 X-FCENCODED-582D46432D52656C617465644E616D65733A4F74686572:Other
 X-FCENCODED-582D46432D52656C617465644E616D65733A437573746F6D54595045:Custom
-X-FCENCODED-582D46432D4F7468657244617465733A416E6E6976657273617279:2016-08-0
- 2
+X-FCENCODED-582D46432D4F7468657244617465733A416E6E6976657273617279:2016-08-
+ 02
 X-FCENCODED-582D46432D4F7468657244617465733A4F74686572:2016-08-03
 X-FCENCODED-582D46432D4F7468657244617465733A437573746F6D54595045:2016-08-04
 NOTE:Notes line 1\nNotes line 2
@@ -57,14 +58,14 @@ URL:http://www.homepage.com
 URL:http://www.blog.com
 URL:http://www.other.com
 URL:http://www.custom.com
-ADR;TYPE=HOME:;HomeExtended;HomeStreet;HomeCity;HomeState;HomePostal;HomeCou
- ntry
-ADR;TYPE=WORK:;WorkExtended;WorkStreet;WorkCity;WorkState;WorkPostal;WorkCou
- ntry
-ADR;TYPE=other:;OtherExtended;OtherStreet;OtherCity;OtherState;OtherPostal;O
- therCountry
-ADR;TYPE=customtype:;CustomExtended;CustomStreet;CustomCity;CustomState;Cust
- omPostal;CustomCountry
+ADR;TYPE=HOME:;HomeExtended;HomeStreet;HomeCity;HomeState;HomePostal;HomeCo
+ untry
+ADR;TYPE=WORK:;WorkExtended;WorkStreet;WorkCity;WorkState;WorkPostal;WorkCo
+ untry
+ADR;TYPE=other:;OtherExtended;OtherStreet;OtherCity;OtherState;OtherPostal;
+ OtherCountry
+ADR;TYPE=customtype:;CustomExtended;CustomStreet;CustomCity;CustomState;Cus
+ tomPostal;CustomCountry
 NICKNAME:NickName
 IMPP;X-SERVICE-TYPE=GTalk:xmpp:gtalk
 IMPP;X-SERVICE-TYPE=Skype:skype:skype

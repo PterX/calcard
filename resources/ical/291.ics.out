@@ -4,10 +4,10 @@ PRODID:-//Apple Inc.//iCal 3.0//EN
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 SEQUENCE:1
-DESCRIPTION:Tonight - Cloudy. Rain and mountain snow likely overnight. Snow 
- level 5000 feet. Lows in the lower to mid 30s. Chance of precipitation 60 
- percent.\n<a href="http://www.wunderground.com/US/WA/Leavenworth.html">Mor
- e Information</a>
+DESCRIPTION:Tonight - Cloudy. Rain and mountain snow likely overnight. Snow
+  level 5000 feet. Lows in the lower to mid 30s. Chance of precipitation 60
+  percent.\n<a href="http://www.wunderground.com/US/WA/Leavenworth.html">Mo
+ re Information</a>
 UID:1205128857-1-1205128857
 TRANSP:TRANSPARENT
 STATUS:CONFIRMED

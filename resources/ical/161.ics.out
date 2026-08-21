@@ -17,9 +17,9 @@ END:VEVENT
 BEGIN:VEVENT
 SEQUENCE:1
 DTSTAMP:20020918T221458Z
-SUMMARY:This is a space \n\n\nOption return and a really long line of text t
- hat will be inserted into the  event text box. Let's all see what really h
- appens when iCals start being real.
+SUMMARY:This is a space \n\n\nOption return and a really long line of text 
+ that will be inserted into the  event text box. Let's all see what really 
+ happens when iCals start being real.
 UID:99730748-92C7-11D7-A4A2-000A95690022
 DTSTART;TZID=US/Pacific:20020918T121500
 DURATION:PT2H

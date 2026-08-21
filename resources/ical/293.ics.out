@@ -4,10 +4,10 @@ PRODID:-//Apple Inc.//iCal 3.0//EN
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 SEQUENCE:1
-DESCRIPTION:Tuesday - Rain and mountain snow showers likely. Light mountain 
- snow accumulations above 4000 feet. Highs in the mid to upper 40s. Chance 
- of precipitation 60 percent. \n<a href="http://www.wunderground.com/US/WA/
- Leavenworth.html">More Information</a>
+DESCRIPTION:Tuesday - Rain and mountain snow showers likely. Light mountain
+  snow accumulations above 4000 feet. Highs in the mid to upper 40s. Chance
+  of precipitation 60 percent. \n<a href="http://www.wunderground.com/US/WA
+ /Leavenworth.html">More Information</a>
 UID:1205301657-3--679062325
 TRANSP:TRANSPARENT
 STATUS:CONFIRMED

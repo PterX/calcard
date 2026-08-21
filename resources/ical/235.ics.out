@@ -6,13 +6,13 @@ UID:19970901T130000Z-123405@example.com
 DTSTAMP:19970901T130000Z
 DTSTART;VALUE=DATE:19970317
 SUMMARY:Staff meeting minutes
-DESCRIPTION:1. Staff meeting: Participants include Joe\, Lisa\, and Bob. Aur
- ora project plans were reviewed. There is currently no budget reserves for
-  this project. Lisa will escalate to management. Next meeting on Tuesday.\n
- 2. Telephone Conference: ABC Corp. sales representative called to discuss 
- new printer. Promised to get us a demo by Friday.\n3. Henry Miller (Handso
- ff Insurance): Car was totaled by tree. Is looking into a loaner car. 555-
- 2323 (tel).
+DESCRIPTION:1. Staff meeting: Participants include Joe\, Lisa\, and Bob. Au
+ rora project plans were reviewed. There is currently no budget reserves fo
+ r this project. Lisa will escalate to management. Next meeting on Tuesday.
+ \n2. Telephone Conference: ABC Corp. sales representative called to discus
+ s new printer. Promised to get us a demo by Friday.\n3. Henry Miller (Hand
+ soff Insurance): Car was totaled by tree. Is looking into a loaner car. 55
+ 5-2323 (tel).
 END:VJOURNAL
 END:VCALENDAR
 

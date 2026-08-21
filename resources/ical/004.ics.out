@@ -7,8 +7,8 @@ DTSTART;TZID=America/New_York:20190301T170000
 DTEND;TZID=America/New_York:20190301T180000
 LOCATION:Germany
 DESCRIPTION:Title\nfirst Row\nsecond Row
-STYLED-DESCRIPTION:<html><body><h1>Title</h1><p><ul><li><b>first</b> Row </l
- i><li><i>second</i> Row</li></ul></p></body></html>
+STYLED-DESCRIPTION:<html><body><h1>Title</h1><p><ul><li><b>first</b> Row </
+ li><li><i>second</i> Row</li></ul></p></body></html>
 END:VEVENT
 END:VCALENDAR
 

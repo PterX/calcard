@@ -185,8 +185,8 @@ DURATION:PT3H
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;TZID=US/Central:20040827T190000
-SUMMARY:Preseason Game #3.Packers at Jacksonville Jaguars.  State TV. Loss-7
- -9.
+SUMMARY:Preseason Game #3.Packers at Jacksonville Jaguars.  State TV. Loss-
+ 7-9.
 UID:65104323-9401-11D8-BDAE-0003933EE0D6-RID
 DURATION:PT3H
 END:VEVENT
@@ -210,8 +210,8 @@ DURATION:PT3H
 END:VEVENT
 BEGIN:VEVENT
 DTSTART;TZID=US/Central:20040821T190000
-SUMMARY:Preseason Game#2.  New Orleans Saints at Green Bay. State TV. Win-19
- -14.
+SUMMARY:Preseason Game#2.  New Orleans Saints at Green Bay. State TV. Win-1
+ 9-14.
 UID:38F8031A-9401-11D8-BDAE-0003933EE0D6-RID
 DURATION:PT3H
 END:VEVENT

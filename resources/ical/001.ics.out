@@ -4,9 +4,9 @@ PRODID:-//Apple Inc.//iCal 3.0//EN
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 SEQUENCE:1
-DESCRIPTION:Sunday - Partly cloudy with a 20 percent chance of snow showers.
-  Highs in the lower to mid 40s.\n<a href="http://www.wunderground.com/US/W
- A/Leavenworth.html">More Information</a>
+DESCRIPTION:Sunday - Partly cloudy with a 20 percent chance of snow showers
+ . Highs in the lower to mid 40s.\n<a href="http://www.wunderground.com/US/
+ WA/Leavenworth.html">More Information</a>
 UID:1205712057-8-1055761864
 TRANSP:TRANSPARENT
 STATUS:CONFIRMED

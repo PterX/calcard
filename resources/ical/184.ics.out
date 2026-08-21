@@ -109,7 +109,8 @@ UID:DDC5B090-1B46-4C1D-8A3C-D305516A0B90
 SEQUENCE:9
 DTSTART;TZID=Australia/Brisbane:20060101T120000
 SUMMARY:Repeating Event
-DESCRIPTION:This is a simple repeating event with a couple of days excluded.
+DESCRIPTION:This is a simple repeating event with a couple of days excluded
+ .
 RRULE:FREQ=DAILY;COUNT=7;INTERVAL=1
 END:VEVENT
 END:VCALENDAR

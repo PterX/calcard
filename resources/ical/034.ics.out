@@ -115,8 +115,8 @@ DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110804
 LOCATION:Outside main entrance
 SUMMARY:Street basketball
-URL:http://www.foobar.org/summer11/compos/sports-competitions/team/#streetba
- sketball
+URL:http://www.foobar.org/summer11/compos/sports-competitions/team/#streetb
+ asketball
 END:VEVENT
 BEGIN:VEVENT
 CATEGORIES:Compo
@@ -134,8 +134,8 @@ DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110805
 LOCATION:Grass fields by Messukeskus
 SUMMARY:Disk throwing
-URL:http://www.foobar.org/summer11/compos/sports-competitions/individual/#di
- sk
+URL:http://www.foobar.org/summer11/compos/sports-competitions/individual/#d
+ isk
 END:VEVENT
 BEGIN:VEVENT
 CATEGORIES:Compo_show
@@ -144,7 +144,8 @@ DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110805
 LOCATION:Grass fields by Messukeskus
 SUMMARY:CD throwing
-URL:http://www.foobar.org/summer11/compos/sports-competitions/individual/#cd
+URL:http://www.foobar.org/summer11/compos/sports-competitions/individual/#c
+ d
 END:VEVENT
 BEGIN:VEVENT
 CATEGORIES:Compo_show
@@ -323,8 +324,8 @@ DTEND;VALUE=DATE:20110805
 DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110805
 LOCATION:Infodesk
-SUMMARY:Extreme music and Oldskool demo - compo entry recording\, come to In
- fodesk
+SUMMARY:Extreme music and Oldskool demo - compo entry recording\, come to I
+ nfodesk
 URL:http://www.foobar.org/summer11/compos/realtime/oldskool
 END:VEVENT
 BEGIN:VEVENT
@@ -414,8 +415,8 @@ DTEND;VALUE=DATE:20110805
 DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110804
 LOCATION:Infodesk
-SUMMARY:Short film & Real Wild demo - format conversions help - come to Info
- desk
+SUMMARY:Short film & Real Wild demo - format conversions help - come to Inf
+ odesk
 URL:http://www.foobar.org/summer11/compos/sound-vision/short-film
 END:VEVENT
 BEGIN:VEVENT
@@ -865,8 +866,8 @@ DTEND;VALUE=DATE:20110804
 DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110804
 LOCATION:Seminar area
-SUMMARY:ARTtech seminars - Why Being Poor and Having No Budget is Good For M
- aking Game
+SUMMARY:ARTtech seminars - Why Being Poor and Having No Budget is Good For 
+ Making Game
 URL:http://www.foobar.org/summer11/seminars/sessions#constraints
 END:VEVENT
 BEGIN:VEVENT
@@ -893,8 +894,8 @@ DTEND;VALUE=DATE:20110805
 DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110805
 LOCATION:Seminar area
-SUMMARY:ARTtech seminars - Perfect harmony: crowdsourcing matches musicians 
- and sound designers to game developers
+SUMMARY:ARTtech seminars - Perfect harmony: crowdsourcing matches musicians
+  and sound designers to game developers
 URL:http://www.foobar.org/summer11/seminars/sessions#music
 END:VEVENT
 BEGIN:VEVENT
@@ -912,8 +913,8 @@ DTEND;VALUE=DATE:20110805
 DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110805
 LOCATION:Seminar area
-SUMMARY:ARTtech seminars - Fumbling my way through pixel-based effects made 
- learning WebGL a lot easier
+SUMMARY:ARTtech seminars - Fumbling my way through pixel-based effects made
+  learning WebGL a lot easier
 URL:http://www.foobar.org/summer11/seminars/sessions#webgl1
 END:VEVENT
 BEGIN:VEVENT
@@ -976,8 +977,8 @@ DTEND;VALUE=DATE:20110806
 DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110806
 LOCATION:Seminar area
-SUMMARY:ARTtech seminars - Kajak3D\, an open source multiplatform game engin
- e
+SUMMARY:ARTtech seminars - Kajak3D\, an open source multiplatform game engi
+ ne
 URL:http://www.foobar.org/summer11/seminars/sessions#kajak3d
 END:VEVENT
 BEGIN:VEVENT
@@ -1121,8 +1122,8 @@ DTEND;VALUE=DATE:20110806
 DTSTAMP;VALUE=DATE:20120214
 DTSTART;VALUE=DATE:20110806
 LOCATION:Seminar area
-SUMMARY:ARTtech seminars – All aboard to the Dark side of the Moon (Iron S
- ky)
+SUMMARY:ARTtech seminars – All aboard to the Dark side of the Moon (Iron 
+ Sky)
 URL:http://www.foobar.org/summer11/seminars/sessions#ironsky
 END:VEVENT
 BEGIN:VEVENT

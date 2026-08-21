@@ -36,8 +36,8 @@ DTSTART;TZID=MyTimezone;VALUE=DATE-TIME:20240505T080001
 END:VEVENT
 BEGIN:VEVENT
 UID:3
-SUMMARY:Transition is from 8am -> 6am\, so 7:00:01 is winter RFC5545 does no
- t allow us to be at the later TZ.
+SUMMARY:Transition is from 8am -> 6am\, so 7:00:01 is winter RFC5545 does n
+ ot allow us to be at the later TZ.
 X-TZNAME:winter
 DTSTART;TZID=MyTimezone;VALUE=DATE-TIME:20240505T070001
 END:VEVENT

@@ -4,10 +4,10 @@ PRODID:-//Apple Inc.//iCal 3.0//EN
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 SEQUENCE:1
-DESCRIPTION:Thursday - Cloudy. A chance of snow in the morning...then a chan
- ce of rain or snow in the afternoon. Highs in the mid to upper 40s. Chance
-  of precipitation 50 percent. \n<a href="http://www.wunderground.com/US/WA
- /Leavenworth.html">More Information</a>
+DESCRIPTION:Thursday - Cloudy. A chance of snow in the morning...then a cha
+ nce of rain or snow in the afternoon. Highs in the mid to upper 40s. Chanc
+ e of precipitation 50 percent. \n<a href="http://www.wunderground.com/US/W
+ A/Leavenworth.html">More Information</a>
 UID:1205474457-5-1732404989
 TRANSP:TRANSPARENT
 STATUS:CONFIRMED

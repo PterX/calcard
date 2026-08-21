@@ -24,7 +24,7 @@ item5.X-ABRELATEDNAMES:MySpouse
 item5.X-ABLabel:_$!<Spouse>!$_
 item6.X-ABRELATEDNAMES:MyCustom
 item6.X-ABLabel:CustomRelationship
-NOTE:This is GMail's note field.\nIt should be added as a NOTE type.\nACusto
- mField: CustomField
+NOTE:This is GMail's note field.\nIt should be added as a NOTE type.\nACust
+ omField: CustomField
 END:VCARD
 

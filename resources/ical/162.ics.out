@@ -113,8 +113,8 @@ LAST-MODIFIED:20060830T041923
 DTSTAMP:20060825T152756Z
 CREATED:20060830T041843
 TRANSP:TRANSPARENT
-DESCRIPTION:UI Change Announcement Period: All user interface changes  must 
- be announced to gnome-doc-list@.
+DESCRIPTION:UI Change Announcement Period: All user interface changes  must
+  be announced to gnome-doc-list@.
 END:VEVENT
 BEGIN:VEVENT
 UID:20060425T221023Z-5616-1000-1-45@embrace
@@ -225,8 +225,8 @@ CLASS:PUBLIC
 LAST-MODIFIED:20060830T041843
 DTSTAMP:20060825T152756Z
 CREATED:20060830T041843
-DESCRIPTION:UI Freeze: No UI changes may be made without approval from  the 
- release-team and notification to the GDP.
+DESCRIPTION:UI Freeze: No UI changes may be made without approval from  the
+  release-team and notification to the GDP.
 TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
@@ -394,8 +394,9 @@ CLASS:PUBLIC
 LAST-MODIFIED:20060830T041843
 DTSTAMP:20060825T152756Z
 CREATED:20060830T041843
-DESCRIPTION:Hard Code Freeze: no source code changes can be made without  ap
- proval from the release-team. Translation and documentation can  continue.
+DESCRIPTION:Hard Code Freeze: no source code changes can be made without  a
+ pproval from the release-team. Translation and documentation can  continue
+ .
 TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
@@ -428,8 +429,8 @@ LAST-MODIFIED:20060830T041843
 DTSTAMP:20060825T152756Z
 CREATED:20060830T041843
 TRANSP:TRANSPARENT
-DESCRIPTION:Hard Code Freeze ends\, but other freezes remain in effect  for 
- the stable branch.
+DESCRIPTION:Hard Code Freeze ends\, but other freezes remain in effect  for
+  the stable branch.
 BEGIN:VALARM
 X-EVOLUTION-ALARM-UID:20060825T155041Z-17150-100-8562-228@embrace
 DESCRIPTION:GNOME 2.18.0 Tarballs Due
@@ -460,8 +461,8 @@ LAST-MODIFIED:20060830T041953
 DTSTAMP:20060825T152756Z
 CREATED:20060830T041843
 TRANSP:TRANSPARENT
-DESCRIPTION:Feature and Module Freeze: new modules and functionality are  ch
- osen now.
+DESCRIPTION:Feature and Module Freeze: new modules and functionality are  c
+ hosen now.
 END:VEVENT
 BEGIN:VEVENT
 UID:20060425T220941Z-5616-1000-1-40@embrace
@@ -493,8 +494,8 @@ LAST-MODIFIED:20060830T041858
 DTSTAMP:20060825T152756Z
 CREATED:20060830T041843
 TRANSP:TRANSPARENT
-DESCRIPTION:String Change Announcement Period: All string changes must be  a
- nnounced to both gnome-i18n@ and gnome-doc-list@.
+DESCRIPTION:String Change Announcement Period: All string changes must be  
+ announced to both gnome-i18n@ and gnome-doc-list@.
 END:VEVENT
 BEGIN:VEVENT
 UID:20060425T221625Z-5616-1000-1-55@embrace
@@ -506,9 +507,9 @@ CLASS:PUBLIC
 LAST-MODIFIED:20060830T041843
 DTSTAMP:20060825T152756Z
 CREATED:20060830T041843
-DESCRIPTION:String Freeze: no string changes may be made without  confirmati
- on from the l10n team (gnome-i18n@) and notification to both  the release 
- team and the GDP (gnome-doc-list@).
+DESCRIPTION:String Freeze: no string changes may be made without  confirmat
+ ion from the l10n team (gnome-i18n@) and notification to both  the release
+  team and the GDP (gnome-doc-list@).
 TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT

@@ -144,8 +144,11 @@ impl Parser<'_> {
                     }
                 };
                 match params.encoding {
-                    Some(Encoding::Base64) if multi_value != ValueSeparator::None => {
-                        self.expect_single_value();
+                    Some(Encoding::Base64) => {
+                        if multi_value != ValueSeparator::None {
+                            self.expect_single_value();
+                        }
+                        self.unfold_b64 = true;
                     }
                     Some(Encoding::QuotedPrintable) => {
                         self.unfold_qp = true;
@@ -338,6 +341,8 @@ impl Parser<'_> {
 
                     token_idx += 1;
                 }
+            } else {
+                entry.values.push(VCardValue::Text(String::new()));
             }
 
             // Add types
@@ -638,25 +643,11 @@ impl Token<'_> {
         self,
     ) -> std::result::Result<PartialDateTime, String> {
         let mut dt = PartialDateTime::default();
-        if dt.parse_timestamp(&mut self.text.iter().peekable(), true) {
+        if dt.parse_timestamp(&mut self.text.iter().peekable(), false) {
             Ok(dt)
         } else {
             let mut dt = PartialDateTime::default();
             if dt.parse_vcard_date_legacy(&mut self.text.iter().peekable()) {
-                #[cfg(test)]
-                {
-                    for item in [
-                        &mut dt.hour,
-                        &mut dt.minute,
-                        &mut dt.second,
-                        &mut dt.tz_hour,
-                        &mut dt.tz_minute,
-                    ] {
-                        if item.is_none() {
-                            *item = Some(0);
-                        }
-                    }
-                }
                 Ok(dt)
             } else {
                 Err(self.into_string())
@@ -855,7 +846,16 @@ mod tests {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "vcf") {
-                let input = std::fs::read_to_string(&path).unwrap();
+                let input = match String::from_utf8(std::fs::read(&path).unwrap()) {
+                    Ok(input) => input,
+                    Err(err) => {
+                        // ISO-8859-1
+                        err.as_bytes()
+                            .iter()
+                            .map(|&b| b as char)
+                            .collect::<String>()
+                    }
+                };
                 let mut parser = Parser::new(&input);
                 let mut output = std::fs::File::create(path.with_extension("vcf.out")).unwrap();
                 let file_name = path.as_path().to_str().unwrap();
