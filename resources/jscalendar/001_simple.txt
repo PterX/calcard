@@ -3,6 +3,65 @@ CLASS:PRIVATE
 > convert
 "privacy": "private"
 
+> test CLASS with unknown value
+CLASS:X-RESTRICTED
+> convert
+"privacy": "private",
+"iCalendar": {
+  "name": "vevent",
+  "properties": [
+    [
+      "class",
+      {},
+      "unknown",
+      "X-RESTRICTED"
+    ]
+  ]
+}
+
+> test CLASS with multiple values
+CLASS:CONFIDENTIAL
+CLASS:X-RESTRICTED
+> convert
+"privacy": "secret",
+"iCalendar": {
+  "name": "vevent",
+  "properties": [
+    [
+      "class",
+      {},
+      "unknown",
+      "X-RESTRICTED"
+    ]
+  ]
+}
+> convert
+CLASS:CONFIDENTIAL
+
+> test JSCalendar - privacy with vendor value
+"privacy": "example.com:hidden"
+> convert
+CLASS:PRIVATE
+JSPROP;JSPTR=privacy:"example.com:hidden"
+
+> test JSCalendar - privacy with preserved CLASS of a known value
+"privacy": "secret",
+"iCalendar": {
+  "name": "vevent",
+  "properties": [
+    [
+      "class",
+      {},
+      "unknown",
+      "PRIVATE"
+    ]
+  ]
+}
+> convert
+CLASS:CONFIDENTIAL
+> convert
+"privacy": "secret"
+
 > test COLOR #1
 COLOR:maroon
 > convert
