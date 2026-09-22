@@ -7,12 +7,12 @@
 use crate::{
     common::{IanaParse, IanaType},
     jscontact::{
-        JSContactId, JSContactProperty, JSContactValue,
+        Context, Feature, JSContactId, JSContactProperty, JSContactValue,
         export::{State, props::convert_value},
     },
     vcard::{
         VCard, VCardEntry, VCardParameter, VCardParameterName, VCardParameterValue, VCardProperty,
-        VCardValueType, ValueType,
+        VCardType, VCardValueType, ValueType,
     },
 };
 use jmap_tools::{Element, JsonPointer, Key, Property, Value};
@@ -131,6 +131,72 @@ where
         self.vcard.entries.push(entry);
     }
 
+    pub(super) fn convert_types(
+        &mut self,
+        vcard_property: &VCardProperty,
+        [property, id]: [&str; 2],
+        bucket: JSContactProperty<I>,
+        value: Value<'x, JSContactProperty<I>, JSContactValue<I, B>>,
+        params: &mut Vec<VCardParameter>,
+    ) {
+        let mut has_mapped = false;
+        let mut has_unmapped = false;
+        let mut has_unquotable_key = false;
+
+        let is_mapped =
+            |key: &Key<'_, JSContactProperty<I>>,
+             value: &Value<'x, JSContactProperty<I>, JSContactValue<I, B>>| {
+                value.as_bool() == Some(true)
+                    && bucket
+                        .vcard_type(vcard_property, key.to_string().as_ref())
+                        .is_some()
+            };
+
+        for (key, item) in value.as_object().into_iter().flat_map(|obj| obj.iter()) {
+            let key = key.to_string();
+            match bucket
+                .vcard_type(vcard_property, key.as_ref())
+                .filter(|_| item.as_bool() == Some(true))
+            {
+                Some(IanaType::Iana(typ)) => {
+                    params.push(VCardParameter::typ(typ));
+                    has_mapped = true;
+                }
+                Some(IanaType::Other(typ)) => {
+                    params.push(VCardParameter::typ(typ.to_ascii_uppercase()));
+                    has_mapped = true;
+                }
+                None => {
+                    has_unmapped = true;
+                    has_unquotable_key |= key
+                        .chars()
+                        .any(|ch| ch.is_control() || matches!(ch, '"' | '\\'));
+                }
+            }
+        }
+
+        if !has_unmapped {
+            return;
+        }
+
+        let bucket_name = bucket.to_string();
+        if has_mapped && !has_unquotable_key && self.language.is_none() {
+            for (key, item) in value.into_expanded_object() {
+                if !is_mapped(&key, &item) {
+                    self.insert_jsprop(
+                        &[property, id, bucket_name.as_ref(), key.to_string().as_ref()],
+                        item,
+                    );
+                }
+            }
+        } else {
+            self.insert_jsprop(
+                &[property, id, bucket_name.as_ref()],
+                Value::Object(value.into_expanded_object().collect()),
+            );
+        }
+    }
+
     pub(super) fn insert_jsprop(
         &mut self,
         path: &[&str],
@@ -209,6 +275,44 @@ where
     }
 }
 
+impl<I: JSContactId> JSContactProperty<I> {
+    fn vcard_type<'k>(
+        &self,
+        property: &VCardProperty,
+        key: &'k str,
+    ) -> Option<IanaType<VCardType, &'k str>> {
+        if key.is_empty()
+            || !key
+                .bytes()
+                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == b'-')
+        {
+            return None;
+        }
+
+        match (self, VCardType::parse(key.as_bytes())) {
+            (JSContactProperty::Features, Some(typ)) => Feature::from_vcard_type(property, &typ)
+                .is_some_and(|feature| feature.as_str() == key)
+                .then_some(IanaType::Iana(typ)),
+            (JSContactProperty::Features, None) => {
+                Feature::from_vcard_type(property, &VCardType::Cell)
+                    .is_some_and(|feature| feature.as_str() == key)
+                    .then_some(IanaType::Iana(VCardType::Cell))
+            }
+            (JSContactProperty::Contexts, Some(typ)) => (Feature::from_vcard_type(property, &typ)
+                .is_none()
+                && !matches!(typ, VCardType::Home | VCardType::Cell)
+                && (!matches!(typ, VCardType::Billing | VCardType::Delivery)
+                    || property == &VCardProperty::Adr))
+                .then_some(IanaType::Iana(typ)),
+            (JSContactProperty::Contexts, None) if key == Context::Private.as_str() => {
+                Some(IanaType::Iana(VCardType::Home))
+            }
+            (JSContactProperty::Contexts, None) => Some(IanaType::Other(key)),
+            _ => None,
+        }
+    }
+}
+
 pub(crate) enum ParamValue<'x> {
     Text(Cow<'x, str>),
     Number(i64),
@@ -219,7 +323,10 @@ impl<'x> ParamValue<'x> {
     pub(crate) fn try_from_value<P: Property, E: Element>(value: Value<'x, P, E>) -> Option<Self> {
         match value {
             Value::Str(s) => Some(Self::Text(s)),
-            Value::Number(n) => Some(Self::Number(n.cast_to_i64())),
+            Value::Number(n) => Some(match n.as_i64() {
+                Some(number) => Self::Number(number),
+                None => Self::Text(Value::<P, E>::Number(n).to_string().into()),
+            }),
             Value::Bool(b) => Some(Self::Bool(b)),
             Value::Element(e) => Some(Self::Text(e.to_cow().to_string().into())),
             _ => None,
@@ -240,5 +347,132 @@ impl<'x> ParamValue<'x> {
             Self::Text(s) => s.parse().map_err(|_| Self::Text(s)),
             _ => Err(self),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ParamValue;
+    use crate::{
+        common::{IanaParse, IanaString, IanaType},
+        jscontact::{JSContactProperty, JSContactValue},
+        vcard::{VCardEntry, VCardParameter, VCardParameterValue, VCardProperty, VCardType},
+    };
+    use jmap_tools::{Key, Map, Value};
+
+    type JSValue = Value<'static, JSContactProperty<String>, JSContactValue<String, String>>;
+
+    #[test]
+    fn vcard_type_imports_back_into_the_same_key() {
+        let keys = [
+            "work",
+            "home",
+            "private",
+            "billing",
+            "delivery",
+            "cell",
+            "mobile",
+            "voice",
+            "fax",
+            "text",
+            "video",
+            "pager",
+            "textphone",
+            "main-number",
+            "friend",
+            "co-worker",
+            "x-car",
+            "pref",
+            "WORK",
+            "Work",
+            "x.y",
+            "a,b",
+            "example.com:car",
+            "",
+            "a b",
+        ];
+
+        for property in [VCardProperty::Tel, VCardProperty::Email] {
+            for bucket in [JSContactProperty::Contexts, JSContactProperty::Features] {
+                for key in keys {
+                    let imports_as_key = |text: &str| {
+                        let (imported_bucket, imported_key) =
+                            JSContactProperty::<String>::from_vcard_type(
+                                &property,
+                                VCardType::parse(text.as_bytes()).map_or_else(
+                                    || IanaType::Other(text.to_string()),
+                                    IanaType::Iana,
+                                ),
+                            );
+                        imported_bucket == bucket && imported_key.to_string() == key
+                    };
+                    let is_type_value = !key.is_empty()
+                        && key
+                            .bytes()
+                            .all(|ch| ch.is_ascii_alphanumeric() || ch == b'-');
+
+                    let is_export_restricted =
+                        matches!(key, "billing" | "delivery") && property != VCardProperty::Adr;
+                    let is_consistent = is_export_restricted
+                        || match bucket.vcard_type(&property, key) {
+                            Some(IanaType::Iana(typ)) => {
+                                is_type_value && imports_as_key(typ.as_str())
+                            }
+                            Some(IanaType::Other(typ)) => {
+                                is_type_value && imports_as_key(&typ.to_ascii_uppercase())
+                            }
+                            None => {
+                                !is_type_value
+                                    || ![key.to_ascii_uppercase().as_str(), "HOME", "CELL"]
+                                        .into_iter()
+                                        .any(imports_as_key)
+                            }
+                        };
+                    assert!(is_consistent, "{property:?} {bucket:?} {key:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn param_numbers_do_not_wrap() {
+        for (value, expected) in [
+            (JSValue::Number((-3i64).into()), "-3"),
+            (JSValue::Number(u64::MAX.into()), "18446744073709551615"),
+            (JSValue::Number(1.5f64.into()), "1.5"),
+        ] {
+            assert_eq!(
+                ParamValue::try_from_value(value.clone()).map(ParamValue::into_string),
+                Some(expected.into()),
+                "{value:?}"
+            );
+        }
+
+        let mut entry = VCardEntry::new(VCardProperty::Email);
+        entry.import_jcard_params(JSValue::Object(Map::from(vec![
+            (Key::Borrowed("pref"), JSValue::Number((-1i64).into())),
+            (
+                Key::Borrowed("index"),
+                JSValue::Number(4_294_967_296u64.into()),
+            ),
+            (Key::Borrowed("x-number"), JSValue::Number(1.5f64.into())),
+        ])));
+        assert_eq!(
+            entry.params,
+            [
+                VCardParameter {
+                    name: crate::vcard::VCardParameterName::Pref,
+                    value: VCardParameterValue::Text("-1".to_string()),
+                },
+                VCardParameter {
+                    name: crate::vcard::VCardParameterName::Index,
+                    value: VCardParameterValue::Text("4294967296".to_string()),
+                },
+                VCardParameter {
+                    name: crate::vcard::VCardParameterName::Other("X-NUMBER".to_string()),
+                    value: VCardParameterValue::Text("1.5".to_string()),
+                },
+            ]
+        );
     }
 }

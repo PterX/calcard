@@ -1,7 +1,8 @@
 BEGIN:VCARD
 VERSION:2.1
-PHOTO;TYPE=JPEG;ENCODING=b:/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgICAgMCAgID
- AwMDBAYEBAQEBAgGBgUGCQgKk/ioorZFjl+6aZRRVAf/2Q==
+PHOTO;TYPE=JPEG;ENCODING=BASE64:/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgICAgM
+ CAgIDAwMDBAYEBAQEBAgGBgUGCQgKk/ioorZFjl+6aZRRVAf/2Q==
+
 X-MS-OL-DESIGN;CHARSET=UTF-8:<card xmlns="http://schemas.microsoft.com/offi
  ce/outlook/12/electronicbusinesscards" ver="1.0" layout="left" bgcolor="ff
  ffff"><img xmlns="" align="tleft" area="32" use="photo"/><fld xmlns="" pro

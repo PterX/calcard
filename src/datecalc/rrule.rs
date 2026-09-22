@@ -13,7 +13,7 @@ use crate::{
     common::timezone::Tz,
     icalendar::{ICalendarFrequency, ICalendarMonth, ICalendarRecurrenceRule},
 };
-use chrono::{DateTime, Datelike, Weekday};
+use chrono::{DateTime, Datelike, TimeZone, Weekday};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +74,17 @@ impl RRule {
             by_second: ical.bysecond.clone(),
             by_easter: None,
         })
+    }
+
+    pub(crate) fn with_floating_until(mut self, tz: Tz) -> Self {
+        if let Some(until) = self.until.filter(|until| !until.timezone().is_floating())
+            && let Some(floating) = Tz::Floating
+                .from_local_datetime(&until.with_timezone(&tz).naive_local())
+                .single()
+        {
+            self.until = Some(floating);
+        }
+        self
     }
 }
 

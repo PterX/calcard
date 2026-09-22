@@ -4,39 +4,71 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
+#[allow(deprecated)]
+use crate::jscalendar::import::ConversionOptions;
 use crate::{
-    common::timezone::{Tz, TzTimestamp},
+    common::{
+        blob::{BlobIdGenerator, NoBlobIds},
+        export::ImportError,
+        jsprop::JSPropPointer,
+        timezone::{Tz, TzTimestamp},
+    },
     icalendar::{timezone::TzResolver, *},
     jscalendar::{
-        import::{ConversionOptions, EntryState, State, params::ExtractParams},
+        import::{
+            EntryState, ImportContext, ImportOptions, InstanceTimeZone, State,
+            params::ExtractParams, props::ICalendarBinary,
+        },
         *,
     },
 };
 use chrono::DateTime;
-use jmap_tools::{JsonPointer, Key, Map, Value};
+use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Value};
 
 impl ICalendar {
-    pub fn into_jscalendar<I: JSCalendarId, B: JSCalendarId>(
-        mut self,
-    ) -> JSCalendar<'static, I, B> {
-        JSCalendar(
-            self.to_jscalendar(
-                &self.build_owned_tz_resolver(),
-                0,
-                &ConversionOptions::default(),
-            )
-            .into_object(),
-        )
+    pub fn into_jscalendar<I: JSCalendarId, B: JSCalendarId>(self) -> JSCalendar<'static, I, B> {
+        self.convert_jscalendar::<I, B, NoBlobIds>(ImportOptions::default())
+            .0
     }
 
+    #[deprecated(since = "0.4.0", note = "use into_jscalendar_with")]
+    #[allow(deprecated)]
     pub fn into_jscalendar_with_opt<I: JSCalendarId, B: JSCalendarId>(
-        mut self,
+        self,
         options: ConversionOptions,
     ) -> JSCalendar<'static, I, B> {
-        JSCalendar(
-            self.to_jscalendar(&self.build_owned_tz_resolver(), 0, &options)
+        self.convert_jscalendar::<I, B, NoBlobIds>(options.into()).0
+    }
+
+    pub fn into_jscalendar_with<I: JSCalendarId, B: JSCalendarId, G: BlobIdGenerator<B>>(
+        self,
+        options: ImportOptions<G>,
+    ) -> Result<JSCalendar<'static, I, B>, ImportError> {
+        match self.convert_jscalendar(options) {
+            (js_calendar, false) => Ok(js_calendar),
+            (_, true) => Err(ImportError::BlobIdFailed),
+        }
+    }
+
+    fn convert_jscalendar<I: JSCalendarId, B: JSCalendarId, G: BlobIdGenerator<B>>(
+        mut self,
+        mut options: ImportOptions<G>,
+    ) -> (JSCalendar<'static, I, B>, bool) {
+        let tz_resolver = self.build_owned_tz_resolver();
+        let mut context = options.context();
+        if let Some(blob_ids) = &mut context.blob_ids {
+            blob_ids.expect_sizes(self.binary_link_sizes());
+        }
+        let js_calendar = JSCalendar(
+            self.to_jscalendar(&tz_resolver, 0, &mut context)
                 .into_object(),
-        )
+        );
+        let has_failed = context
+            .blob_ids
+            .as_ref()
+            .is_some_and(|blob_ids| blob_ids.has_failed());
+
+        (js_calendar, has_failed)
     }
 }
 
@@ -46,7 +78,7 @@ impl ICalendar {
         &mut self,
         tz_resolver: &TzResolver<String>,
         component_id: u32,
-        options: &ConversionOptions,
+        options: &mut ImportContext<'_, B>,
     ) -> State<I, B> {
         let mut state = State {
             include_ical_components: options.include_ical_components,
@@ -55,7 +87,6 @@ impl ICalendar {
 
         // Take component
         let Some(component) = self.components.get_mut(component_id as usize) else {
-            debug_assert!(false, "Invalid component ID {component_id}");
             return state;
         };
         let mut entries = std::mem::take(&mut component.entries);
@@ -70,7 +101,9 @@ impl ICalendar {
         let mut has_locations = false;
 
         for component_id in std::mem::take(&mut component.component_ids) {
-            let component = &mut self.components[component_id as usize];
+            let Some(component) = self.components.get_mut(component_id as usize) else {
+                continue;
+            };
             match (&state.component_type, &component.component_type) {
                 (
                     ICalendarComponentType::VCalendar,
@@ -133,8 +166,10 @@ impl ICalendar {
         // Process alarms
         if !alarm_component_ids.is_empty() {
             for (component_id, jsid) in alarm_component_ids {
-                if alarm_with_related {
-                    for entry in &mut self.components[component_id as usize].entries {
+                if alarm_with_related
+                    && let Some(alarm) = self.components.get_mut(component_id as usize)
+                {
+                    for entry in &mut alarm.entries {
                         if matches!(entry.name, ICalendarProperty::RelatedTo) {
                             for value in &mut entry.values {
                                 if let Some((_, jsid)) = value.as_text().and_then(|uid| {
@@ -161,10 +196,12 @@ impl ICalendar {
         let mut group_objects = Vec::with_capacity(group_components.len());
         if !group_components.is_empty() {
             // Order by UID placing the main components first
-            group_components.sort_unstable_by(|a, b| match a.uid.cmp(&b.uid) {
-                std::cmp::Ordering::Equal => {
-                    a.recurrence_id.is_some().cmp(&b.recurrence_id.is_some())
-                }
+            group_components.sort_by(|a, b| match a.uid.cmp(&b.uid) {
+                std::cmp::Ordering::Equal => a
+                    .recurrence_id
+                    .is_some()
+                    .cmp(&b.recurrence_id.is_some())
+                    .then_with(|| a.recurrence_sequence().cmp(&b.recurrence_sequence())),
                 other => other,
             });
             let mut group_components = group_components.into_iter().peekable();
@@ -182,23 +219,37 @@ impl ICalendar {
                         let Some(recurrence_id) = recurrence.recurrence_id.take() else {
                             continue;
                         };
-                        let recurrence_id = recurrence_id
-                            .with_timezone(&component.tz_start.unwrap_or_default())
-                            .to_naive_timestamp();
+                        let recurrence_id =
+                            JSCalendarDateTime::local_in(recurrence_id, component.tz_start);
                         let _ = recurrence.uid.take();
 
                         privacy = privacy.max(recurrence.privacy());
-                        recurrence.set_is_recurrence_instance();
+                        let is_full = options.recurrence_overrides == RecurrenceOverrides::Full;
+                        recurrence.set_is_recurrence_instance(
+                            if is_full
+                                || recurrence.tz_start.and_then(|tz| tz.name())
+                                    != component.tz_start.and_then(|tz| tz.name())
+                            {
+                                InstanceTimeZone::Keep
+                            } else {
+                                InstanceTimeZone::Inherit
+                            },
+                        );
                         recurrence.remove_forbidden_override_patches();
 
-                        component
-                            .get_mut_object_or_insert(JSCalendarProperty::RecurrenceOverrides)
-                            .insert(
-                                Key::Property(JSCalendarProperty::DateTime(
-                                    JSCalendarDateTime::new(recurrence_id, true),
-                                )),
-                                recurrence.into_object(),
-                            );
+                        if is_full {
+                            component
+                                .recurrence_overrides
+                                .push((recurrence_id, recurrence));
+                        } else {
+                            recurrence.remove_start_at(recurrence_id, component.tz_start);
+                            component
+                                .get_mut_object_or_insert(JSCalendarProperty::RecurrenceOverrides)
+                                .insert(
+                                    Key::Property(JSCalendarProperty::DateTime(recurrence_id)),
+                                    recurrence.into_object(),
+                                );
+                        }
                     }
 
                     if let Some(privacy) = privacy {
@@ -240,7 +291,9 @@ impl ICalendar {
 
             loop {
                 if let Some(component_id) = component_iter.next() {
-                    let component = self.components.get_mut(component_id as usize).unwrap();
+                    let Some(component) = self.components.get_mut(component_id as usize) else {
+                        continue;
+                    };
 
                     let mut entries = Vec::with_capacity(component.entries.len());
                     for entry in std::mem::take(&mut component.entries) {
@@ -258,7 +311,9 @@ impl ICalendar {
                         Value::Array(vec![]),
                     ]));
 
-                    if !component.component_ids.is_empty() {
+                    if !component.component_ids.is_empty()
+                        && component_stack.len() + 1 < MAX_ICAL_COMPONENT_DEPTH
+                    {
                         component_stack.push((components, component_iter));
                         component_iter = std::mem::take(&mut component.component_ids).into_iter();
                         components = vec![];
@@ -306,10 +361,82 @@ impl ICalendar {
         for entry in entries {
             let mut entry = EntryState::new(entry);
             let mut values = std::mem::take(&mut entry.entry.values).into_iter();
+            let mut value = values.next();
+            let is_link = matches!(
+                entry.entry.name,
+                ICalendarProperty::Attach | ICalendarProperty::Image
+            ) && state.component_type.converts_links();
+            let link_value_type = match &value {
+                Some(ICalendarValue::Binary(_)) => ICalendarValueType::Binary,
+                _ => ICalendarValueType::Uri,
+            };
+            let mut link_id = (is_link && entry.entry.jsid().is_none())
+                .then(|| {
+                    value
+                        .as_ref()
+                        .and_then(ICalendarValue::binary_bytes)
+                        .map(uuid5)
+                })
+                .flatten();
+
+            if let Some(blob_ids) = options.blob_ids.as_mut()
+                && is_link
+                && let Some(ICalendarBinary {
+                    data,
+                    content_type: data_content_type,
+                    is_data_uri,
+                }) = value
+                    .take_if(|value| value.is_binary())
+                    .and_then(ICalendarValue::into_binary)
+            {
+                let content_type = entry
+                    .entry
+                    .parameter(&ICalendarParameterName::Fmttype)
+                    .and_then(|param| param.as_text())
+                    .or(data_content_type.as_deref());
+                match blob_ids.blob_id(data, content_type) {
+                    Ok(generated) => {
+                        state.map_blob_link(
+                            &mut entry,
+                            generated,
+                            data_content_type,
+                            link_id.take(),
+                            link_value_type,
+                        );
+                        state.add_conversion_props(entry);
+                        continue;
+                    }
+                    Err(data) => {
+                        value = Some(
+                            ICalendarBinary {
+                                data,
+                                content_type: data_content_type,
+                                is_data_uri,
+                            }
+                            .into_value(),
+                        );
+                    }
+                }
+            }
+
+            let media_type = if is_link && link_value_type == ICalendarValueType::Binary {
+                if !entry.entry.has_parameter(&ICalendarParameterName::Value) {
+                    entry
+                        .entry
+                        .add_param(ICalendarParameter::value(ICalendarValueType::Binary));
+                }
+                entry
+                    .entry
+                    .parameter(&ICalendarParameterName::Fmttype)
+                    .and_then(|param| param.as_text())
+                    .map(str::to_string)
+            } else {
+                None
+            };
 
             match (
                 &entry.entry.name,
-                values.next().map(|v| v.uri_to_string()),
+                value.map(|v| v.uri_to_string(media_type)),
                 &state.component_type,
             ) {
                 (
@@ -356,14 +483,24 @@ impl ICalendar {
                     | ICalendarComponentType::VLocation
                     | ICalendarComponentType::VCalendar,
                 ) => {
-                    state.map_named_entry(
+                    state.map_named_entry_with_id(
                         &mut entry,
-                        &[
-                            ICalendarParameterName::Fmttype,
-                            ICalendarParameterName::Filename,
-                            ICalendarParameterName::Size,
-                            ICalendarParameterName::Jsid,
-                        ],
+                        if link_value_type == ICalendarValueType::Binary {
+                            &[
+                                ICalendarParameterName::Fmttype,
+                                ICalendarParameterName::Filename,
+                                ICalendarParameterName::Size,
+                                ICalendarParameterName::Linkrel,
+                                ICalendarParameterName::Jsid,
+                            ]
+                        } else {
+                            &[
+                                ICalendarParameterName::Fmttype,
+                                ICalendarParameterName::Filename,
+                                ICalendarParameterName::Size,
+                                ICalendarParameterName::Jsid,
+                            ]
+                        },
                         JSCalendarProperty::Links,
                         [
                             (
@@ -381,6 +518,7 @@ impl ICalendar {
                                 )),
                             ),
                         ],
+                        link_id,
                     );
                     entry.set_map_name();
                 }
@@ -393,15 +531,26 @@ impl ICalendar {
                     | ICalendarComponentType::VLocation
                     | ICalendarComponentType::VCalendar,
                 ) => {
-                    state.map_named_entry(
+                    state.map_named_entry_with_id(
                         &mut entry,
-                        &[
-                            ICalendarParameterName::Display,
-                            ICalendarParameterName::Fmttype,
-                            ICalendarParameterName::Filename,
-                            ICalendarParameterName::Size,
-                            ICalendarParameterName::Jsid,
-                        ],
+                        if link_value_type == ICalendarValueType::Binary {
+                            &[
+                                ICalendarParameterName::Display,
+                                ICalendarParameterName::Fmttype,
+                                ICalendarParameterName::Filename,
+                                ICalendarParameterName::Size,
+                                ICalendarParameterName::Linkrel,
+                                ICalendarParameterName::Jsid,
+                            ]
+                        } else {
+                            &[
+                                ICalendarParameterName::Display,
+                                ICalendarParameterName::Fmttype,
+                                ICalendarParameterName::Filename,
+                                ICalendarParameterName::Size,
+                                ICalendarParameterName::Jsid,
+                            ]
+                        },
                         JSCalendarProperty::Links,
                         [
                             (
@@ -417,6 +566,7 @@ impl ICalendar {
                                 Value::Element(JSCalendarValue::LinkRelation(LinkRelation::Icon)),
                             ),
                         ],
+                        link_id,
                     );
                     entry.set_map_name();
                 }
@@ -1034,7 +1184,7 @@ impl ICalendar {
                     state.tz_start = tzid.and_then(|v| tz_resolver.resolve(v));
                     if let Some(dt) = value
                         .to_date_time()
-                        .and_then(|dt| dt.to_date_time_with_tz(state.tz_start.unwrap_or_default()))
+                        .and_then(|dt| dt.resolve_with_tz(state.tz_start.unwrap_or_default()))
                     {
                         state.has_dates = true;
                         state.entries.insert(
@@ -1168,7 +1318,7 @@ impl ICalendar {
                     {
                         // Remove IANA TZ references
                         if tzid.is_some()
-                            && due_tz != state.tz_start
+                            && (state.tz_start.is_none() || due_tz == state.tz_start)
                             && due_tz.and_then(|tz| tz.name()).as_deref() == tzid
                         {
                             entry
@@ -1257,13 +1407,13 @@ impl ICalendar {
                     ICalendarProperty::RecurrenceId,
                     Some(ICalendarValue::PartialDateTime(value)),
                     ICalendarComponentType::VEvent | ICalendarComponentType::VTodo,
-                ) if value.has_date_and_time() => {
+                ) if value.has_date() => {
                     let tzid = entry.entry.tz_id();
-                    let rid_tz = tzid.and_then(|v| tz_resolver.resolve(v)).or(state.tz_start);
+                    let rid_tz = tzid.and_then(|v| tz_resolver.resolve(v));
 
                     if let Some(dt) = value
                         .to_date_time()
-                        .and_then(|dt| dt.to_date_time_with_tz(rid_tz.unwrap_or_default()))
+                        .and_then(|dt| dt.resolve_with_tz(rid_tz.unwrap_or_default()))
                     {
                         state.has_dates = true;
                         state.recurrence_id = Some(dt);
@@ -1275,14 +1425,16 @@ impl ICalendar {
                                 .params
                                 .retain(|p| p.name != ICalendarParameterName::Tzid);
                         }
+                        if !value.has_time() {
+                            entry
+                                .entry
+                                .params
+                                .retain(|p| p.name != ICalendarParameterName::Value);
+                        }
 
                         entry.set_converted_to::<I>(&[JSCalendarProperty::RecurrenceId::<I>
                             .to_string()
                             .as_ref()]);
-
-                        if state.tz_start.is_none() {
-                            state.tz_start = dt.timezone().to_resolved();
-                        }
                     } else {
                         entry.entry.values = [ICalendarValue::PartialDateTime(value)]
                             .into_iter()
@@ -1379,7 +1531,7 @@ impl ICalendar {
 
                     if let Some(dt) = value
                         .to_date_time()
-                        .and_then(|dt| dt.to_date_time_with_tz(tz.unwrap_or_default()))
+                        .and_then(|dt| dt.resolve_with_tz(tz.unwrap_or_default()))
                     {
                         state.has_dates = true;
 
@@ -1420,16 +1572,12 @@ impl ICalendar {
                             .chain(values.filter_map(|v| {
                                 v.into_partial_date_time()
                                     .and_then(|dt| dt.to_date_time())
-                                    .and_then(|dt| dt.to_date_time_with_tz(tz.unwrap_or_default()))
+                                    .and_then(|dt| dt.resolve_with_tz(tz.unwrap_or_default()))
                             }))
                             .enumerate()
                         {
                             let key = Key::Property(JSCalendarProperty::DateTime(
-                                JSCalendarDateTime::new(
-                                    dt.with_timezone(&state.tz_start.unwrap_or_default())
-                                        .to_naive_timestamp(),
-                                    true,
-                                ),
+                                JSCalendarDateTime::local_in(dt, state.tz_start),
                             ));
 
                             if pos == 0 {
@@ -1986,22 +2134,38 @@ impl ICalendar {
                     continue;
                 }
                 (ICalendarProperty::Jsprop, Some(ICalendarValue::Text(value)), _) => {
-                    if let Some(ICalendarParameter {
-                        name: ICalendarParameterName::Jsptr,
-                        value: ICalendarParameterValue::Text(ptr),
-                    }) = entry.entry.params.first()
+                    if let Some(ptr) = entry
+                        .entry
+                        .params
+                        .iter()
+                        .find_map(|param| match param {
+                            ICalendarParameter {
+                                name: ICalendarParameterName::Jsptr,
+                                value: ICalendarParameterValue::Text(ptr),
+                            } => Some(JsonPointer::<JSCalendarProperty<I>>::parse(ptr)),
+                            _ => None,
+                        })
+                        .filter(|ptr| {
+                            ptr.as_slice().iter().all(|item| {
+                                matches!(item, JsonPointerItem::Key(_) | JsonPointerItem::Number(_))
+                            })
+                        })
+                        && let Some(patch) = ptr.parse_jsprop_value(&value)
                     {
-                        let ptr = JsonPointer::<JSCalendarProperty<I>>::parse(ptr);
-
-                        if let Ok(jscalendar) = JSCalendar::parse(&value) {
-                            state.patch_objects.push((ptr, jscalendar.0.into_owned()));
-                            continue;
-                        }
+                        state.patch_objects.push((ptr, patch));
+                        continue;
                     }
                     entry.entry.values = [ICalendarValue::Text(value)]
                         .into_iter()
                         .chain(values)
                         .collect();
+                }
+                (
+                    ICalendarProperty::Description | ICalendarProperty::Summary,
+                    _,
+                    ICalendarComponentType::VAlarm,
+                ) if entry.entry.is_derived() => {
+                    continue;
                 }
                 (ICalendarProperty::Begin | ICalendarProperty::End, _, _) => {
                     continue;
@@ -2013,6 +2177,19 @@ impl ICalendar {
             }
 
             state.add_conversion_props(entry);
+        }
+
+        if state.tz_start.is_none()
+            && !state
+                .entries
+                .contains_key(&Key::Property(JSCalendarProperty::Start))
+            && !state
+                .entries
+                .contains_key(&Key::Property(JSCalendarProperty::Due))
+        {
+            state.tz_start = state
+                .recurrence_id
+                .and_then(|recurrence_id| recurrence_id.timezone().to_resolved());
         }
 
         if !group_objects.is_empty() {

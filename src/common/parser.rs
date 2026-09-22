@@ -72,6 +72,7 @@ impl Token<'_> {
     pub(crate) fn into_float(self) -> std::result::Result<f64, String> {
         if let Ok(text) = std::str::from_utf8(self.text.as_ref())
             && let Ok(float) = text.parse::<f64>()
+            && float.is_finite()
         {
             return Ok(float);
         }
@@ -96,70 +97,36 @@ impl Token<'_> {
 
 impl Data {
     pub fn try_parse(text: &[u8]) -> Option<Self> {
-        if text
-            .as_ref()
-            .get(0..5)
-            .unwrap_or_default()
-            .eq_ignore_ascii_case(b"data:")
-        {
-            let mut bin = Data::default();
-            let text = text.as_ref().get(5..).unwrap_or_default();
-            let mut offset_start = 0;
-            let mut is_base64 = false;
+        const BASE64: &[u8] = b"base64";
 
-            for (idx, ch) in text.iter().enumerate() {
-                match ch {
-                    b';' => {
-                        if idx > offset_start && bin.content_type.is_none() {
-                            bin.content_type = Some(
-                                std::str::from_utf8(&text[offset_start..idx])
-                                    .unwrap_or_default()
-                                    .to_string(),
-                            );
-                        }
-                        offset_start = idx + 1;
-                    }
-                    b',' => {
-                        if idx != offset_start {
-                            static B64_LEN: usize = "base64".len();
-
-                            let text = text.get(offset_start..idx).unwrap_or_default();
-                            if text.len() == B64_LEN && text.eq_ignore_ascii_case(b"base64")
-                                || text.len() == B64_LEN + 1
-                                    && text[..B64_LEN].eq_ignore_ascii_case(b"base64")
-                            {
-                                is_base64 = true;
-                            } else if bin.content_type.is_none() {
-                                bin.content_type =
-                                    Some(std::str::from_utf8(text).unwrap_or_default().to_string());
-                            }
-                        }
-
-                        offset_start = idx + 1;
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-
-            let text = text.get(offset_start..).unwrap_or_default();
-            if !text.is_empty() {
-                if is_base64 {
-                    if let Some(bytes) = base64_decode(text) {
-                        bin.data = bytes;
-                        return Some(bin);
-                    }
-                } else {
-                    let (success, bytes) = decode_hex(text);
-                    if success {
-                        bin.data = bytes;
-                        return Some(bin);
-                    }
-                }
-            }
+        let (scheme, text) = text.split_at_checked(5)?;
+        if !scheme.eq_ignore_ascii_case(b"data:") {
+            return None;
         }
+        let mut parts = text.splitn(2, |ch| *ch == b',');
+        let header = parts.next()?;
+        let data = parts.next().filter(|data| !data.is_empty())?;
+        let header = header.strip_suffix(b"\\").unwrap_or(header);
+        let mut segments = header.rsplitn(2, |ch| *ch == b';');
+        let (media_type, is_base64) = match (segments.next(), segments.next()) {
+            (Some(last), media_type) if last.eq_ignore_ascii_case(BASE64) => {
+                (media_type.unwrap_or_default(), true)
+            }
+            _ => (header, false),
+        };
 
-        None
+        Some(Data {
+            content_type: std::str::from_utf8(media_type)
+                .ok()
+                .filter(|media_type| !media_type.is_empty())
+                .map(str::to_string),
+            data: if is_base64 {
+                base64_decode(data)?
+            } else {
+                let (success, bytes) = decode_hex(data);
+                success.then_some(bytes)?
+            },
+        })
     }
 }
 
@@ -539,6 +506,78 @@ mod tests {
     use crate::common::tokenizer::StopChar;
 
     use super::*;
+
+    #[test]
+    fn rfc2397_data_url_keeps_media_type_parameters() {
+        for (uri, content_type, data) in [
+            (
+                "data:text/plain;charset=iso-8859-1;base64,aGVsbG8=",
+                Some("text/plain;charset=iso-8859-1"),
+                b"hello".as_slice(),
+            ),
+            (
+                "data:image/png;base64,aGVsbG8=",
+                Some("image/png"),
+                b"hello",
+            ),
+            ("data:;base64,aGVsbG8=", None, b"hello"),
+            ("data:base64,aGVsbG8=", None, b"hello"),
+            (
+                "DATA:TEXT/PLAIN;BASE64,aGVsbG8=",
+                Some("TEXT/PLAIN"),
+                b"hello",
+            ),
+            (
+                "data:image/png;base64\\,aGVsbG8=",
+                Some("image/png"),
+                b"hello",
+            ),
+            (
+                "data:text/plain;charset=utf-8,a%20b",
+                Some("text/plain;charset=utf-8"),
+                b"a b",
+            ),
+            (",data:text/plain,a", None, b""),
+        ] {
+            let parsed = Data::try_parse(uri.as_bytes());
+            assert_eq!(
+                parsed.as_ref().map(|data| data.content_type.as_deref()),
+                (!data.is_empty()).then_some(content_type),
+                "RFC 2397 Section 3: mediatype := [ type \"/\" subtype ] *( \";\" parameter ) for {uri}"
+            );
+            assert_eq!(
+                parsed.as_ref().map(|data| data.data.as_slice()),
+                (!data.is_empty()).then_some(data),
+                "{uri}"
+            );
+        }
+        for uri in [
+            "data:,",
+            "data:text/plain;base64,",
+            "data:;base64,@@@",
+            "https://a",
+        ] {
+            assert_eq!(Data::try_parse(uri.as_bytes()), None, "{uri}");
+        }
+    }
+
+    #[test]
+    fn rfc5545_3_3_7_float_rejects_non_finite_values() {
+        for (text, expected) in [
+            ("1.5", Ok(1.5)),
+            ("-0.25", Ok(-0.25)),
+            ("NaN", Err("NaN".to_string())),
+            ("inf", Err("inf".to_string())),
+            ("-infinity", Err("-infinity".to_string())),
+            ("1e400", Err("1e400".to_string())),
+        ] {
+            assert_eq!(
+                Token::new(text.as_bytes().into()).into_float(),
+                expected,
+                "RFC 5545 Section 3.3.7: float = ([\"+\"] / \"-\") 1*DIGIT [\".\" 1*DIGIT]"
+            );
+        }
+    }
 
     #[test]
     fn test_parse_uri() {

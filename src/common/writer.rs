@@ -115,6 +115,18 @@ pub(crate) fn write_text(
     Ok(())
 }
 
+pub(crate) fn write_uri(out: &mut impl LineWriter, value: &str) -> std::fmt::Result {
+    for ch in value.chars() {
+        match ch {
+            '\r' => out.write_atomic("\\r")?,
+            '\n' => out.write_atomic("\\n")?,
+            _ => out.write_char(ch)?,
+        }
+    }
+
+    Ok(())
+}
+
 pub(crate) fn write_bytes(out: &mut impl Write, value: &[u8]) -> std::fmt::Result {
     const CHARPAD: u8 = b'=';
 
@@ -182,28 +194,47 @@ impl<T: AsRef<[u8]>> NeedsQuotes for T {
     }
 }
 
-pub(crate) fn write_param_value(out: &mut impl LineWriter, value: &str) -> std::fmt::Result {
-    let needs_quotes = value.needs_quotes();
-
-    if needs_quotes {
-        out.write_atomic("\"")?;
+pub(crate) fn write_param_value(
+    out: &mut impl LineWriter,
+    value: &str,
+    caret_escape: bool,
+) -> std::fmt::Result {
+    if value.needs_quotes() {
+        write_quoted_param_value(out, value, caret_escape)
+    } else {
+        write_param_text(out, value, caret_escape)
     }
+}
 
-    for ch in value.chars() {
+pub(crate) fn write_quoted_param_value(
+    out: &mut impl LineWriter,
+    value: &str,
+    caret_escape: bool,
+) -> std::fmt::Result {
+    out.write_atomic("\"")?;
+    write_param_text(out, value, caret_escape)?;
+    out.write_atomic("\"")
+}
+
+pub(crate) fn write_param_text(
+    out: &mut impl LineWriter,
+    value: &str,
+    caret_escape: bool,
+) -> std::fmt::Result {
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
         match ch as u32 {
-            0x0A => out.write_atomic("\\n")?,
-            0x0D => out.write_atomic("\\r")?,
-            0x5C => out.write_atomic("\\\\")?,
+            0x0D if chars.peek() == Some(&'\n') => {}
+            0x0A | 0x0D if caret_escape => out.write_atomic("^n")?,
+            0x0A | 0x0D => out.write_atomic("\\n")?,
+            0x5E if caret_escape => out.write_atomic("^^")?,
+            0x22 if caret_escape => out.write_atomic("^'")?,
             0x22 => out.write_atomic("\\\"")?,
+            0x5C => out.write_atomic("\\\\")?,
             0x20 | 0x09 | 0x21 | 0x23..=0x7E | 0x80.. => out.write_char(ch)?,
             _ => {}
         }
     }
-
-    if needs_quotes {
-        out.write_atomic("\"")?;
-    }
-
     Ok(())
 }
 
@@ -246,15 +277,20 @@ pub(crate) fn write_jscomps(out: &mut impl LineWriter, values: &[Jscomp]) -> std
 #[cfg(test)]
 pub(crate) fn assert_fold_width(text: &str, context: &str) {
     let mut lines = text.split("\r\n").peekable();
+    let is_v21 = text.contains("\r\nVERSION:2.1\r\n");
+    let mut ends_v21_base64 = false;
 
     while let Some(line) = lines.next() {
+        if !line.is_empty() && !line.starts_with(' ') {
+            ends_v21_base64 = is_v21 && line.contains(";ENCODING=BASE64");
+        }
         assert!(
             line.len() <= MAX_LINE_LEN,
             "physical line of {} octets exceeds the {MAX_LINE_LEN} octet fold width in {context}: {line:?}",
             line.len()
         );
         assert!(
-            !line.is_empty() || lines.peek().is_none(),
+            !line.is_empty() || lines.peek().is_none() || std::mem::take(&mut ends_v21_base64),
             "empty physical line in {context}: {text:?}"
         );
         assert!(

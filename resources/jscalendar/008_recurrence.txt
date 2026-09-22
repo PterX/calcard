@@ -265,15 +265,6 @@ END:VCALENDAR
       "privacy": "secret",
       "recurrenceOverrides": {
         "2024-02-02T14:00:00": {
-          "participants": {
-            "251d3e9f-d83f-534c-8c45-c2896c75670c": {
-              "@type": "Participant",
-              "calendarAddress": "mailto:organizer@example.com",
-              "roles": {
-                "owner": true
-              }
-            }
-          },
           "start": "2024-02-02T16:00:00"
         }
       },
@@ -383,6 +374,7 @@ BEGIN:VCALENDAR
 BEGIN:VEVENT
 UID:A7B2C9D4-1E6F-4A8B-B3C5-D2E7F9A1B6C8
 RECURRENCE-ID;TZID=Europe/Berlin:20240105T140000
+DTSTART;TZID=Europe/Berlin:20240105T140000
 SUMMARY:Board meeting (moved)
 CLASS:CONFIDENTIAL
 END:VEVENT
@@ -464,7 +456,7 @@ CLASS:CONFIDENTIAL
 END:VEVENT
 END:VCALENDAR
 
-> test JSCalendar - organizer is not copied into sparse recurrence overrides
+> test JSCalendar - recurrence overrides convert to complete components
 {
   "@type": "Event",
   "uid": "3F8E1B6A-2C4D-4B7E-9A1F-6D2C8E5B7A93",
@@ -501,6 +493,9 @@ BEGIN:VEVENT
 UID:3F8E1B6A-2C4D-4B7E-9A1F-6D2C8E5B7A93
 RECURRENCE-ID;TZID=Europe/Berlin:20240105T140000
 SUMMARY:Planning (moved)
+DTSTART;TZID=Europe/Berlin:20240105T140000
+ORGANIZER;CN=Alice;JSID=alice:mailto:alice@example.com
+ATTENDEE;JSID=bob:mailto:bob@example.com
 END:VEVENT
 BEGIN:VEVENT
 UID:3F8E1B6A-2C4D-4B7E-9A1F-6D2C8E5B7A93

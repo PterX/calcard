@@ -21,7 +21,7 @@ use crate::{
 use ahash::AHashMap;
 use jmap_tools::{Key, Map, Value};
 
-pub(super) trait ExtractParams {
+pub(super) trait ExtractParams<I: JSCalendarId, B: JSCalendarId> {
     fn extract_params(
         &mut self,
         entry: &mut ICalendarEntry,
@@ -29,12 +29,75 @@ pub(super) trait ExtractParams {
     ) -> Option<String>;
 }
 
-impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
+pub(super) trait ParamTarget<I: JSCalendarId, B: JSCalendarId> {
+    fn set(
+        &mut self,
+        property: JSCalendarProperty<I>,
+        value: Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    );
+
+    fn set_flag(
+        &mut self,
+        property: JSCalendarProperty<I>,
+        flag: Key<'static, JSCalendarProperty<I>>,
+    );
+}
+
+impl<I: JSCalendarId, B: JSCalendarId> ParamTarget<I, B>
     for AHashMap<
         Key<'static, JSCalendarProperty<I>>,
         Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
     >
 {
+    fn set(
+        &mut self,
+        property: JSCalendarProperty<I>,
+        value: Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) {
+        self.insert(Key::Property(property), value);
+    }
+
+    fn set_flag(
+        &mut self,
+        property: JSCalendarProperty<I>,
+        flag: Key<'static, JSCalendarProperty<I>>,
+    ) {
+        if let Some(flags) = self
+            .entry(Key::Property(property))
+            .or_insert_with(Value::new_object)
+            .as_object_mut()
+        {
+            flags.insert(flag, Value::Bool(true));
+        }
+    }
+}
+
+impl<I: JSCalendarId, B: JSCalendarId> ParamTarget<I, B>
+    for Map<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>
+{
+    fn set(
+        &mut self,
+        property: JSCalendarProperty<I>,
+        value: Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) {
+        self.insert(Key::Property(property), value);
+    }
+
+    fn set_flag(
+        &mut self,
+        property: JSCalendarProperty<I>,
+        flag: Key<'static, JSCalendarProperty<I>>,
+    ) {
+        if let Some(flags) = self
+            .insert_or_get_mut(Key::Property(property), Value::new_object())
+            .as_object_mut()
+        {
+            flags.insert(flag, Value::Bool(true));
+        }
+    }
+}
+
+impl<I: JSCalendarId, B: JSCalendarId, T: ParamTarget<I, B>> ExtractParams<I, B> for T {
     fn extract_params(
         &mut self,
         entry: &mut ICalendarEntry,
@@ -51,12 +114,12 @@ impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
             match param.name {
                 ICalendarParameterName::Cn => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(Key::Property(JSCalendarProperty::Name), Value::Str(text));
+                        self.set(JSCalendarProperty::Name, Value::Str(text));
                     }
                 }
                 ICalendarParameterName::Cutype => {
-                    self.insert(
-                        Key::Property(JSCalendarProperty::Kind),
+                    self.set(
+                        JSCalendarProperty::Kind,
                         match param.value {
                             ICalendarParameterValue::Text(value) => Value::Str(value.into()),
                             ICalendarParameterValue::Cutype(value) => match value {
@@ -90,45 +153,32 @@ impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
                 }
                 ICalendarParameterName::DelegatedFrom => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(
-                            Key::Property(JSCalendarProperty::DelegatedFrom),
-                            Value::Str(text),
-                        );
+                        self.set_flag(JSCalendarProperty::DelegatedFrom, Key::from(text));
                     }
                 }
                 ICalendarParameterName::DelegatedTo => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(
-                            Key::Property(JSCalendarProperty::DelegatedTo),
-                            Value::Str(text),
-                        );
+                        self.set_flag(JSCalendarProperty::DelegatedTo, Key::from(text));
                     }
                 }
                 ICalendarParameterName::Email => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(Key::Property(JSCalendarProperty::Email), Value::Str(text));
+                        self.set(JSCalendarProperty::Email, Value::Str(text));
                     }
                 }
                 ICalendarParameterName::Rsvp => {
                     if let Some(boolean) = param.value.as_bool() {
-                        self.insert(
-                            Key::Property(JSCalendarProperty::ExpectReply),
-                            Value::Bool(boolean),
-                        );
+                        self.set(JSCalendarProperty::ExpectReply, Value::Bool(boolean));
                     }
                 }
                 ICalendarParameterName::Member => {
                     if let Some(text) = param.value.into_text() {
-                        self.entry(Key::Property(JSCalendarProperty::MemberOf))
-                            .or_insert_with(Value::new_object)
-                            .as_object_mut()
-                            .unwrap()
-                            .insert(Key::from(text), Value::Bool(true));
+                        self.set_flag(JSCalendarProperty::MemberOf, Key::from(text));
                     }
                 }
                 ICalendarParameterName::Partstat => {
-                    self.insert(
-                        Key::Property(JSCalendarProperty::ParticipationStatus),
+                    self.set(
+                        JSCalendarProperty::ParticipationStatus,
                         match param.value {
                             ICalendarParameterValue::Partstat(value) => {
                                 Value::Element(JSCalendarValue::ParticipationStatus(match value {
@@ -181,65 +231,53 @@ impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
                         ICalendarParameterValue::Text(value) => Key::Owned(value),
                         _ => continue,
                     };
-                    self.entry(Key::Property(JSCalendarProperty::Roles))
-                        .or_insert_with(Value::new_object)
-                        .as_object_mut()
-                        .unwrap()
-                        .insert(role, Value::Bool(true));
+                    self.set_flag(JSCalendarProperty::Roles, role);
                 }
                 ICalendarParameterName::SentBy => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(Key::Property(JSCalendarProperty::SentBy), Value::Str(text));
+                        self.set(JSCalendarProperty::SentBy, Value::Str(text));
                     }
                 }
                 ICalendarParameterName::Fmttype => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(
-                            Key::Property(
-                                if matches!(entry.name, ICalendarProperty::StyledDescription) {
-                                    JSCalendarProperty::DescriptionContentType
-                                } else {
-                                    JSCalendarProperty::ContentType
-                                },
-                            ),
+                        self.set(
+                            if matches!(entry.name, ICalendarProperty::StyledDescription) {
+                                JSCalendarProperty::DescriptionContentType
+                            } else {
+                                JSCalendarProperty::ContentType
+                            },
                             Value::Str(text),
                         );
                     }
                 }
                 ICalendarParameterName::Label | ICalendarParameterName::Filename => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(
-                            Key::Property(if matches!(entry.name, ICalendarProperty::Conference) {
+                        self.set(
+                            if matches!(entry.name, ICalendarProperty::Conference) {
                                 JSCalendarProperty::Name
                             } else {
                                 JSCalendarProperty::Title
-                            }),
+                            },
                             Value::Str(text),
                         );
                     }
                 }
                 ICalendarParameterName::Size => {
                     if let Some(number) = param.value.as_integer() {
-                        self.insert(
-                            Key::Property(JSCalendarProperty::Size),
-                            Value::Number(number.into()),
-                        );
+                        self.set(JSCalendarProperty::Size, Value::Number(number.into()));
                     } else {
                         entry.params.push(ICalendarParameter::size(param.value));
                     }
                 }
                 ICalendarParameterName::Linkrel => match param.value {
                     ICalendarParameterValue::Linkrel(linkrel) => {
-                        self.insert(
-                            Key::Property(JSCalendarProperty::Rel),
+                        self.set(
+                            JSCalendarProperty::Rel,
                             Value::Element(JSCalendarValue::LinkRelation(linkrel)),
                         );
                     }
                     ICalendarParameterValue::Text(value) => {
-                        self.insert(
-                            Key::Property(JSCalendarProperty::Rel),
-                            Value::Str(value.into()),
-                        );
+                        self.set(JSCalendarProperty::Rel, Value::Str(value.into()));
                     }
                     value => {
                         entry.params.push(ICalendarParameter::linkrel(value));
@@ -247,8 +285,8 @@ impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
                 },
                 ICalendarParameterName::Related => {
                     if let ICalendarParameterValue::Related(related) = param.value {
-                        self.insert(
-                            Key::Property(JSCalendarProperty::RelativeTo),
+                        self.set(
+                            JSCalendarProperty::RelativeTo,
                             Value::Element(JSCalendarValue::RelativeTo(match related {
                                 ICalendarRelated::Start => JSCalendarRelativeTo::Start,
                                 ICalendarRelated::End => JSCalendarRelativeTo::End,
@@ -288,15 +326,11 @@ impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
                         ICalendarParameterValue::Text(value) => Key::Owned(value),
                         _ => continue,
                     };
-                    self.entry(Key::Property(JSCalendarProperty::Features))
-                        .or_insert_with(Value::new_object)
-                        .as_object_mut()
-                        .unwrap()
-                        .insert(feature, Value::Bool(true));
+                    self.set_flag(JSCalendarProperty::Features, feature);
                 }
                 ICalendarParameterName::Language => {
                     if let Some(text) = param.value.into_text() {
-                        self.insert(Key::Property(JSCalendarProperty::Locale), Value::Str(text));
+                        self.set(JSCalendarProperty::Locale, Value::Str(text));
                     }
                 }
                 ICalendarParameterName::Display => {
@@ -315,11 +349,7 @@ impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
                             continue;
                         }
                     };
-                    self.entry(Key::Property(JSCalendarProperty::Display))
-                        .or_insert_with(Value::new_object)
-                        .as_object_mut()
-                        .unwrap()
-                        .insert(display, Value::Bool(true));
+                    self.set_flag(JSCalendarProperty::Display, display);
                 }
                 ICalendarParameterName::Jsid => {
                     jsid = param.value.into_text().map(|v| v.into_owned());
@@ -349,24 +379,37 @@ impl<I: JSCalendarId, B: JSCalendarId> ExtractParams
 }
 
 impl<I: JSCalendarId, B: JSCalendarId> ICalendarParams<I, B> {
+    pub(super) fn push(
+        &mut self,
+        name: ICalendarParameterName,
+        value: Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) {
+        match self.0.iter_mut().find(|(param, _)| param == &name) {
+            Some((_, values)) => values.push(value),
+            None => self.0.push((name, vec![value])),
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub(super) fn into_jscalendar_value(
         self,
     ) -> Option<Map<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>> {
-        if !self.0.is_empty() {
-            let mut obj = Map::from(Vec::with_capacity(self.0.len()));
-
-            for (param, value) in self.0 {
-                let value = if value.len() > 1 {
-                    Value::Array(value)
-                } else {
-                    value.into_iter().next().unwrap()
-                };
-                obj.insert_unchecked(Key::Owned(param.into_string().to_ascii_lowercase()), value);
-            }
-            Some(obj)
-        } else {
-            None
-        }
+        (!self.0.is_empty()).then(|| {
+            self.0
+                .into_iter()
+                .filter_map(|(param, mut values)| {
+                    let value = if values.len() > 1 {
+                        Value::Array(values)
+                    } else {
+                        values.pop()?
+                    };
+                    Some((Key::Owned(param.into_string().to_ascii_lowercase()), value))
+                })
+                .collect()
+        })
     }
 }
 

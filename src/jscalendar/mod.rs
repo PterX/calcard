@@ -5,12 +5,15 @@
  */
 
 pub mod export;
+pub mod ext;
 pub mod import;
+#[doc(hidden)]
+pub mod overrides;
 pub mod parser;
 pub mod types;
 
 use crate::{
-    common::{CalendarScale, IanaString, LinkRelation},
+    common::{CalendarScale, IanaString, LinkRelation, elements::Elements},
     icalendar::{
         ICalendarComponentType, ICalendarDuration, ICalendarFrequency, ICalendarMethod,
         ICalendarMonth, ICalendarSkip, ICalendarWeekday,
@@ -20,6 +23,16 @@ use jmap_tools::{JsonPointer, Key, Map, Value};
 use mail_parser::DateTime;
 use serde::Serialize;
 use std::{borrow::Cow, fmt::Debug, fmt::Display, hash::Hash, str::FromStr};
+
+pub(crate) const MAX_ICAL_COMPONENT_DEPTH: usize = 32;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum RecurrenceOverrides {
+    #[default]
+    Full,
+    Patch,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[repr(transparent)]
@@ -365,6 +378,7 @@ pub enum JSCalendarParticipantRole {
     Informational,
     Chair,
     Required,
+    Attendee,
 }
 
 // JSCalendar Enum Values for scheduleAgent (Context: Participant)
@@ -405,6 +419,15 @@ impl JSCalendarDateTime {
                 dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
             )
         }
+    }
+}
+
+impl<I: JSCalendarId, B: JSCalendarId> JSCalendar<'_, I, B> {
+    pub fn blob_ids(&self) -> impl Iterator<Item = &B> {
+        Elements::new(&self.0).filter_map(|element| match element {
+            JSCalendarValue::BlobId(blob_id) => Some(blob_id),
+            _ => None,
+        })
     }
 }
 
@@ -451,7 +474,7 @@ static JSCAL_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
 ]);
 
 #[inline]
-pub(crate) fn uuid5(text: impl AsRef<[u8]>) -> String {
+pub fn uuid5(text: impl AsRef<[u8]>) -> String {
     uuid::Uuid::new_v5(&JSCAL_NAMESPACE, text.as_ref())
         .hyphenated()
         .to_string()
@@ -475,7 +498,10 @@ impl<I: JSCalendarId> Display for JSCalendarProperty<I> {
 mod tests {
     use crate::{
         icalendar::{ICalendar, ICalendarComponent, ICalendarProperty},
-        jscalendar::{JSCalendar, JSCalendarProperty, JSCalendarValue},
+        jscalendar::{
+            JSCalendar, JSCalendarProperty, JSCalendarValue, RecurrenceOverrides,
+            export::ExportOptions, import::ImportOptions,
+        },
     };
     use jmap_tools::Value;
 
@@ -486,6 +512,7 @@ mod tests {
         expect: String,
         roundtrip: String,
         line_num: usize,
+        recurrence_overrides: RecurrenceOverrides,
     }
 
     #[test]
@@ -546,6 +573,20 @@ mod tests {
                             test.comment = comment.to_string();
                             test.line_num = line_num + 1;
                         }
+                        ("option", "test") => {
+                            match comment {
+                                "patch_recurrence_overrides" => {
+                                    test.recurrence_overrides = RecurrenceOverrides::Patch;
+                                }
+                                _ => panic!(
+                                    "Unknown option '{}' in file '{}' at line {}",
+                                    comment,
+                                    path.display(),
+                                    line_num + 1
+                                ),
+                            }
+                            cur_value = &mut test.test;
+                        }
                         ("convert", "test") => {
                             cur_command = "convert";
                             cur_value = &mut test.expect;
@@ -587,7 +628,9 @@ mod tests {
             println!("Running test '{}' at line {}", self.comment, self.line_num);
 
             if is_jscalendar(&self.test) {
-                fix_jscalendar(&mut self.test);
+                let mut group = self.test.clone();
+                fix_jscalendar(&mut group);
+                fix_jscalendar_entry(&mut self.test);
                 fix_icalendar(&mut self.expect);
                 let source =
                     sanitize_jscalendar(parse_jscalendar(&self.comment, self.line_num, &self.test));
@@ -601,16 +644,19 @@ mod tests {
                         &self.roundtrip,
                     ))
                 } else {
-                    source.clone()
+                    sanitize_jscalendar(parse_jscalendar(&self.comment, self.line_num, &group))
                 };
 
-                let first_convert =
-                    sanitize_icalendar(source.into_icalendar().unwrap_or_else(|| {
-                        panic!(
-                            "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
-                            self.comment, self.line_num, self.test
-                        )
-                    }));
+                let first_convert = sanitize_icalendar(
+                    source
+                        .into_icalendar_with(self.export_options())
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
+                                self.comment, self.line_num, self.test
+                            )
+                        }),
+                );
                 if first_convert != expect {
                     let first_convert =
                         sanitize_icalendar(ICalendar::parse(first_convert.to_string()).unwrap());
@@ -622,7 +668,11 @@ mod tests {
                         );
                     }
                 }
-                let roundtrip_convert = sanitize_jscalendar(first_convert.into_jscalendar());
+                let roundtrip_convert = sanitize_jscalendar(
+                    first_convert
+                        .into_jscalendar_with(self.import_options())
+                        .expect("converts"),
+                );
                 if roundtrip_convert != roundtrip {
                     let roundtrip_convert = roundtrip_convert.to_string();
                     let roundtrip = roundtrip.to_string();
@@ -655,7 +705,11 @@ mod tests {
                     source.clone()
                 };
 
-                let first_convert = sanitize_jscalendar(source.into_jscalendar());
+                let first_convert = sanitize_jscalendar(
+                    source
+                        .into_jscalendar_with(self.import_options())
+                        .expect("converts"),
+                );
                 if first_convert != expect {
                     let first_convert = first_convert.to_string();
                     let expect = expect.to_string();
@@ -667,13 +721,16 @@ mod tests {
                         );
                     }
                 }
-                let roundtrip_convert =
-                    sanitize_icalendar(first_convert.into_icalendar().unwrap_or_else(|| {
-                        panic!(
-                            "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
-                            self.comment, self.line_num, self.test
-                        )
-                    }));
+                let roundtrip_convert = sanitize_icalendar(
+                    first_convert
+                        .into_icalendar_with(self.export_options())
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
+                                self.comment, self.line_num, self.test
+                            )
+                        }),
+                );
                 if roundtrip_convert != roundtrip {
                     let roundtrip_convert = sanitize_icalendar(
                         ICalendar::parse(roundtrip_convert.to_string()).unwrap(),
@@ -686,6 +743,16 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    impl Test {
+        fn import_options(&self) -> ImportOptions {
+            ImportOptions::new().recurrence_overrides(self.recurrence_overrides)
+        }
+
+        fn export_options(&self) -> ExportOptions {
+            ExportOptions::new().recurrence_overrides(self.recurrence_overrides)
         }
     }
 
@@ -706,6 +773,19 @@ mod tests {
             v.push_str(s);
             v.push_str("END:VEVENT\nEND:VCALENDAR\n");
             *s = v;
+        }
+    }
+
+    fn fix_jscalendar_entry(s: &mut String) {
+        if !s.starts_with("{") {
+            if s.contains(r#""@type": "Group""#)
+                || s.contains(r#""@type": "Event""#)
+                || s.contains(r#""@type": "Task""#)
+            {
+                *s = format!("{{{s}}}");
+            } else {
+                *s = format!("{{\"@type\": \"Event\", {s}}}");
+            }
         }
     }
 
@@ -766,6 +846,9 @@ mod tests {
         component
             .entries
             .sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        for entry in &mut component.entries {
+            entry.params.sort_by(|a, b| a.name.cmp(&b.name));
+        }
     }
 
     fn sanitize_jscalendar(

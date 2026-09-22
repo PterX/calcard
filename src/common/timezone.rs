@@ -6,9 +6,11 @@
 
 use super::DateTimeResult;
 use crate::common::PartialDateTime;
-use chrono::{DateTime, FixedOffset, NaiveDate, Offset, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Offset, TimeDelta, TimeZone, Utc};
 use hashify::tiny_map;
 use std::{borrow::Cow, hash::Hash, str::FromStr};
+
+const MAX_LOCAL_TIME_GAP_HOURS: i64 = 24;
 
 #[derive(Clone, Copy, Default, Eq)]
 pub enum Tz {
@@ -53,10 +55,33 @@ impl DateTimeResult {
             tz.from_local_datetime(&self.date_time).single()
         }
     }
+
+    pub fn resolve_with_tz(&self, tz: Tz) -> Option<DateTime<Tz>> {
+        match self.offset {
+            Some(_) => self.to_date_time_with_tz(tz),
+            None => tz.resolve_local_datetime(&self.date_time),
+        }
+    }
 }
 
 impl Tz {
     pub const UTC: Self = Self::Tz(chrono_tz::UTC);
+
+    pub fn resolve_local_datetime(&self, local: &NaiveDateTime) -> Option<DateTime<Tz>> {
+        self.from_local_datetime(local).earliest().or_else(|| {
+            (1..=MAX_LOCAL_TIME_GAP_HOURS)
+                .filter_map(|hours| local.checked_sub_signed(TimeDelta::hours(hours)))
+                .find_map(|before_gap| self.from_local_datetime(&before_gap).latest())
+                .and_then(|before_gap| {
+                    let offset = *before_gap.offset();
+                    local
+                        .checked_sub_signed(TimeDelta::seconds(
+                            offset.fix().local_minus_utc().into(),
+                        ))
+                        .map(|utc| DateTime::from_naive_utc_and_offset(utc, offset))
+                })
+        })
+    }
 
     pub fn as_id(&self) -> u16 {
         match self {
@@ -2041,6 +2066,54 @@ mod tests {
             let id = tz.as_id();
             let tz_from_id = Tz::from_id(id).unwrap();
             assert_eq!(tz, tz_from_id, "failed for {tz:?}");
+        }
+    }
+
+    #[test]
+    fn rfc5545_3_3_5_resolves_ambiguous_and_nonexistent_local_times() {
+        let local = |text: &str| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S").unwrap();
+        for (tz, value, utc, written) in [
+            (
+                Tz::Tz(chrono_tz::Tz::Europe__Berlin),
+                "2025-10-26T02:30:00",
+                "2025-10-26T00:30:00",
+                "2025-10-26T02:30:00",
+            ),
+            (
+                Tz::Tz(chrono_tz::Tz::Europe__Berlin),
+                "2025-03-30T02:30:00",
+                "2025-03-30T01:30:00",
+                "2025-03-30T02:30:00",
+            ),
+            (
+                Tz::Tz(chrono_tz::Tz::America__New_York),
+                "2025-03-09T02:00:00",
+                "2025-03-09T07:00:00",
+                "2025-03-09T02:00:00",
+            ),
+            (
+                Tz::Tz(chrono_tz::Tz::Pacific__Apia),
+                "2011-12-30T12:00:00",
+                "2011-12-30T22:00:00",
+                "2011-12-30T12:00:00",
+            ),
+            (
+                Tz::Tz(chrono_tz::Tz::Europe__Berlin),
+                "2025-01-08T09:00:00",
+                "2025-01-08T08:00:00",
+                "2025-01-08T09:00:00",
+            ),
+            (
+                Tz::Floating,
+                "2025-03-30T02:30:00",
+                "2025-03-30T02:30:00",
+                "2025-03-30T02:30:00",
+            ),
+        ] {
+            let resolved = tz.resolve_local_datetime(&local(value)).expect(value);
+            assert_eq!(resolved.naive_utc(), local(utc), "{tz:?} {value}");
+            assert_eq!(resolved.naive_local(), local(written), "{tz:?} {value}");
+            assert_eq!(resolved.timezone(), tz, "{tz:?} {value}");
         }
     }
 }

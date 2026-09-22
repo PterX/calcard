@@ -1,0 +1,191 @@
+> test JSPROP features set restored with typed feature keys (jscalendarbis Section 3.2.7, jscalendar-icalendar Sections 2.3.10 and 4.1.2)
+UID:jsprop-features
+CONFERENCE;VALUE=URI;JSID=v1:https://video.example.com/1
+JSPROP;JSPTR="virtualLocations/v1/features":{"audio":true\,"video":true\,"example.com:whiteboard":true}
+> convert
+"@type": "Event",
+"uid": "jsprop-features",
+"virtualLocations": {
+  "v1": {
+    "@type": "VirtualLocation",
+    "uri": "https://video.example.com/1",
+    "features": {
+      "audio": true,
+      "video": true,
+      "example.com:whiteboard": true
+    }
+  }
+}
+> convert
+UID:jsprop-features
+CONFERENCE;VALUE=URI;FEATURE=AUDIO,VIDEO;JSID=v1:https://video.example.com/1
+JSPROP;JSPTR="virtualLocations/v1/features/example.com:whiteboard":true
+
+> test JSPROP relation set restored with typed relation keys (jscalendarbis Sections 1.5.10 and 7.6.13, jscalendar-icalendar Sections 2.3.35 and 4.1.2)
+UID:jsprop-relation
+RELATED-TO:parent-uid
+JSPROP;JSPTR="relatedTo/parent-uid/relation":{"parent":true\,"snooze":true\,"example.com:blocks":true}
+> convert
+"@type": "Event",
+"uid": "jsprop-relation",
+"relatedTo": {
+  "parent-uid": {
+    "relation": {
+      "parent": true,
+      "snooze": true,
+      "example.com:blocks": true
+    }
+  }
+}
+> convert
+UID:jsprop-relation
+RELATED-TO;RELTYPE=PARENT,SNOOZE:parent-uid
+JSPROP;JSPTR="relatedTo/parent-uid/relation/example.com:blocks":true
+
+> test JSPROP recurrenceOverrides map restored with LocalDateTime keys and typed patches (jscalendarbis Sections 1.5.9 and 3.3.4, jscalendar-icalendar Section 4.1.2)
+UID:jsprop-overrides
+DTSTART;TZID=Europe/Berlin:20250108T090000
+RRULE:FREQ=WEEKLY
+SUMMARY:Sync
+ATTENDEE;JSID=p1:mailto:p1@example.com
+JSPROP;JSPTR="recurrenceOverrides":{"2025-01-15T09:00:00":{"title":"Moved"\,"participants/p1/participationStatus":"declined"}\,"2025-01-22T09:00:00":{"excluded":true}\,"2025-01-30T10:00:00":{}}
+> convert
+"@type": "Event",
+"uid": "jsprop-overrides",
+"title": "Sync",
+"start": "2025-01-08T09:00:00",
+"timeZone": "Europe/Berlin",
+"recurrenceRule": {
+  "frequency": "weekly"
+},
+"participants": {
+  "p1": {
+    "@type": "Participant",
+    "calendarAddress": "mailto:p1@example.com"
+  }
+},
+"recurrenceOverrides": {
+  "2025-01-15T09:00:00": {
+    "title": "Moved",
+    "participants/p1/participationStatus": "declined"
+  },
+  "2025-01-22T09:00:00": {
+    "excluded": true
+  },
+  "2025-01-30T10:00:00": {}
+}
+> convert
+BEGIN:VEVENT
+UID:jsprop-overrides
+DTSTART;TZID=Europe/Berlin:20250115T090000
+RECURRENCE-ID;TZID=Europe/Berlin:20250115T090000
+SUMMARY:Moved
+ATTENDEE;PARTSTAT=DECLINED;JSID=p1:mailto:p1@example.com
+END:VEVENT
+BEGIN:VEVENT
+UID:jsprop-overrides
+DTSTART;TZID=Europe/Berlin:20250108T090000
+RRULE:FREQ=WEEKLY
+RDATE;TZID=Europe/Berlin:20250130T100000
+EXDATE;TZID=Europe/Berlin:20250122T090000
+SUMMARY:Sync
+ATTENDEE;JSID=p1:mailto:p1@example.com
+END:VEVENT
+
+> test JSPROP recurrence override member restored with typed patch keys (jscalendarbis Sections 1.5.9 and 3.3.4, jscalendar-icalendar Section 4.1.2)
+UID:jsprop-override-member
+DTSTART;TZID=Europe/Berlin:20250108T090000
+RRULE:FREQ=WEEKLY
+SUMMARY:Sync
+ATTENDEE;JSID=p1:mailto:p1@example.com
+EXDATE;TZID=Europe/Berlin:20250122T090000
+JSPROP;JSPTR="recurrenceOverrides/2025-01-15T09:00:00":{"title":"Moved"\,"participants/p1/participationStatus":"declined"}
+> convert
+"@type": "Event",
+"uid": "jsprop-override-member",
+"title": "Sync",
+"start": "2025-01-08T09:00:00",
+"timeZone": "Europe/Berlin",
+"recurrenceRule": {
+  "frequency": "weekly"
+},
+"participants": {
+  "p1": {
+    "@type": "Participant",
+    "calendarAddress": "mailto:p1@example.com"
+  }
+},
+"recurrenceOverrides": {
+  "2025-01-15T09:00:00": {
+    "title": "Moved",
+    "participants/p1/participationStatus": "declined"
+  },
+  "2025-01-22T09:00:00": {
+    "excluded": true
+  }
+}
+> convert
+BEGIN:VEVENT
+UID:jsprop-override-member
+DTSTART;TZID=Europe/Berlin:20250115T090000
+RECURRENCE-ID;TZID=Europe/Berlin:20250115T090000
+SUMMARY:Moved
+ATTENDEE;PARTSTAT=DECLINED;JSID=p1:mailto:p1@example.com
+END:VEVENT
+BEGIN:VEVENT
+UID:jsprop-override-member
+DTSTART;TZID=Europe/Berlin:20250108T090000
+RRULE:FREQ=WEEKLY
+EXDATE;TZID=Europe/Berlin:20250122T090000
+SUMMARY:Sync
+ATTENDEE;JSID=p1:mailto:p1@example.com
+END:VEVENT
+
+> test JSPROP display set restored with typed display keys (jscalendarbis Sections 1.5.11 and 7.6.6, jscalendar-icalendar Section 4.1.2)
+UID:jsprop-display
+IMAGE;VALUE=URI;JSID=l1:https://example.com/i.png
+JSPROP;JSPTR="links/l1/display":{"badge":true\,"example.com:banner":true}
+> convert
+"@type": "Event",
+"uid": "jsprop-display",
+"links": {
+  "l1": {
+    "@type": "Link",
+    "href": "https://example.com/i.png",
+    "rel": "icon",
+    "display": {
+      "badge": true,
+      "example.com:banner": true
+    }
+  }
+},
+"iCalendar": {
+  "convertedProperties": {
+    "links/l1/href": {
+      "name": "image"
+    }
+  },
+  "name": "vevent"
+}
+> convert
+UID:jsprop-display
+IMAGE;VALUE=URI;DISPLAY=BADGE;JSID=l1:https://example.com/i.png
+JSPROP;JSPTR="links/l1/display/example.com:banner":true
+
+> test JSPROP enum value restored as typed participant kind (jscalendarbis Section 3.4.6, jscalendar-icalendar Section 4.1.2)
+UID:jsprop-kind
+ATTENDEE;JSID=p1:mailto:p1@example.com
+JSPROP;JSPTR="participants/p1/kind":"resource"
+> convert
+"@type": "Event",
+"uid": "jsprop-kind",
+"participants": {
+  "p1": {
+    "@type": "Participant",
+    "calendarAddress": "mailto:p1@example.com",
+    "kind": "resource"
+  }
+}
+> convert
+UID:jsprop-kind
+ATTENDEE;CUTYPE=RESOURCE;JSID=p1:mailto:p1@example.com

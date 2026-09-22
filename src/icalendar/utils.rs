@@ -27,6 +27,10 @@ impl ICalendar {
     pub fn uids(&self) -> impl Iterator<Item = &str> {
         self.components
             .iter()
+            .filter(|component| {
+                component.component_type.is_calendar_object()
+                    || component.component_type == ICalendarComponentType::VCalendar
+            })
             .filter_map(|component| component.uid())
     }
 
@@ -39,6 +43,20 @@ impl ICalendar {
 
     pub fn component_by_id(&self, id: u32) -> Option<&ICalendarComponent> {
         self.components.get(id as usize)
+    }
+
+    pub(crate) fn calendar_root(&self) -> Option<&ICalendarComponent> {
+        self.components
+            .first()
+            .filter(|root| root.component_type == ICalendarComponentType::VCalendar)
+    }
+
+    pub(crate) fn has_calendar_components(&self) -> bool {
+        self.calendar_root().is_some_and(|root| {
+            root.component_ids
+                .iter()
+                .any(|id| *id != 0 && self.component_by_id(*id).is_some())
+        })
     }
 
     pub fn alarms_for_id(&self, id: u32) -> impl Iterator<Item = &ICalendarComponent> {
@@ -145,6 +163,15 @@ impl ICalendarComponent {
 }
 
 impl ICalendarValue {
+    pub(crate) fn binary_bytes(&self) -> Option<&[u8]> {
+        match self {
+            ICalendarValue::Binary(data) => Some(data.as_slice()),
+            ICalendarValue::Uri(Uri::Data(data)) => Some(data.data.as_slice()),
+            _ => None,
+        }
+        .filter(|data| !data.is_empty())
+    }
+
     pub fn size(&self) -> usize {
         match self {
             ICalendarValue::Binary(value) => value.len(),
@@ -382,6 +409,28 @@ impl ICalendarParameterValue {
 }
 
 impl ICalendarComponentType {
+    pub fn is_calendar_object(&self) -> bool {
+        matches!(
+            self,
+            ICalendarComponentType::VEvent
+                | ICalendarComponentType::VTodo
+                | ICalendarComponentType::VJournal
+                | ICalendarComponentType::VFreebusy
+                | ICalendarComponentType::VAvailability
+        )
+    }
+
+    pub(crate) fn converts_links(&self) -> bool {
+        matches!(
+            self,
+            ICalendarComponentType::VEvent
+                | ICalendarComponentType::VTodo
+                | ICalendarComponentType::Participant
+                | ICalendarComponentType::VLocation
+                | ICalendarComponentType::VCalendar
+        )
+    }
+
     pub fn has_time_ranges(&self) -> bool {
         matches!(
             self,

@@ -23,16 +23,16 @@ ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=image/png:iVBORw
  AAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC
 > convert
 "links": {
-  "ac521dc6-ccfa-56e1-9ecc-94ced0a5b4ea": {
+  "fbb0affb-1578-57b7-be40-f7c0bd9b28c1": {
     "@type": "Link",
-    "href": "data:;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAAmJLR0QAAd2KE6QAAAAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC",
+    "href": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAAmJLR0QAAd2KE6QAAAAKSURBVAjXY2gAAACCAIHdQ2r0AAAAAElFTkSuQmCC",
     "contentType": "image/png",
     "rel": "enclosure"
   }
 },
 "iCalendar": {
     "convertedProperties": {
-        "links/ac521dc6-ccfa-56e1-9ecc-94ced0a5b4ea/href": {
+        "links/fbb0affb-1578-57b7-be40-f7c0bd9b28c1/href": {
         "name": "attach",
         "parameters": {
             "value": "BINARY"
@@ -63,7 +63,7 @@ ATTACH;FILENAME=foo.pdf:https://example.com/foo.pdf
 }
 
 > test IMAGE
-IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;FILENAME="An image":
+IMAGE;VALUE=URI;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;FILENAME="An image":
  https://example.com/images/party.png
 > convert
 "links": {
@@ -89,7 +89,7 @@ IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;FILENAME="An image":
 }
 
 > test IMAGE with LABEL
-IMAGE;FMTTYPE=image/png;DISPLAY=BADGE;LABEL="An image":
+IMAGE;VALUE=URI;FMTTYPE=image/png;DISPLAY=BADGE;LABEL="An image":
  https://example.com/images/party.png
 > convert
 "links": {
@@ -116,7 +116,7 @@ IMAGE;FMTTYPE=image/png;DISPLAY=BADGE;LABEL="An image":
 }
 
 > test LINK
-LINK;LINKREL=preview;LABEL=Venue:
+LINK;LINKREL=preview;LABEL=Venue;VALUE=URI:
  https://example.com/events
 > convert
 "links": {
@@ -212,7 +212,7 @@ END:VCALENDAR
 
 > test URL and a second describedby Link
 URL:https://example.com/a
-LINK;LINKREL=describedby:https://example.com/b
+LINK;LINKREL=describedby;VALUE=URI:https://example.com/b
 > convert
 "links": {
   "c3e2ef56-00e8-5f96-9185-a9f4fcac0d27": {
@@ -260,10 +260,10 @@ JSPROP;JSPTR="links/mylink1/example.com:foo":"bar"
 }
 
 > test LINK, ATTACH, IMAGE and URL together
-LINK;LINKREL=preview;LABEL=Venue:
+LINK;LINKREL=preview;LABEL=Venue;VALUE=URI:
  https://example.com/events
 ATTACH:https://example.com/foo.pdf
-IMAGE;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;FILENAME="An image":
+IMAGE;VALUE=URI;FMTTYPE=image/png;DISPLAY=BADGE,THUMBNAIL;FILENAME="An image":
  https://example.com/images/party.png
 URL:https://example.com/myurl
 > convert

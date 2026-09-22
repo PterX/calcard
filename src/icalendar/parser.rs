@@ -19,6 +19,20 @@ use mail_parser::decoders::{
 };
 use std::{borrow::Cow, iter::Peekable, slice::Iter};
 
+const EMPTY_CALENDAR_LINE: &str = "BEGIN:VCALENDAR";
+
+fn calendar_entry(ical: ICalendar, strict: bool) -> Entry {
+    if strict
+        && ical
+            .calendar_root()
+            .is_some_and(|root| root.component_ids.is_empty())
+    {
+        Entry::InvalidLine(EMPTY_CALENDAR_LINE.to_string())
+    } else {
+        Entry::ICalendar(ical)
+    }
+}
+
 struct Params {
     params: Vec<ICalendarParameter>,
     stop_char: StopChar,
@@ -100,6 +114,7 @@ impl Parser<'_> {
                                 return Entry::TooManyComponents;
                             }
                             ical = ical_components.last_mut().unwrap();
+                            continue;
                         }
                     }
 
@@ -121,6 +136,7 @@ impl Parser<'_> {
                                 if let Some(parent_ical_idx) = ical_stack.pop() {
                                     ical_idx = parent_ical_idx;
                                     ical = ical_components.get_mut(ical_idx).unwrap();
+                                    continue;
                                 } else {
                                     break;
                                 }
@@ -185,6 +201,18 @@ impl Parser<'_> {
                     _ => {}
                 }
 
+                self.unescape_backslash = !matches!(
+                    params
+                        .data_type
+                        .as_ref()
+                        .map(|data_type| data_type.iana().unwrap_or(&ICalendarValueType::Text))
+                        .or(match &default_type {
+                            ValueType::Ical(default_type) => Some(default_type),
+                            _ => None,
+                        }),
+                    Some(ICalendarValueType::Uri | ICalendarValueType::CalAddress)
+                );
+
                 if matches!(
                     (&params.data_type, &default_type),
                     (Some(IanaType::Iana(ICalendarValueType::Recur)), _)
@@ -225,19 +253,36 @@ impl Parser<'_> {
                                 }
                             };
                             if let Some(bytes) = bytes {
-                                if let Some(decoded) =
-                                    params.charset.as_deref().or(default_encoding).and_then(
-                                        |charset| {
-                                            charset_decoder(charset.as_bytes())
-                                                .map(|decoder| decoder(&bytes))
-                                        },
-                                    )
+                                let is_binary = match &params.data_type {
+                                    Some(data_type) => {
+                                        data_type == &IanaType::Iana(ICalendarValueType::Binary)
+                                    }
+                                    None => {
+                                        encoding == Encoding::Base64
+                                            && matches!(
+                                                entry.name,
+                                                ICalendarProperty::Attach
+                                                    | ICalendarProperty::Image
+                                            )
+                                    }
+                                };
+                                if let Some(decoded) = params
+                                    .charset
+                                    .as_deref()
+                                    .or(default_encoding)
+                                    .filter(|_| !is_binary)
+                                    .and_then(|charset| {
+                                        charset_decoder(charset.as_bytes())
+                                            .map(|decoder| decoder(&bytes))
+                                    })
                                 {
                                     token.text = Cow::Owned(decoded.into_bytes());
-                                } else if std::str::from_utf8(&bytes).is_ok() {
+                                } else if !is_binary && std::str::from_utf8(&bytes).is_ok() {
                                     token.text = Cow::Owned(bytes);
                                 } else {
                                     entry.values.push(ICalendarValue::Binary(bytes));
+                                    params.data_type =
+                                        Some(IanaType::Iana(ICalendarValueType::Binary));
                                     if eol {
                                         break;
                                     } else {
@@ -418,13 +463,16 @@ impl Parser<'_> {
             }
         }
 
-        if ical_stack.is_empty() || !self.strict {
-            Entry::ICalendar(ICalendar {
-                components: ical_components,
-            })
-        } else {
-            Entry::UnterminatedComponent(ical.component_type.as_str().to_string().into())
+        if !ical_stack.is_empty() && self.strict {
+            return Entry::UnterminatedComponent(ical.component_type.as_str().to_string().into());
         }
+
+        calendar_entry(
+            ICalendar {
+                components: ical_components,
+            },
+            self.strict,
+        )
     }
 
     fn ical_parameters(&mut self, params: &mut Params) {

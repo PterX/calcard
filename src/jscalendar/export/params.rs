@@ -323,16 +323,7 @@ impl ICalendarEntry {
     pub(super) fn with_date_time(mut self, dt: DateTime<Tz>) -> Self {
         debug_assert!(self.values.is_empty());
 
-        // A date-time value cannot have the PERIOD value type
-        self.params.retain(|param| {
-            !matches!(
-                (&param.name, &param.value),
-                (
-                    ICalendarParameterName::Value,
-                    ICalendarParameterValue::Value(ICalendarValueType::Period)
-                )
-            )
-        });
+        self.remove_period_value_type();
 
         // Best effort to restore the original timezone
         let tz_id = self.tz_id();
@@ -368,6 +359,7 @@ impl ICalendarEntry {
     pub(super) fn with_date_times(mut self, dts: Vec<DateTime<Tz>>) -> Self {
         debug_assert!(self.values.is_empty());
 
+        self.remove_period_value_type();
         let tz_id = self.tz_id();
         let has_tz_id = tz_id.is_some();
         let entry_tz = tz_id
@@ -379,6 +371,18 @@ impl ICalendarEntry {
         }
 
         self
+    }
+
+    fn remove_period_value_type(&mut self) {
+        self.params.retain(|param| {
+            !matches!(
+                (&param.name, &param.value),
+                (
+                    ICalendarParameterName::Value,
+                    ICalendarParameterValue::Value(ICalendarValueType::Period)
+                )
+            )
+        });
     }
 
     fn insert_date(

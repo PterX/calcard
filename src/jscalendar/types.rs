@@ -639,6 +639,7 @@ impl FromStr for JSCalendarParticipantRole {
             "informational" => JSCalendarParticipantRole::Informational,
             "chair" => JSCalendarParticipantRole::Chair,
             "required" => JSCalendarParticipantRole::Required,
+            "attendee" => JSCalendarParticipantRole::Attendee,
         )
         .ok_or(())
     }
@@ -652,6 +653,7 @@ impl JSCalendarParticipantRole {
             JSCalendarParticipantRole::Informational => "informational",
             JSCalendarParticipantRole::Chair => "chair",
             JSCalendarParticipantRole::Required => "required",
+            JSCalendarParticipantRole::Attendee => "attendee",
         }
     }
 }

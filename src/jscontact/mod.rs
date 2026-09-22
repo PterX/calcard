@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::common::CalendarScale;
+use crate::common::{CalendarScale, elements::Elements};
 use jmap_tools::{JsonPointer, Value};
 use serde::Serialize;
 use std::{
@@ -18,21 +18,6 @@ pub mod export;
 pub mod import;
 pub mod parser;
 pub mod types;
-
-#[cfg(test)]
-thread_local! {
-    static FN_DERIVATION_DISABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-#[cfg(test)]
-pub(crate) fn fn_derivation_disabled() -> bool {
-    FN_DERIVATION_DISABLED.with(|flag| flag.get())
-}
-
-#[cfg(test)]
-pub(crate) fn set_fn_derivation_disabled(disabled: bool) {
-    FN_DERIVATION_DISABLED.with(|flag| flag.set(disabled));
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[repr(transparent)]
@@ -430,6 +415,15 @@ impl<I: JSContactId, B: JSContactId> From<I> for JSContactValue<I, B> {
     }
 }
 
+impl<I: JSContactId, B: JSContactId> JSContact<'_, I, B> {
+    pub fn blob_ids(&self) -> impl Iterator<Item = &B> {
+        Elements::new(&self.0).filter_map(|element| match element {
+            JSContactValue::BlobId(blob_id) => Some(blob_id),
+            _ => None,
+        })
+    }
+}
+
 impl<'x, I: JSContactId, B: JSContactId> Default for JSContact<'x, I, B> {
     fn default() -> Self {
         Self(Value::Object(jmap_tools::Map::new()))
@@ -467,9 +461,6 @@ mod tests {
             let entry = entry.unwrap();
             let path = entry.path();
             let input = std::fs::read_to_string(&path).unwrap();
-            super::set_fn_derivation_disabled(
-                path.file_name().and_then(|name| name.to_str()) != Some("003_names.txt"),
-            );
             let mut test = Test::default();
             let mut cur_command = "";
             let mut cur_value = &mut test.test;
@@ -532,13 +523,19 @@ mod tests {
 
             println!("Running test '{}' at line {}", self.comment, self.line_num);
 
+            let keep_derived_fn = [&self.test, &self.expect, &self.roundtrip]
+                .into_iter()
+                .any(|text| text.contains("FN"));
+
             if is_jscontact(&self.test) {
                 fix_jscontact(&mut self.test);
                 fix_vcard(&mut self.expect);
                 let source =
                     sanitize_jscontact(parse_jscontact(&self.comment, self.line_num, &self.test));
-                let expect =
-                    sanitize_vcard(parse_vcard(&self.comment, self.line_num, &self.expect));
+                let expect = sanitize_vcard(
+                    keep_derived_fn,
+                    parse_vcard(&self.comment, self.line_num, &self.expect),
+                );
                 let roundtrip = if !self.roundtrip.is_empty() {
                     fix_jscontact(&mut self.roundtrip);
                     sanitize_jscontact(parse_jscontact(
@@ -550,15 +547,20 @@ mod tests {
                     source.clone()
                 };
 
-                let first_convert = sanitize_vcard(source.into_vcard().unwrap_or_else(|| {
-                    panic!(
-                        "Failed to convert JSContact to vCard: test {} on line {}: {}",
-                        self.comment, self.line_num, self.test
-                    )
-                }));
+                let first_convert = sanitize_vcard(
+                    keep_derived_fn,
+                    source.into_vcard().unwrap_or_else(|_| {
+                        panic!(
+                            "Failed to convert JSContact to vCard: test {} on line {}: {}",
+                            self.comment, self.line_num, self.test
+                        )
+                    }),
+                );
                 if first_convert != expect {
-                    let first_convert =
-                        sanitize_vcard(VCard::parse(first_convert.to_string()).unwrap());
+                    let first_convert = sanitize_vcard(
+                        keep_derived_fn,
+                        VCard::parse(first_convert.to_string()).unwrap(),
+                    );
 
                     if first_convert != expect {
                         panic!(
@@ -582,12 +584,18 @@ mod tests {
             } else {
                 fix_vcard(&mut self.test);
                 fix_jscontact(&mut self.expect);
-                let source = sanitize_vcard(parse_vcard(&self.comment, self.line_num, &self.test));
+                let source = sanitize_vcard(
+                    keep_derived_fn,
+                    parse_vcard(&self.comment, self.line_num, &self.test),
+                );
                 let expect =
                     sanitize_jscontact(parse_jscontact(&self.comment, self.line_num, &self.expect));
                 let roundtrip = if !self.roundtrip.is_empty() {
                     fix_vcard(&mut self.roundtrip);
-                    sanitize_vcard(parse_vcard(&self.comment, self.line_num, &self.roundtrip))
+                    sanitize_vcard(
+                        keep_derived_fn,
+                        parse_vcard(&self.comment, self.line_num, &self.roundtrip),
+                    )
                 } else {
                     source.clone()
                 };
@@ -603,16 +611,20 @@ mod tests {
                         );
                     }
                 }
-                let roundtrip_convert =
-                    sanitize_vcard(first_convert.into_vcard().unwrap_or_else(|| {
+                let roundtrip_convert = sanitize_vcard(
+                    keep_derived_fn,
+                    first_convert.into_vcard().unwrap_or_else(|_| {
                         panic!(
                             "Failed to convert JSContact to vCard: test {} on line {}: {}",
                             self.comment, self.line_num, self.test
                         )
-                    }));
+                    }),
+                );
                 if roundtrip_convert != roundtrip {
-                    let roundtrip_convert =
-                        sanitize_vcard(VCard::parse(roundtrip_convert.to_string()).unwrap());
+                    let roundtrip_convert = sanitize_vcard(
+                        keep_derived_fn,
+                        VCard::parse(roundtrip_convert.to_string()).unwrap(),
+                    );
                     if roundtrip_convert != roundtrip {
                         panic!(
                             "JSContact to vCard conversion failed: test {} on line {}, expected: {}, got: {}",
@@ -668,10 +680,16 @@ mod tests {
         })
     }
 
-    fn sanitize_vcard(mut vcard: VCard) -> VCard {
-        vcard
-            .entries
-            .retain(|e| !matches!(e.name, VCardProperty::Version));
+    fn sanitize_vcard(keep_derived_fn: bool, mut vcard: VCard) -> VCard {
+        vcard.entries.retain(|e| {
+            !matches!(e.name, VCardProperty::Version)
+                && (keep_derived_fn
+                    || e.name != VCardProperty::Fn
+                    || !e
+                        .params
+                        .iter()
+                        .any(|param| param.name == crate::vcard::VCardParameterName::Derived))
+        });
         vcard.entries.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         vcard
     }

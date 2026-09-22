@@ -85,7 +85,10 @@ impl VCardEntry {
                     }
                     VCardParameterName::Pref | VCardParameterName::Index => {
                         match value.into_number() {
-                            Ok(n) => VCardParameterValue::Integer(n as u32),
+                            Ok(n) => u32::try_from(n).map_or_else(
+                                |_| VCardParameterValue::Text(n.to_string()),
+                                VCardParameterValue::Integer,
+                            ),
                             Err(value) => {
                                 VCardParameterValue::Text(value.into_string().into_owned())
                             }

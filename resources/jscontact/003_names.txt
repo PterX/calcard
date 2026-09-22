@@ -175,3 +175,16 @@ FN;DERIVED=TRUE:Doe Jane
 N:Perez;Juana;;;;;
 N;JSCOMPS=";0;1":Doe;Jane;;;;;
 
+> test JSCOMPS without positional entries
+N;JSCOMPS=";s,-;s,+":Doe;John;;;;;
+> convert
+"name": {
+  "components": [
+    { "kind": "surname", "value": "Doe" },
+    { "kind": "given", "value": "John" }
+  ]
+}
+> convert
+FN;DERIVED=TRUE:Doe John
+N;JSCOMPS=";0;1":Doe;John;;;;;
+

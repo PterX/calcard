@@ -296,18 +296,18 @@ LOCATION;JSID=c0503d30-8c50-4372-87b5-7657e8e0fedd;DERIVED=TRUE:The Music Bo
 SUMMARY;LANGUAGE=en:Live from Music Bowl: The Band
 DTSTART;TZID=America/New_York:20200704T170000
 DURATION:PT3H
-CONFERENCE;LABEL="Free live Stream from Music Bowl";JSID=vloc1:https://strea
- m.example.com/the_band_2020
+CONFERENCE;VALUE=URI;LABEL="Free live Stream from Music Bowl";JSID=vloc1:
+ https://stream.example.com/the_band_2020
 BEGIN:VLOCATION
 DESCRIPTION:Music Bowl\, Central Park\, New York
 NAME:The Music Bowl
-COORDINATES:geo:40.7829\,-73.9654
+COORDINATES;VALUE=URI:geo:40.7829,-73.9654
 JSID:c0503d30-8c50-4372-87b5-7657e8e0fedd
 END:VLOCATION
 BEGIN:VLOCATION
 NAME:BAZ Parking\, 9 West 57th Street\, New York
 LOCATION-TYPE:parking
-COORDINATES:geo:40.7637\,-73.9748
+COORDINATES;VALUE=URI:geo:40.7637,-73.9748
 JSID:ee42e41e-1046-4489-9760-c0b85f0dc176
 END:VLOCATION
 END:VEVENT
@@ -395,8 +395,15 @@ END:VCALENDAR
 BEGIN:VCALENDAR
 BEGIN:VEVENT
 SUMMARY:Introduction to Calculus I (optional)
+DTSTART;TZID=Europe/London:20200107T140000
+DURATION:PT1H30M
 RECURRENCE-ID;TZID=Europe/London:20200107T140000
 UID:ee42e41e-1046-4489-9760-c0b85f0dc176
+BEGIN:VLOCATION
+DESCRIPTION:Math Lab I\, Department of Mathematics
+NAME:Math lab room 1
+JSID:mlab
+END:VLOCATION
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:Calculus I Exam
@@ -416,6 +423,7 @@ DTSTART;TZID=Europe/London:20200108T090000
 DURATION:PT1H30M
 UID:ee42e41e-1046-4489-9760-c0b85f0dc176
 EXDATE;TZID=Europe/London:20200401T090000
+RDATE;TZID=Europe/London:20200107T140000,20200625T090000
 RRULE:FREQ=WEEKLY;UNTIL=20200624T080000Z
 BEGIN:VLOCATION
 DESCRIPTION:Math Lab I\, Department of Mathematics
@@ -457,14 +465,13 @@ END:VCALENDAR
       "title": "Calculus I Exam",
       "start": "2020-06-25T10:00:00",
       "duration": "PT2H",
-      "locations": {
-        "auditorium": {
-          "@type": "Location",
-          "name": "Big Auditorium",
-          "description": "Big Auditorium, Other Road",
-          "iCalendar": {
-                "name": "vlocation"
-          }
+      "locations/mlab": null,
+      "locations/auditorium": {
+        "@type": "Location",
+        "name": "Big Auditorium",
+        "description": "Big Auditorium, Other Road",
+        "iCalendar": {
+          "name": "vlocation"
         }
       }
     }
@@ -515,10 +522,18 @@ END:VCALENDAR
 > convert
 BEGIN:VCALENDAR
 BEGIN:VEVENT
+SUMMARY:FooBar team meeting
+DTSTART;TZID=Africa/Johannesburg:20200304T090000
+DURATION:PT1H
 ATTENDEE;EMAIL=tom@foobar.example.com;PARTSTAT=DECLINED;CN="Tom Tool";JSID=
  dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@calendar.example.com
+ATTENDEE;ROLE=CHAIR,OWNER;PARTSTAT=ACCEPTED;CN="Zoe Zelda";JSID=em9lQGZvb2G
+ FtcGxlLmNvbQ:mailto:zoe@foobar.example.com
+ORGANIZER:mailto:f245f875-7f63-4a5e-a2c8@schedule.example.com
 RECURRENCE-ID;TZID=Africa/Johannesburg:20200304T090000
 UID:ee42e41e-1046-4489-9760-c0b85f0dc176
+CONFERENCE;VALUE=URI;LABEL="ChatMe meeting room";JSID=0:https://chatme.examp
+ le.com?id=1234567&pw=a8a24627b63d
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:FooBar team meeting
@@ -531,8 +546,8 @@ ATTENDEE;ROLE=CHAIR,OWNER;PARTSTAT=ACCEPTED;CN="Zoe Zelda";JSID=em9lQGZvb2G
 ORGANIZER:mailto:f245f875-7f63-4a5e-a2c8@schedule.example.com
 UID:ee42e41e-1046-4489-9760-c0b85f0dc176
 RRULE:FREQ=WEEKLY
-CONFERENCE;LABEL="ChatMe meeting room";JSID=0:https://chatme.example.com?id=
- 1234567&pw=a8a24627b63d
+CONFERENCE;VALUE=URI;LABEL="ChatMe meeting room";JSID=0:https://chatme.examp
+ le.com?id=1234567&pw=a8a24627b63d
 END:VEVENT
 END:VCALENDAR
 > convert
@@ -575,15 +590,7 @@ END:VCALENDAR
   },
   "recurrenceOverrides": {
     "2020-03-04T09:00:00": {
-      "participants": {
-            "dG9tQGZvb2Jhci5xlLmNvbQ": {
-              "@type": "Participant",
-              "calendarAddress": "mailto:tom@calendar.example.com",
-              "email": "tom@foobar.example.com",
-              "name": "Tom Tool",
-              "participationStatus": "declined"
-            }
-        }
+      "participants/dG9tQGZvb2Jhci5xlLmNvbQ/participationStatus": "declined"
     }
   }
 }

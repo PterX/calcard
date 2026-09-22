@@ -38,11 +38,13 @@ CLASS:X-RESTRICTED
 > convert
 CLASS:CONFIDENTIAL
 
-> test JSCalendar - privacy with vendor value
+> test JSCalendar - privacy with vendor value keeps the value in a JSPROP, although a JSPROP cannot set a property converted from CLASS on the way back (jscalendar-icalendar-28, Sections 2.3.7 and 4.1.2)
 "privacy": "example.com:hidden"
 > convert
 CLASS:PRIVATE
-JSPROP;JSPTR=privacy:"example.com:hidden"
+JSPROP;JSPTR="privacy":"example.com:hidden"
+> convert
+"privacy": "private"
 
 > test JSCalendar - privacy with preserved CLASS of a known value
 "privacy": "secret",
@@ -116,9 +118,15 @@ STYLED-DESCRIPTION;FMTTYPE=text/html:
 > test LAST-MODIFIED
 BEGIN:VCALENDAR
 LAST-MODIFIED:20240914T231257Z
+BEGIN:VEVENT
 > convert
 "@type": "Group",
-"updated": "2024-09-14T23:12:57Z"
+"updated": "2024-09-14T23:12:57Z",
+"entries": [
+  {
+    "@type": "Event"
+  }
+]
 
 > test METHOD
 BEGIN:VCALENDAR
@@ -140,10 +148,16 @@ END:VCALENDAR
 > test NAME
 BEGIN:VCALENDAR
 NAME;LANGUAGE=de:Feiertage Deutschland 2025
+BEGIN:VEVENT
 > convert
 "@type": "Group",
 "title": "Feiertage Deutschland 2025",
-"locale": "de"
+"locale": "de",
+"entries": [
+  {
+    "@type": "Event"
+  }
+]
 
 > test PERCENT-COMPLETE
 BEGIN:VCALENDAR
@@ -202,10 +216,16 @@ STATUS:CANCELLED
 > test SOURCE
 BEGIN:VCALENDAR
 SOURCE:https://example.com/holidays.ics
+BEGIN:VEVENT
 > convert
 {
   "@type": "Group",
-  "source": "https://example.com/holidays.ics"
+  "source": "https://example.com/holidays.ics",
+  "entries": [
+    {
+      "@type": "Event"
+    }
+  ]
 }
 
 > test SUMMARY

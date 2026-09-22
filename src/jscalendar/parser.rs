@@ -131,6 +131,17 @@ impl<I: JSCalendarId, B: JSCalendarId> Element for JSCalendarValue<I, B> {
                 },
                 _ => None,
             }
+        } else if matches!(
+            key.to_string()
+                .rsplit_once('/')
+                .and_then(|(_, leaf)| JSCalendarProperty::<I>::from_str(leaf).ok()),
+            Some(JSCalendarProperty::BlobId)
+        ) {
+            match IdReference::parse(value) {
+                IdReference::Value(value) => JSCalendarValue::BlobId(value).into(),
+                IdReference::Reference(value) => JSCalendarValue::IdReference(value).into(),
+                IdReference::Error => None,
+            }
         } else {
             None
         }
@@ -215,12 +226,13 @@ impl<I: JSCalendarId> jmap_tools::Property for JSCalendarProperty<I> {
 
 impl<I: JSCalendarId> JSCalendarProperty<I> {
     fn patch_or_prop(&self) -> &JSCalendarProperty<I> {
-        if let JSCalendarProperty::Pointer(ptr) = self
-            && let Some(JsonPointerItem::Key(Key::Property(prop))) = ptr.last()
-        {
-            prop
-        } else {
-            self
+        let mut property = self;
+        while let JSCalendarProperty::Pointer(ptr) = property {
+            match ptr.last() {
+                Some(JsonPointerItem::Key(Key::Property(inner))) => property = inner,
+                _ => break,
+            }
         }
+        property
     }
 }

@@ -5,9 +5,12 @@
  */
 
 use crate::{
-    common::{IanaString, IanaType},
+    common::{
+        Data, IanaString, IanaType,
+        blob::{BlobIds, sniff_media_type},
+    },
     jscontact::{
-        JSContact, JSContactId, JSContactProperty, JSContactType, JSContactValue,
+        JSContact, JSContactId, JSContactKind, JSContactProperty, JSContactType, JSContactValue,
         import::{
             EntryState, ExtractedParams, PropIdKey, State, VCardConvertedProperty, VCardParams,
         },
@@ -18,7 +21,7 @@ use crate::{
     },
 };
 use ahash::AHashMap;
-use jmap_tools::{JsonPointerHandler, Key, Map, Property, Value};
+use jmap_tools::{JsonPointerHandler, JsonPointerItem, Key, Map, Property, Value};
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet, hash_map::Entry},
@@ -170,95 +173,199 @@ where
         };
 
         if let Some(value) = value {
-            let mut params = self.extract_params(&mut entry.entry.params, extract);
-            let prop_id = params.prop_id();
-            let alt_id = params.alt_id();
-            let sub_property = top_property_name.sub_property();
-
-            // Locate the address to patch or reset language
-            if let Some(language) = params.language() {
-                if let Some(patch) = prop_id
-                    .as_deref()
-                    .filter(|prop_id| self.has_prop_id(&entry.entry.name, prop_id))
-                    .or_else(|| {
-                        self.find_prop_id(
-                            &entry.entry.name,
-                            entry.entry.group.as_deref(),
-                            alt_id.as_deref(),
-                        )
-                    })
-                    .map(|prop_id| {
-                        if let Some(sub_property) = sub_property.as_ref() {
-                            format!(
-                                "{}/{}/{}/{}",
-                                top_property_name.to_cow().as_ref(),
-                                sub_property.to_cow().as_ref(),
-                                prop_id,
-                                value_property_name.to_cow().as_ref()
-                            )
-                        } else {
-                            format!(
-                                "{}/{}/{}",
-                                top_property_name.to_cow().as_ref(),
-                                prop_id,
-                                value_property_name.to_cow().as_ref()
-                            )
-                        }
-                    })
-                {
-                    entry.set_converted_to::<I>(&[
-                        JSContactProperty::Localizations::<I>.to_cow().as_ref(),
-                        language.as_str(),
-                        patch.as_str(),
-                    ]);
-
-                    let localizations = self.localizations.entry(language).or_default();
-                    let mut base_path = None;
-
-                    for (prop, value) in params.into_iter(&entry.entry.name) {
-                        let base_path = base_path.get_or_insert_with(|| {
-                            patch.rsplit_once('/').map(|(base, _)| base).unwrap()
-                        });
-                        localizations.push((format!("{}/{}", base_path, prop.to_string()), value));
-                    }
-
-                    localizations.push((patch, value));
-                    return;
-                } else {
-                    entry.entry.params.push(VCardParameter::language(language));
-                }
-            }
-
-            let mut entries = self.get_mut_object_or_insert(top_property_name.clone());
-            if let Some(sub_property) = sub_property.clone() {
-                entries = entries
-                    .insert_or_get_mut(sub_property, Value::Object(Map::from(vec![])))
-                    .as_object_mut()
-                    .unwrap();
-            }
-
-            let mut obj = vec![(Key::Property(value_property_name.clone()), value)];
-            obj.extend(extra_properties);
-            obj.extend(params.into_iter(&entry.entry.name));
-            let prop_id = entries.insert_named(prop_id, Value::Object(Map::from(obj)));
-
-            if let Some(sub_property) = sub_property {
-                entry.set_converted_to::<I>(&[
-                    top_property_name.to_cow().as_ref(),
-                    sub_property.to_cow().as_ref(),
-                    prop_id.as_str(),
-                    value_property_name.to_cow().as_ref(),
-                ]);
-            } else {
-                entry.set_converted_to::<I>(&[
-                    top_property_name.to_cow().as_ref(),
-                    prop_id.as_str(),
-                    value_property_name.to_cow().as_ref(),
-                ]);
-            }
-
-            self.track_prop(&entry.entry, top_property_name, alt_id, prop_id);
+            self.map_named_value(
+                entry,
+                extract,
+                top_property_name,
+                value_property_name,
+                value,
+                extra_properties,
+            );
         }
+    }
+
+    pub(super) fn map_blob_media(
+        &mut self,
+        entry: &mut EntryState,
+        kind: JSContactKind,
+        blob_ids: &mut BlobIds<'_, B>,
+    ) -> bool {
+        if !matches!(
+            entry.entry.values.first(),
+            Some(VCardValue::Binary(data)) if !data.data.is_empty()
+        ) {
+            return false;
+        }
+        let mut values = std::mem::take(&mut entry.entry.values).into_iter();
+        let Some(VCardValue::Binary(data)) = values.next() else {
+            return false;
+        };
+        let media_type_param = entry
+            .entry
+            .params
+            .iter()
+            .find_map(|param| param.as_media_type());
+        let media_type = match media_type_param.or(data
+            .content_type
+            .as_deref()
+            .filter(|media_type| !media_type.is_empty()))
+        {
+            Some(media_type) => Cow::Owned(media_type.to_string()),
+            None => Cow::Borrowed(sniff_media_type(&data.data)),
+        };
+        let has_media_type_param = media_type_param.is_some();
+
+        match blob_ids.blob_id(data.data, Some(media_type.as_ref())) {
+            Ok(generated) => {
+                entry.entry.params.retain(|param| {
+                    param.name != VCardParameterName::Mediatype || param.as_media_type().is_some()
+                });
+                self.map_named_value(
+                    entry,
+                    &[
+                        VCardParameterName::Mediatype,
+                        VCardParameterName::Pref,
+                        VCardParameterName::PropId,
+                        VCardParameterName::Label,
+                    ],
+                    JSContactProperty::Media,
+                    JSContactProperty::BlobId,
+                    Value::Element(JSContactValue::BlobId(generated.blob_id)),
+                    [
+                        Some((
+                            Key::Property(JSContactProperty::Kind),
+                            Value::Element(JSContactValue::Kind(kind)),
+                        )),
+                        (!has_media_type_param).then(|| {
+                            (
+                                Key::Property(JSContactProperty::MediaType),
+                                Value::Str(media_type.into_owned().into()),
+                            )
+                        }),
+                    ]
+                    .into_iter()
+                    .flatten(),
+                );
+                true
+            }
+            Err(bytes) => {
+                entry.entry.values = std::iter::once(VCardValue::Binary(Data {
+                    content_type: data.content_type,
+                    data: bytes,
+                }))
+                .chain(values)
+                .collect();
+                false
+            }
+        }
+    }
+
+    fn map_named_value(
+        &mut self,
+        entry: &mut EntryState,
+        extract: &[VCardParameterName],
+        top_property_name: JSContactProperty<I>,
+        value_property_name: JSContactProperty<I>,
+        value: Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
+        extra_properties: impl IntoIterator<
+            Item = (
+                Key<'static, JSContactProperty<I>>,
+                Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
+            ),
+        >,
+    ) {
+        let mut params = self.extract_params(&mut entry.entry.params, extract);
+        let prop_id = params.prop_id();
+        let alt_id = params.alt_id();
+        let sub_property = top_property_name.sub_property();
+
+        if let Some(language) = params.language() {
+            if let Some(patch) = prop_id
+                .as_deref()
+                .filter(|prop_id| self.has_prop_id(&entry.entry.name, prop_id))
+                .or_else(|| {
+                    self.find_prop_id(
+                        &entry.entry.name,
+                        entry.entry.group.as_deref(),
+                        alt_id.as_deref(),
+                    )
+                })
+                .map(|prop_id| {
+                    if let Some(sub_property) = sub_property.as_ref() {
+                        format!(
+                            "{}/{}/{}/{}",
+                            top_property_name.to_cow().as_ref(),
+                            sub_property.to_cow().as_ref(),
+                            prop_id,
+                            value_property_name.to_cow().as_ref()
+                        )
+                    } else {
+                        format!(
+                            "{}/{}/{}",
+                            top_property_name.to_cow().as_ref(),
+                            prop_id,
+                            value_property_name.to_cow().as_ref()
+                        )
+                    }
+                })
+            {
+                entry.set_converted_to::<I>(&[
+                    JSContactProperty::Localizations::<I>.to_cow().as_ref(),
+                    language.as_str(),
+                    patch.as_str(),
+                ]);
+
+                let localizations = self.localizations.entry(language).or_default();
+                let mut base_path = None;
+
+                for (prop, value) in params.into_iter(&entry.entry.name) {
+                    let base_path = base_path.get_or_insert_with(|| {
+                        patch
+                            .rsplit_once('/')
+                            .map_or(patch.as_str(), |(base, _)| base)
+                    });
+                    localizations.push((format!("{}/{}", base_path, prop.to_string()), value));
+                }
+
+                localizations.push((patch, value));
+                return;
+            } else {
+                entry.entry.params.push(VCardParameter::language(language));
+            }
+        }
+
+        let mut entries = self.get_mut_object_or_insert(top_property_name.clone());
+        if let Some(sub_property) = sub_property.clone() {
+            let Some(sub_entries) = entries
+                .insert_or_get_mut(sub_property, Value::Object(Map::from(vec![])))
+                .as_object_mut()
+            else {
+                return;
+            };
+            entries = sub_entries;
+        }
+
+        let mut obj = vec![(Key::Property(value_property_name.clone()), value)];
+        obj.extend(extra_properties);
+        obj.extend(params.into_iter(&entry.entry.name));
+        let prop_id = entries.insert_named(prop_id, Value::Object(Map::from(obj)));
+
+        if let Some(sub_property) = sub_property {
+            entry.set_converted_to::<I>(&[
+                top_property_name.to_cow().as_ref(),
+                sub_property.to_cow().as_ref(),
+                prop_id.as_str(),
+                value_property_name.to_cow().as_ref(),
+            ]);
+        } else {
+            entry.set_converted_to::<I>(&[
+                top_property_name.to_cow().as_ref(),
+                prop_id.as_str(),
+                value_property_name.to_cow().as_ref(),
+            ]);
+        }
+
+        self.track_prop(&entry.entry, top_property_name, alt_id, prop_id);
     }
 
     pub(super) fn extract_params(
@@ -601,7 +708,7 @@ where
         let mut obj = Value::Object(self.entries.into_iter().collect());
         if !self.patch_objects.is_empty() {
             for (ptr, patch) in self.patch_objects {
-                obj.patch_jptr(ptr.iter(), patch);
+                patch_card(&mut obj, ptr.as_slice(), patch);
             }
         }
 
@@ -651,5 +758,42 @@ impl VCardValue {
             VCardValue::GramGender(v) => Value::Str(v.as_str().into()),
             VCardValue::Kind(v) => Value::Str(v.as_str().into()),
         }
+    }
+}
+
+fn patch_card<I: JSContactId, B: JSContactId>(
+    value: &mut Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
+    pointer: &[JsonPointerItem<JSContactProperty<I>>],
+    patch: Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
+) -> bool {
+    match (pointer.split_first(), value) {
+        (Some((JsonPointerItem::Root, rest)), value) => patch_card(value, rest, patch),
+        (Some((JsonPointerItem::Number(index), rest)), Value::Array(items)) => {
+            match (items.get_mut(*index as usize), rest.is_empty()) {
+                (Some(item), false) => patch_card(item, rest, patch),
+                (Some(item), true) if !patch.is_null() => {
+                    *item = patch;
+                    true
+                }
+                _ => false,
+            }
+        }
+        (Some((JsonPointerItem::Key(_) | JsonPointerItem::Number(_), rest)), value)
+            if rest
+                .iter()
+                .all(|item| !matches!(item, JsonPointerItem::Number(_))) =>
+        {
+            value.patch_jptr(pointer.iter().peekable(), patch)
+        }
+        (Some((JsonPointerItem::Key(key), rest)), Value::Object(obj)) => obj
+            .get_mut(key)
+            .is_some_and(|item| patch_card(item, rest, patch)),
+        (Some((JsonPointerItem::Number(index), rest)), Value::Object(obj)) => {
+            let index = index.to_string();
+            obj.iter_mut()
+                .find(|(key, _)| key.to_string() == index)
+                .is_some_and(|(_, item)| patch_card(item, rest, patch))
+        }
+        _ => false,
     }
 }

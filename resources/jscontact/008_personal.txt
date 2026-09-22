@@ -84,3 +84,20 @@ ORG-DIRECTORY;PREF=1:ldap://ldap.tech.example/o=Tech,ou=Engineering
 ORG-DIRECTORY;INDEX=1;PROP-ID=k1:https://directory.mycompany.example.com
 ORG-DIRECTORY;PREF=1;PROP-ID=k2:ldap://ldap.tech.example/o=Tech,ou=Engineering
 
+> test Directory label
+"directories": {
+  "d1": {
+    "kind": "directory",
+    "uri": "https://directory.mycompany.example.com",
+    "label": "Company"
+  },
+  "d2": {
+    "kind": "entry",
+    "uri": "https://dir.example.com/addrbook/jdoe.vcf",
+    "label": "Mine"
+  }
+}
+> convert
+ORG-DIRECTORY;LABEL=Company;PROP-ID=d1:https://directory.mycompany.example.com
+SOURCE;LABEL=Mine;PROP-ID=d2:https://dir.example.com/addrbook/jdoe.vcf
+

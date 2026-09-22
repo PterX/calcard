@@ -53,6 +53,8 @@ pub struct Parser<'x> {
     pub(crate) unquote: bool,
     pub(crate) skip_ws: bool,
     pub(crate) strip_ctl: bool,
+    pub(crate) unescape_caret: bool,
+    pub(crate) unescape_backslash: bool,
     pub(crate) token_buf: Vec<Token<'x>>,
     pub(crate) last_token_end: usize,
 }
@@ -74,6 +76,8 @@ impl<'x> Parser<'x> {
             unquote: true,
             skip_ws: false,
             strip_ctl: false,
+            unescape_caret: false,
+            unescape_backslash: true,
             token_buf: Vec::with_capacity(10),
             last_token_end: usize::MAX,
         }

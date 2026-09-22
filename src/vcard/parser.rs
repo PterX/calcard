@@ -176,7 +176,26 @@ impl Parser<'_> {
                             }
                         };
                         if let Some(bytes) = bytes {
-                            if let Some(decoded) = params
+                            let is_binary = matches!(encoding, Encoding::Base64)
+                                && match &entry.name {
+                                    VCardProperty::Photo
+                                    | VCardProperty::Logo
+                                    | VCardProperty::Sound
+                                    | VCardProperty::Key => true,
+                                    VCardProperty::Other(_) => params.charset.is_none(),
+                                    _ => false,
+                                };
+                            if is_binary {
+                                entry.values.push(VCardValue::Binary(Data {
+                                    data: bytes,
+                                    content_type: None,
+                                }));
+                                if is_eol {
+                                    break;
+                                } else {
+                                    continue;
+                                }
+                            } else if let Some(decoded) = params
                                 .charset
                                 .as_deref()
                                 .or(default_encoding)
@@ -467,26 +486,30 @@ impl Parser<'_> {
                         }
                     }
                     VCardParameterName::Type => {
-                        let mut types: Vec<IanaType<VCardType, String>> = self.buf_parse_many();
+                        let types: Vec<IanaType<VCardType, String>> = self.buf_parse_many();
 
                         // RFC6350 has many mistakes, this is a workaround for the "TYPE" values
                         // which in the examples sometimes appears between quotes.
-                        match types.first() {
-                            Some(IanaType::Other(text))
-                                if types.len() == 1 && text.contains(",") =>
-                            {
-                                let mut types_ = Vec::with_capacity(2);
-                                for text in text.split(',') {
-                                    if let Some(typ) = VCardType::parse(text.as_bytes()) {
-                                        types_.push(IanaType::Iana(typ));
-                                    }
+                        for typ in types {
+                            match typ {
+                                IanaType::Other(text) if text.contains(',') => {
+                                    param_values.extend(
+                                        text.split(',')
+                                            .map(str::trim)
+                                            .filter(|text| !text.is_empty())
+                                            .map(|text| {
+                                                VCardParameter::typ(
+                                                    match VCardType::parse(text.as_bytes()) {
+                                                        Some(typ) => IanaType::Iana(typ),
+                                                        None => IanaType::Other(text.to_string()),
+                                                    },
+                                                )
+                                            }),
+                                    );
                                 }
-                                types = types_;
+                                typ => param_values.push(VCardParameter::typ(typ)),
                             }
-                            _ => {}
                         }
-
-                        param_values.extend(types.into_iter().map(VCardParameter::typ));
                     }
                     VCardParameterName::Jscomps => {
                         if let Some(text) = self.raw_token() {
@@ -919,6 +942,7 @@ mod tests {
                                 assert_eq!(vcard_text, vcard_unarchived.to_string());
 
                                 for version in [
+                                    crate::vcard::VCardVersion::V2_1,
                                     crate::vcard::VCardVersion::V3_0,
                                     crate::vcard::VCardVersion::V4_0,
                                 ] {
@@ -943,6 +967,132 @@ mod tests {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_inline_binary_encoding() {
+        let vcard = VCard::parse(concat!(
+            "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:T\r\n",
+            "X-ABCROP-RECTANGLE;ENCODING=b:QUJDbGlwUmVjdF8xJjAmMCY0MDAmNDAw\r\n",
+            "X-UPPER;ENCODING=B:SGVsbG8=\r\n",
+            "X-CHARSET;ENCODING=b;CHARSET=UTF-8:SGVsbG8=\r\n",
+            "NOTE;ENCODING=BASE64:SGVsbG8=\r\n",
+            "END:VCARD\r\n"
+        ))
+        .expect("valid vCard");
+        let values = vcard
+            .entries
+            .iter()
+            .filter(|entry| entry.name != VCardProperty::Version && entry.name != VCardProperty::Fn)
+            .map(|entry| (entry.name.as_str(), entry.values.first()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            [
+                (
+                    "X-ABCROP-RECTANGLE",
+                    Some(&VCardValue::Binary(Data {
+                        content_type: None,
+                        data: b"ABClipRect_1&0&0&400&400".to_vec(),
+                    }))
+                ),
+                (
+                    "X-UPPER",
+                    Some(&VCardValue::Binary(Data {
+                        content_type: None,
+                        data: b"Hello".to_vec(),
+                    }))
+                ),
+                ("X-CHARSET", Some(&VCardValue::Text("Hello".to_string()))),
+                ("NOTE", Some(&VCardValue::Text("Hello".to_string()))),
+            ]
+        );
+
+        let mut out = String::new();
+        vcard
+            .write_to(&mut out, crate::vcard::VCardVersion::V3_0)
+            .expect("serializable vCard");
+        assert!(
+            out.contains("X-ABCROP-RECTANGLE;ENCODING=b:QUJDbGlwUmVjdF8xJjAmMCY0MDAmNDAw\r\n"),
+            "RFC 2426: ENCODING=b marks an inline binary value\n{out}"
+        );
+        assert_eq!(VCard::parse(&out).expect("valid vCard"), vcard, "{out}");
+    }
+
+    #[test]
+    fn test_parse_encoding_b_keeps_the_declared_value_type() {
+        let vcard = VCard::parse(concat!(
+            "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:T\r\n",
+            "NOTE;ENCODING=b:SGVsbG8gd29ybGQ=\r\n",
+            "ADR;ENCODING=b:OztTdHJlZXQ7Q2l0eTs7Ozs=\r\n",
+            "N;ENCODING=b:TGFzdDtGaXJzdDs7Ow==\r\n",
+            "ORG;ENCODING=b:QWNtZTtEZXB0\r\n",
+            "PHOTO;ENCODING=BASE64;CHARSET=ISO-8859-1:/9j/4A==\r\n",
+            "END:VCARD\r\n"
+        ))
+        .expect("valid vCard");
+
+        for (property, expected) in [
+            (VCardProperty::Note, vec!["Hello world"]),
+            (VCardProperty::Adr, vec![";;Street;City;;;;"]),
+            (VCardProperty::N, vec!["Last;First;;;"]),
+            (VCardProperty::Org, vec!["Acme;Dept"]),
+        ] {
+            let values = vcard
+                .entries
+                .iter()
+                .find(|entry| entry.name == property)
+                .map(|entry| {
+                    entry
+                        .values
+                        .iter()
+                        .map(|value| value.as_text().unwrap_or_default())
+                        .collect::<Vec<_>>()
+                });
+            assert_eq!(
+                values.as_deref(),
+                Some(expected.as_slice()),
+                "RFC 2425 Section 5.8: ENCODING is a transfer encoding, not a value type: {property:?}"
+            );
+        }
+        assert!(
+            matches!(
+                vcard
+                    .entries
+                    .iter()
+                    .find(|entry| entry.name == VCardProperty::Photo)
+                    .and_then(|entry| entry.values.first()),
+                Some(VCardValue::Binary(_))
+            ),
+            "RFC 2426 Section 3.1.4: PHOTO is binary regardless of CHARSET"
+        );
+
+        for version in [
+            crate::vcard::VCardVersion::V3_0,
+            crate::vcard::VCardVersion::V4_0,
+        ] {
+            let mut out = String::new();
+            vcard.write_to(&mut out, version).expect("serializable");
+            let reparsed = VCard::parse(&out).expect("valid vCard");
+            for property in [
+                VCardProperty::Note,
+                VCardProperty::Adr,
+                VCardProperty::N,
+                VCardProperty::Org,
+            ] {
+                let count = |card: &VCard| {
+                    card.entries
+                        .iter()
+                        .find(|entry| entry.name == property)
+                        .map(|entry| entry.values.len())
+                };
+                assert_eq!(
+                    count(&reparsed),
+                    count(&vcard),
+                    "{property:?} at {version}\n{out}"
+                );
             }
         }
     }

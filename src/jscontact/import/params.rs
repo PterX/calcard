@@ -7,13 +7,88 @@
 use crate::{
     common::IanaType,
     jscontact::{
-        JSContactId, JSContactKind, JSContactLevel, JSContactPhoneticSystem, JSContactProperty,
-        JSContactValue,
+        Context, Feature, JSContactId, JSContactKind, JSContactLevel, JSContactPhoneticSystem,
+        JSContactProperty, JSContactValue,
         import::{ExtractedParams, VCardParams},
     },
-    vcard::{VCardLevel, VCardPhonetic, VCardProperty, VCardType},
+    vcard::{
+        VCardLevel, VCardParameter, VCardParameterName, VCardParameterValue, VCardPhonetic,
+        VCardProperty, VCardType,
+    },
 };
 use jmap_tools::{Key, Map, Value};
+use std::str::FromStr;
+
+impl Feature {
+    pub(crate) fn from_vcard_type(property: &VCardProperty, typ: &VCardType) -> Option<Self> {
+        match (property, typ) {
+            (VCardProperty::Tel, VCardType::Cell) => Some(Feature::Mobile),
+            (VCardProperty::Tel, VCardType::Fax) => Some(Feature::Fax),
+            (VCardProperty::Tel, VCardType::MainNumber) => Some(Feature::MainNumber),
+            (VCardProperty::Tel, VCardType::Pager) => Some(Feature::Pager),
+            (VCardProperty::Tel, VCardType::Text) => Some(Feature::Text),
+            (VCardProperty::Tel, VCardType::Textphone) => Some(Feature::TextPhone),
+            (VCardProperty::Tel, VCardType::Video) => Some(Feature::Video),
+            (VCardProperty::Tel, VCardType::Voice) => Some(Feature::Voice),
+            _ => None,
+        }
+    }
+}
+
+impl<I: JSContactId> JSContactProperty<I> {
+    pub(crate) fn from_vcard_type(
+        property: &VCardProperty,
+        typ: IanaType<VCardType, String>,
+    ) -> (Self, Key<'static, Self>) {
+        let feature = match &typ {
+            IanaType::Iana(typ) => Feature::from_vcard_type(property, typ),
+            IanaType::Other(_) => None,
+        };
+        if let Some(feature) = feature {
+            return (
+                JSContactProperty::Features,
+                Key::Property(JSContactProperty::Feature(feature)),
+            );
+        }
+
+        let key = match typ {
+            IanaType::Iana(VCardType::Home) => {
+                Key::Property(JSContactProperty::Context(Context::Private))
+            }
+            IanaType::Iana(VCardType::Work) => {
+                Key::Property(JSContactProperty::Context(Context::Work))
+            }
+            IanaType::Iana(VCardType::Billing) => {
+                Key::Property(JSContactProperty::Context(Context::Billing))
+            }
+            IanaType::Iana(VCardType::Delivery) => {
+                Key::Property(JSContactProperty::Context(Context::Delivery))
+            }
+            IanaType::Iana(VCardType::Cell) => Key::Borrowed("mobile"),
+            typ => {
+                let key = typ.into_string().to_ascii_lowercase();
+                match Context::from_str(&key) {
+                    Ok(context) => Key::Property(JSContactProperty::Context(context)),
+                    Err(()) => Key::Owned(key),
+                }
+            }
+        };
+        (JSContactProperty::Contexts, key)
+    }
+}
+
+impl VCardParameter {
+    pub(super) fn as_media_type(&self) -> Option<&str> {
+        match (&self.name, &self.value) {
+            (VCardParameterName::Mediatype, VCardParameterValue::Text(media_type))
+                if !media_type.is_empty() =>
+            {
+                Some(media_type)
+            }
+            _ => None,
+        }
+    }
+}
 
 impl ExtractedParams {
     pub(super) fn prop_id(&mut self) -> Option<String> {
@@ -55,37 +130,15 @@ impl ExtractedParams {
             )>,
         > = None;
 
-        if !self.types.is_empty() {
-            let is_phone = matches!(property, VCardProperty::Tel);
-
-            for typ in std::mem::take(&mut self.types) {
-                if is_phone
-                    && matches!(
-                        typ,
-                        IanaType::Iana(
-                            VCardType::Fax
-                                | VCardType::Cell
-                                | VCardType::Video
-                                | VCardType::Pager
-                                | VCardType::Textphone
-                                | VCardType::MainNumber
-                                | VCardType::Text
-                                | VCardType::Voice
-                        )
-                    )
-                {
-                    features.get_or_insert_default()
-                } else {
-                    contexts.get_or_insert_default()
-                }
-                .push((
-                    match typ {
-                        IanaType::Iana(VCardType::Home) => Key::Borrowed("private"),
-                        IanaType::Iana(VCardType::Cell) => Key::Borrowed("mobile"),
-                        _ => Key::Owned(typ.into_string().to_ascii_lowercase()),
-                    },
-                    Value::Bool(true),
-                ));
+        for typ in std::mem::take(&mut self.types) {
+            let (bucket, key) = JSContactProperty::<I>::from_vcard_type(property, typ);
+            let keys = if bucket == JSContactProperty::Features {
+                features.get_or_insert_default()
+            } else {
+                contexts.get_or_insert_default()
+            };
+            if keys.iter().all(|(existing, _)| existing != &key) {
+                keys.push((key, Value::Bool(true)));
             }
         }
 

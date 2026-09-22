@@ -37,6 +37,8 @@ impl<'x> Parser<'x> {
         self.stop_dot = false;
         self.skip_ws = true;
         self.strip_ctl = false;
+        self.unescape_caret = false;
+        self.unescape_backslash = true;
     }
 
     pub(crate) fn expect_single_value(&mut self) {
@@ -50,6 +52,8 @@ impl<'x> Parser<'x> {
         self.stop_dot = false;
         self.skip_ws = false;
         self.strip_ctl = false;
+        self.unescape_caret = false;
+        self.unescape_backslash = true;
     }
 
     pub(crate) fn expect_multi_value_comma(&mut self) {
@@ -63,6 +67,8 @@ impl<'x> Parser<'x> {
         self.stop_dot = false;
         self.skip_ws = true;
         self.strip_ctl = false;
+        self.unescape_caret = false;
+        self.unescape_backslash = true;
     }
 
     pub(crate) fn expect_multi_value_semicolon(&mut self) {
@@ -76,6 +82,8 @@ impl<'x> Parser<'x> {
         self.stop_dot = false;
         self.skip_ws = false;
         self.strip_ctl = false;
+        self.unescape_caret = false;
+        self.unescape_backslash = true;
     }
 
     pub(crate) fn expect_multi_value_semicolon_and_comma(&mut self) {
@@ -89,6 +97,8 @@ impl<'x> Parser<'x> {
         self.stop_dot = false;
         self.skip_ws = false;
         self.strip_ctl = false;
+        self.unescape_caret = false;
+        self.unescape_backslash = true;
     }
 
     pub(crate) fn expect_param_value(&mut self) {
@@ -102,6 +112,8 @@ impl<'x> Parser<'x> {
         self.stop_dot = false;
         self.skip_ws = true;
         self.strip_ctl = true;
+        self.unescape_caret = true;
+        self.unescape_backslash = true;
     }
 
     pub(crate) fn expect_rrule_value(&mut self) {
@@ -115,6 +127,8 @@ impl<'x> Parser<'x> {
         self.stop_dot = false;
         self.skip_ws = true;
         self.strip_ctl = false;
+        self.unescape_caret = false;
+        self.unescape_backslash = true;
     }
 
     fn try_unfold(&mut self) -> bool {
@@ -125,6 +139,23 @@ impl<'x> Parser<'x> {
             return true;
         }
         false
+    }
+
+    fn caret_escape(&self, idx: usize) -> Option<(usize, u8)> {
+        let mut bytes = self.input.get(idx + 1..)?.iter().zip(idx + 1..);
+        while let Some((ch, pos)) = bytes.next() {
+            match ch {
+                b'\r' if matches!(self.input.get(pos + 1), Some(b'\n')) => {}
+                b'\n' => {
+                    bytes.next().filter(|(ch, _)| matches!(ch, b' ' | b'\t'))?;
+                }
+                b'^' => return Some((pos, b'^')),
+                b'n' => return Some((pos, b'\n')),
+                b'\'' => return Some((pos, b'"')),
+                _ => return None,
+            }
+        }
+        None
     }
 
     fn is_base64_continuation(&self, idx: usize) -> bool {
@@ -161,6 +192,37 @@ impl<'x> Parser<'x> {
                 return None;
             };
             last_idx = idx;
+
+            if *ch == b'^'
+                && self.unescape_caret
+                && let Some((escape_idx, decoded)) = self.caret_escape(idx)
+            {
+                if offset_start != usize::MAX {
+                    if buf.is_empty() {
+                        buf.extend_from_slice(
+                            self.input
+                                .get(offset_start..=offset_end)
+                                .unwrap_or_default(),
+                        );
+                    }
+                    if skipped_ws != usize::MAX {
+                        buf.extend(
+                            self.input
+                                .get(skipped_ws..idx)
+                                .unwrap_or_default()
+                                .iter()
+                                .filter(|ch| matches!(ch, b' ' | b'\t')),
+                        );
+                    }
+                } else {
+                    offset_start = escape_idx;
+                }
+                skipped_ws = usize::MAX;
+                buf.push(decoded);
+                offset_end = escape_idx;
+                while self.iter.next_if(|(pos, _)| *pos <= escape_idx).is_some() {}
+                continue;
+            }
 
             match ch {
                 b' ' | b'\t' => {
@@ -212,7 +274,7 @@ impl<'x> Parser<'x> {
                         break;
                     }
                 }
-                b'\\' => {
+                b'\\' if self.unescape_backslash => {
                     let mut next_ch = b'\\';
                     let mut next_offset_end = idx;
                     while let Some((idx, ch)) = self.iter.next() {

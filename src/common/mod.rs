@@ -7,7 +7,16 @@
 use chrono::{FixedOffset, NaiveDate, NaiveDateTime};
 use mail_parser::DateTime;
 
+#[cfg(feature = "jmap")]
+pub mod blob;
+#[cfg(feature = "jmap")]
+pub(crate) mod elements;
+pub mod embedded;
+#[cfg(feature = "jmap")]
+pub mod export;
 pub mod iana;
+#[cfg(feature = "jmap")]
+pub(crate) mod jsprop;
 pub mod parser;
 pub mod timezone;
 pub mod tokenizer;
@@ -244,12 +253,14 @@ pub enum LinkRelation {
     WorkingCopyOf,
 }
 
+#[cfg(feature = "jmap")]
 pub(crate) enum IdReference<T> {
     Value(T),
     Reference(String),
     Error,
 }
 
+#[cfg(feature = "jmap")]
 impl<T: std::str::FromStr> IdReference<T> {
     pub fn parse(s: &str) -> Self {
         if let Some(reference) = s.strip_prefix('#') {

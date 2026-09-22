@@ -15,7 +15,7 @@ LOCATION:Apple Store Kurfürstendamm\nKurfürstendamm 26\, 10719 Berlin\, D
  eutschland
 X-APPLE-STRUCTURED-LOCATION;X-ADDRESS="Kurfürstendamm 26, 10719 Berlin, De
  utschland";X-APPLE-RADIUS=141.1751386318387;X-TITLE="Apple Store Kurfürst
- endamm";VALUE=URI:geo:52.50363\,13.32865
+ endamm";VALUE=URI:geo:52.50363,13.32865
 GEO:52.50363;13.32865
 ORGANIZER;CN="Sebastian Pekarek":mailto:mail@sebbo.net
 CATEGORIES:WORK

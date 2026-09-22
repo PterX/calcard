@@ -10,7 +10,8 @@ use crate::{
         IanaString,
         parser::Timestamp,
         writer::{
-            FoldingWriter, LineWriter, write_bytes, write_jscomps, write_param_value, write_text,
+            FoldingWriter, LineWriter, NeedsQuotes, write_bytes, write_jscomps, write_param_value,
+            write_text,
         },
     },
     vcard::{
@@ -24,13 +25,12 @@ impl VCard {
     pub fn write_to(&self, out: &mut impl Write, version: VCardVersion) -> std::fmt::Result {
         write!(out, "BEGIN:VCARD\r\n")?;
         write!(out, "VERSION:{version}\r\n")?;
-        let is_v4 = matches!(version, VCardVersion::V4_0);
         for entry in &self.entries {
             if !matches!(
                 entry.name,
                 VCardProperty::Begin | VCardProperty::End | VCardProperty::Version
             ) {
-                entry.write_to(out, is_v4)?;
+                entry.write_with_version(out, version)?;
             }
         }
         write!(out, "END:VCARD\r\n")
@@ -38,7 +38,24 @@ impl VCard {
 }
 
 impl VCardEntry {
+    #[deprecated(since = "0.4.0", note = "use write_with_version")]
     pub fn write_to(&self, out: &mut impl Write, is_v4: bool) -> std::fmt::Result {
+        self.write_with_version(
+            out,
+            if is_v4 {
+                VCardVersion::V4_0
+            } else {
+                VCardVersion::V3_0
+            },
+        )
+    }
+
+    pub fn write_with_version(
+        &self,
+        out: &mut impl Write,
+        version: VCardVersion,
+    ) -> std::fmt::Result {
+        let is_v4 = matches!(version, VCardVersion::V4_0);
         let mut folded = FoldingWriter::new(out);
         let out = &mut folded;
 
@@ -64,8 +81,15 @@ impl VCardEntry {
             }
 
             match &param.value {
+                VCardParameterValue::Text(v)
+                    if param.name == VCardParameterName::Jsptr && !v.needs_quotes() =>
+                {
+                    out.write_atomic("\"")?;
+                    write_param_value(out, v, is_v4)?;
+                    out.write_atomic("\"")?;
+                }
                 VCardParameterValue::Text(v) => {
-                    write_param_value(out, v)?;
+                    write_param_value(out, v, is_v4)?;
                 }
                 VCardParameterValue::Integer(i) => {
                     write!(out, "{i}")?;
@@ -80,19 +104,19 @@ impl VCardEntry {
                     if types.is_none() {
                         types = Some(v);
                     }
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 VCardParameterValue::Type(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 VCardParameterValue::Calscale(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 VCardParameterValue::Level(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 VCardParameterValue::Phonetic(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 VCardParameterValue::Jscomps(v) => {
                     out.write_atomic("\"")?;
@@ -106,12 +130,22 @@ impl VCardEntry {
             }
         }
 
+        let is_v21_base64 = matches!(version, VCardVersion::V2_1)
+            && self
+                .values
+                .iter()
+                .any(|v| matches!(v, VCardValue::Binary(_)));
+
         if !is_v4 {
             if let Some(data) = self.values.iter().find_map(|v| match v {
                 VCardValue::Binary(data) => Some(data),
                 _ => None,
             }) {
-                out.write_atomic(";ENCODING=b")?;
+                out.write_atomic(if is_v21_base64 {
+                    ";ENCODING=BASE64"
+                } else {
+                    ";ENCODING=b"
+                })?;
 
                 if let Some(media_type) = data.content_type.as_deref()
                     && !self
@@ -203,7 +237,11 @@ impl VCardEntry {
                         let media_type = v.content_type.as_deref().unwrap_or_default();
                         out.write_str("data:")?;
                         out.write_str(media_type)?;
-                        out.write_str(";")?;
+                        if escape_semicolon {
+                            out.write_atomic("\\;")?;
+                        } else {
+                            out.write_str(";")?;
+                        }
                         out.write_atomic("base64\\,")?;
                     }
                     write_bytes(out, &v.data)?;
@@ -220,7 +258,11 @@ impl VCardEntry {
             }
         }
 
-        out.end_line()
+        out.end_line()?;
+        if is_v21_base64 {
+            out.end_line()?;
+        }
+        Ok(())
     }
 }
 
@@ -504,7 +546,7 @@ impl Display for VCardVersion {
 mod tests {
     use crate::{
         Entry, Parser,
-        vcard::{VCard, VCardVersion},
+        vcard::{VCard, VCardProperty, VCardVersion},
     };
 
     fn parse(input: &str) -> VCard {
@@ -560,6 +602,11 @@ mod tests {
                 format!("SOUND;TYPE=WAVE:data:audio/wav;base64\\,{photo}"),
             ),
             (
+                format!("PHOTO;TYPE=JPEG;ENCODING=b:{photo}"),
+                VCardVersion::V2_1,
+                format!("PHOTO;TYPE=JPEG;ENCODING=BASE64:{photo}\r\n\r\nEND:VCARD"),
+            ),
+            (
                 format!("PHOTO;TYPE=WORK;ENCODING=b:{photo}"),
                 VCardVersion::V4_0,
                 format!("PHOTO;TYPE=WORK:data:;base64\\,{photo}"),
@@ -578,6 +625,90 @@ mod tests {
     }
 
     #[test]
+    fn test_rfc6868_caret_encoding_is_version_gated() {
+        let vcard = parse(concat!(
+            "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\n",
+            "TEL;X-QUOTE=\"a^'b\";X-CARET=a^^b;X-BREAK=a^nb:tel:+1\r\n",
+            "END:VCARD\r\n"
+        ));
+
+        let out = write(&vcard, VCardVersion::V4_0);
+        for expected in ["X-QUOTE=\"a^'b\"", "X-CARET=a^^b", "X-BREAK=a^nb"] {
+            assert!(
+                out.contains(expected),
+                "RFC 6868 Section 3.1 updates RFC 6350, missing {expected}\n{out}"
+            );
+        }
+        assert_eq!(parse(&out), vcard, "{out}");
+
+        for version in [VCardVersion::V2_1, VCardVersion::V3_0] {
+            let out = write(&vcard, version);
+            for unexpected in ["^'", "^^", "^n"] {
+                assert!(
+                    !out.contains(unexpected),
+                    "RFC 6868 updates RFC 6350 (vCard 4.0) only, not {version}: {unexpected}\n{out}"
+                );
+            }
+            for expected in ["X-QUOTE=\"a\\\"b\"", "X-CARET=a^b", "X-BREAK=a\\nb"] {
+                assert!(
+                    out.contains(expected),
+                    "missing {expected} at {version}\n{out}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_write_binary_data_uri_in_a_compound_property() {
+        use crate::{
+            common::Data,
+            vcard::{VCardEntry, VCardValue},
+        };
+
+        for property in [VCardProperty::Adr, VCardProperty::N, VCardProperty::Org] {
+            let mut vcard = parse("BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\nEND:VCARD\r\n");
+            vcard.entries.push(
+                VCardEntry::new(property.clone()).with_value(VCardValue::Binary(Data {
+                    content_type: Some("text/plain".to_string()),
+                    data: b"hello".to_vec(),
+                })),
+            );
+            let out = write(&vcard, VCardVersion::V4_0).replace("\r\n ", "");
+            assert!(
+                out.contains("data:text/plain\\;base64\\,aGVsbG8="),
+                "RFC 6350 Section 3.4: a SEMICOLON in a compound property field must be escaped\n{out}"
+            );
+            let reparsed = parse(&out);
+            assert_eq!(
+                reparsed
+                    .entries
+                    .iter()
+                    .find(|entry| entry.name == property)
+                    .map(|entry| entry.values.len()),
+                Some(1),
+                "{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_data_uri_with_escaped_or_plain_comma() {
+        let escaped = parse(
+            "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\nPHOTO:data:image/png;base64\\,iVBORw0KGgo=\r\nEND:VCARD\r\n",
+        );
+        let plain = parse(
+            "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\nPHOTO:data:image/png;base64,iVBORw0KGgo=\r\nEND:VCARD\r\n",
+        );
+        assert_eq!(escaped, plain);
+        assert!(escaped.entries.iter().any(|entry| matches!(
+            entry.values.first(),
+            Some(crate::vcard::VCardValue::Binary(data))
+                if data.content_type.as_deref() == Some("image/png")
+                    && data.data == [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
+        )));
+    }
+
+    #[test]
     fn test_write_binary_data_uri_v4_to_v3() {
         let vcard = parse(
             "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\n\
@@ -589,6 +720,87 @@ mod tests {
             "{}",
             write(&vcard, VCardVersion::V3_0)
         );
+    }
+
+    #[test]
+    fn test_write_entry_with_version() {
+        let vcard = parse(concat!(
+            "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:T\r\n",
+            "PHOTO;TYPE=JPEG;ENCODING=b:/9j/4A==\r\n",
+            "NOTE:Hello\r\n",
+            "END:VCARD\r\n"
+        ));
+
+        for version in [VCardVersion::V2_1, VCardVersion::V3_0, VCardVersion::V4_0] {
+            let full = write(&vcard, version);
+            let entries = vcard
+                .entries
+                .iter()
+                .filter(|entry| entry.name != VCardProperty::Version)
+                .fold(String::new(), |mut out, entry| {
+                    entry
+                        .write_with_version(&mut out, version)
+                        .expect("serializable entry");
+                    out
+                });
+            assert_eq!(
+                full,
+                format!("BEGIN:VCARD\r\nVERSION:{version}\r\n{entries}END:VCARD\r\n"),
+                "entry writer diverged from the vCard writer at {version}"
+            );
+
+            #[cfg(feature = "rkyv")]
+            {
+                let bytes =
+                    rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).expect("archivable vCard");
+                let archived =
+                    rkyv::access::<crate::vcard::ArchivedVCard, rkyv::rancor::Error>(&bytes)
+                        .expect("valid archive");
+                let archived_entries = archived
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.name != VCardProperty::Version)
+                    .fold(String::new(), |mut out, entry| {
+                        entry
+                            .write_with_version(&mut out, true, version)
+                            .expect("serializable entry");
+                        out
+                    });
+                assert_eq!(
+                    archived_entries, entries,
+                    "archived entry writer at {version}"
+                );
+            }
+        }
+
+        assert!(
+            write(&vcard, VCardVersion::V2_1)
+                .contains("PHOTO;TYPE=JPEG;ENCODING=BASE64:/9j/4A==\r\n\r\nNOTE:Hello\r\n"),
+            "{}",
+            write(&vcard, VCardVersion::V2_1)
+        );
+    }
+
+    #[test]
+    fn test_write_jsptr_is_quoted() {
+        let vcard = parse(concat!(
+            "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\n",
+            "JSPROP;JSPTR=members:{}\r\n",
+            "JSPROP;JSPTR=\"example.com:foo\":{\"bar\":1234}\r\n",
+            "END:VCARD\r\n"
+        ));
+        let out = write(&vcard, VCardVersion::V4_0);
+
+        for expected in [
+            "JSPROP;JSPTR=\"members\":{}\r\n",
+            "JSPROP;JSPTR=\"example.com:foo\":{\"bar\":1234}\r\n",
+        ] {
+            assert!(
+                out.contains(expected),
+                "draft-ietf-calext-rfc9555bis Section 5.1.3: {expected}\n{out}"
+            );
+        }
+        assert_eq!(parse(&out), vcard, "{out}");
     }
 
     #[test]

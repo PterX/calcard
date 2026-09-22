@@ -39,7 +39,7 @@ where
 
     fn try_parse<P>(key: &Key<'_, Self::Property>, value: &str) -> Option<Self> {
         if let Key::Property(prop) = key {
-            match prop {
+            match prop.patch_or_prop() {
                 JSContactProperty::Type => JSContactType::from_str(value)
                     .ok()
                     .map(JSContactValue::Type),
@@ -77,6 +77,17 @@ where
                     IdReference::Error => None,
                 },
                 _ => None,
+            }
+        } else if matches!(
+            key.to_string()
+                .rsplit_once('/')
+                .and_then(|(_, leaf)| JSContactProperty::<I>::from_str(leaf).ok()),
+            Some(JSContactProperty::BlobId)
+        ) {
+            match IdReference::parse(value) {
+                IdReference::Value(value) => JSContactValue::BlobId(value).into(),
+                IdReference::Reference(value) => JSContactValue::IdReference(value).into(),
+                IdReference::Error => None,
             }
         } else {
             None

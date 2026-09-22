@@ -160,3 +160,24 @@ ADR;CC=US;TZ=+0100;GEO="37.618889;-122.375";PROP-ID=k1;JSCOMPS=";3;4;5;6;10;11":
  ;;54321,Oak St;Reston;VA;20190;USA;;;;54321;Oak St;;;;;;
 TZ:-0300
 GEO:11;-9
+
+> test RFC9553 Address components without a non-separator value
+ADR;LABEL="1 Main St":;;;;;;
+ADR;JSCOMPS=";s,-":;;Main St;;;;
+> convert
+"addresses": {
+    "k1": {
+      "full": "1 Main St"
+    },
+    "k2": {
+      "components": [
+        {
+          "kind": "name",
+          "value": "Main St"
+        }
+      ]
+    }
+}
+> convert
+ADR;LABEL="1 Main St";PROP-ID=k1:;;;;;;;;;;;;;;;;;
+ADR;PROP-ID=k2;JSCOMPS=";11":;;Main St;;;;;;;;;Main St;;;;;;

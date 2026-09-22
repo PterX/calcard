@@ -1,0 +1,509 @@
+> test JSCalendar - participant removed from one occurrence
+{
+  "@type": "Event",
+  "uid": "8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93",
+  "title": "FooBar team meeting",
+  "start": "2025-01-08T09:00:00",
+  "timeZone": "Europe/Berlin",
+  "duration": "PT1H",
+  "recurrenceRule": {
+    "frequency": "weekly"
+  },
+  "organizerCalendarAddress": "mailto:zoe@foobar.example.com",
+  "participants": {
+    "dG9tQGZvb2Jhci5xlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Tom",
+      "calendarAddress": "mailto:tom@foobar.example.com",
+      "participationStatus": "accepted"
+    },
+    "em9lQGZvb2GFtcGxlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Zoe",
+      "calendarAddress": "mailto:zoe@foobar.example.com",
+      "participationStatus": "accepted",
+      "roles": {
+        "owner": true
+      }
+    }
+  },
+  "locations": {
+    "room": {
+      "@type": "Location",
+      "name": "Room 101"
+    }
+  },
+  "alerts": {
+    "reminder": {
+      "@type": "Alert",
+      "action": "display",
+      "trigger": {
+        "@type": "OffsetTrigger",
+        "offset": "-PT15M"
+      }
+    }
+  },
+  "recurrenceOverrides": {
+    "2025-03-05T09:00:00": {
+      "start": "2025-03-05T10:00:00",
+      "participants/em9lQGZvb2GFtcGxlLmNvbQ/participationStatus": "declined",
+      "participants/dG9tQGZvb2Jhci5xlLmNvbQ": null
+    }
+  }
+}
+> convert
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250305T100000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+ATTENDEE;PARTSTAT=DECLINED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+RECURRENCE-ID;TZID=Europe/Berlin:20250305T090000
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250108T090000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+RRULE:FREQ=WEEKLY
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+
+> test JSCalendar - participation status patched for one occurrence
+{
+  "@type": "Event",
+  "uid": "8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93",
+  "title": "FooBar team meeting",
+  "start": "2025-01-08T09:00:00",
+  "timeZone": "Europe/Berlin",
+  "duration": "PT1H",
+  "recurrenceRule": {
+    "frequency": "weekly"
+  },
+  "organizerCalendarAddress": "mailto:zoe@foobar.example.com",
+  "participants": {
+    "dG9tQGZvb2Jhci5xlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Tom",
+      "calendarAddress": "mailto:tom@foobar.example.com",
+      "participationStatus": "accepted"
+    },
+    "em9lQGZvb2GFtcGxlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Zoe",
+      "calendarAddress": "mailto:zoe@foobar.example.com",
+      "participationStatus": "accepted",
+      "roles": {
+        "owner": true
+      }
+    }
+  },
+  "locations": {
+    "room": {
+      "@type": "Location",
+      "name": "Room 101"
+    }
+  },
+  "alerts": {
+    "reminder": {
+      "@type": "Alert",
+      "action": "display",
+      "trigger": {
+        "@type": "OffsetTrigger",
+        "offset": "-PT15M"
+      }
+    }
+  },
+  "recurrenceOverrides": {
+    "2025-03-05T09:00:00": {
+      "start": "2025-03-05T10:00:00",
+      "participants/dG9tQGZvb2Jhci5xlLmNvbQ/participationStatus": "declined",
+      "participants/em9lQGZvb2GFtcGxlLmNvbQ/participationStatus": "declined"
+    }
+  }
+}
+> convert
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250305T100000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+ATTENDEE;PARTSTAT=DECLINED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=DECLINED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+RECURRENCE-ID;TZID=Europe/Berlin:20250305T090000
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250108T090000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+RRULE:FREQ=WEEKLY
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+
+> test JSCalendar - locations and alerts removed from one occurrence
+{
+  "@type": "Event",
+  "uid": "8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93",
+  "title": "FooBar team meeting",
+  "start": "2025-01-08T09:00:00",
+  "timeZone": "Europe/Berlin",
+  "duration": "PT1H",
+  "recurrenceRule": {
+    "frequency": "weekly"
+  },
+  "organizerCalendarAddress": "mailto:zoe@foobar.example.com",
+  "participants": {
+    "dG9tQGZvb2Jhci5xlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Tom",
+      "calendarAddress": "mailto:tom@foobar.example.com",
+      "participationStatus": "accepted"
+    },
+    "em9lQGZvb2GFtcGxlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Zoe",
+      "calendarAddress": "mailto:zoe@foobar.example.com",
+      "participationStatus": "accepted",
+      "roles": {
+        "owner": true
+      }
+    }
+  },
+  "locations": {
+    "room": {
+      "@type": "Location",
+      "name": "Room 101"
+    }
+  },
+  "alerts": {
+    "reminder": {
+      "@type": "Alert",
+      "action": "display",
+      "trigger": {
+        "@type": "OffsetTrigger",
+        "offset": "-PT15M"
+      }
+    }
+  },
+  "recurrenceOverrides": {
+    "2025-03-12T09:00:00": {
+      "locations": null,
+      "alerts": null
+    }
+  }
+}
+> convert
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250312T090000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+RECURRENCE-ID;TZID=Europe/Berlin:20250312T090000
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250108T090000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+RRULE:FREQ=WEEKLY
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+
+> test JSCalendar - title changed for one occurrence
+{
+  "@type": "Event",
+  "uid": "8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93",
+  "title": "FooBar team meeting",
+  "start": "2025-01-08T09:00:00",
+  "timeZone": "Europe/Berlin",
+  "duration": "PT1H",
+  "recurrenceRule": {
+    "frequency": "weekly"
+  },
+  "organizerCalendarAddress": "mailto:zoe@foobar.example.com",
+  "participants": {
+    "dG9tQGZvb2Jhci5xlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Tom",
+      "calendarAddress": "mailto:tom@foobar.example.com",
+      "participationStatus": "accepted"
+    },
+    "em9lQGZvb2GFtcGxlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Zoe",
+      "calendarAddress": "mailto:zoe@foobar.example.com",
+      "participationStatus": "accepted",
+      "roles": {
+        "owner": true
+      }
+    }
+  },
+  "locations": {
+    "room": {
+      "@type": "Location",
+      "name": "Room 101"
+    }
+  },
+  "alerts": {
+    "reminder": {
+      "@type": "Alert",
+      "action": "display",
+      "trigger": {
+        "@type": "OffsetTrigger",
+        "offset": "-PT15M"
+      }
+    }
+  },
+  "recurrenceOverrides": {
+    "2025-03-19T09:00:00": {
+      "title": "FooBar team meeting (moved)"
+    }
+  }
+}
+> convert
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250319T090000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting (moved)
+DURATION:PT1H
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+RECURRENCE-ID;TZID=Europe/Berlin:20250319T090000
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting (moved)
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250108T090000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+RRULE:FREQ=WEEKLY
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+
+> test JSCalendar - excluded occurrence
+{
+  "@type": "Event",
+  "uid": "8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93",
+  "title": "FooBar team meeting",
+  "start": "2025-01-08T09:00:00",
+  "timeZone": "Europe/Berlin",
+  "duration": "PT1H",
+  "recurrenceRule": {
+    "frequency": "weekly"
+  },
+  "organizerCalendarAddress": "mailto:zoe@foobar.example.com",
+  "participants": {
+    "dG9tQGZvb2Jhci5xlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Tom",
+      "calendarAddress": "mailto:tom@foobar.example.com",
+      "participationStatus": "accepted"
+    },
+    "em9lQGZvb2GFtcGxlLmNvbQ": {
+      "@type": "Participant",
+      "name": "Zoe",
+      "calendarAddress": "mailto:zoe@foobar.example.com",
+      "participationStatus": "accepted",
+      "roles": {
+        "owner": true
+      }
+    }
+  },
+  "locations": {
+    "room": {
+      "@type": "Location",
+      "name": "Room 101"
+    }
+  },
+  "alerts": {
+    "reminder": {
+      "@type": "Alert",
+      "action": "display",
+      "trigger": {
+        "@type": "OffsetTrigger",
+        "offset": "-PT15M"
+      }
+    }
+  },
+  "recurrenceOverrides": {
+    "2025-03-26T09:00:00": {
+      "excluded": true
+    }
+  }
+}
+> convert
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250108T090000
+UID:8e2f7a4c-3b1d-4c6e-9f0a-5d7b2e1c4a93
+SUMMARY:FooBar team meeting
+DURATION:PT1H
+RRULE:FREQ=WEEKLY
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Tom;JSID=dG9tQGZvb2Jhci5xlLmNvbQ:mailto:tom@f
+ oobar.example.com
+ATTENDEE;PARTSTAT=ACCEPTED;CN=Zoe;JSID=em9lQGZvb2GFtcGxlLmNvbQ:mailto:zoe@f
+ oobar.example.com
+LOCATION;JSID=room:Room 101
+EXDATE;TZID=Europe/Berlin:20250326T090000
+ORGANIZER;CN=Zoe:mailto:zoe@foobar.example.com
+BEGIN:VALARM
+TRIGGER:-PT15M
+JSID:reminder
+ACTION:DISPLAY
+DESCRIPTION;DERIVED=TRUE:FooBar team meeting
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+
+> test VEVENT recurrence override without an ATTENDEE and LOCATION of the main component
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:c1f5b8e2-7a4d-4e3b-9c6f-2d8a1b5e7f40
+RECURRENCE-ID;TZID=Europe/Berlin:20250115T090000
+DTSTART;TZID=Europe/Berlin:20250115T100000
+DURATION:PT1H
+SUMMARY:Standup
+ORGANIZER:mailto:zoe@foobar.example.com
+END:VEVENT
+BEGIN:VEVENT
+UID:c1f5b8e2-7a4d-4e3b-9c6f-2d8a1b5e7f40
+DTSTART;TZID=Europe/Berlin:20250108T090000
+DURATION:PT1H
+RRULE:FREQ=WEEKLY
+SUMMARY:Standup
+LOCATION:Room 101
+ORGANIZER:mailto:zoe@foobar.example.com
+ATTENDEE;CN=Tom:mailto:tom@foobar.example.com
+END:VEVENT
+END:VCALENDAR
+> convert
+{
+  "@type": "Group",
+  "entries": [
+    {
+      "@type": "Event",
+      "uid": "c1f5b8e2-7a4d-4e3b-9c6f-2d8a1b5e7f40",
+      "title": "Standup",
+      "start": "2025-01-08T09:00:00",
+      "timeZone": "Europe/Berlin",
+      "duration": "PT1H",
+      "recurrenceRule": {
+        "frequency": "weekly"
+      },
+      "organizerCalendarAddress": "mailto:zoe@foobar.example.com",
+      "locations": {
+        "1eb94fde-099a-5363-90ec-10cf869a3383": {
+          "@type": "Location",
+          "name": "Room 101"
+        }
+      },
+      "participants": {
+        "3b479737-a2f6-5c58-ba30-7d405b918275": {
+          "@type": "Participant",
+          "name": "Tom",
+          "calendarAddress": "mailto:tom@foobar.example.com"
+        },
+        "9a20e5dd-c346-5c25-b569-8a4ecfd65517": {
+          "@type": "Participant",
+          "calendarAddress": "mailto:zoe@foobar.example.com",
+          "roles": {
+            "owner": true
+          }
+        }
+      },
+      "recurrenceOverrides": {
+        "2025-01-15T09:00:00": {
+          "start": "2025-01-15T10:00:00",
+          "locations": null,
+          "participants/3b479737-a2f6-5c58-ba30-7d405b918275": null
+        }
+      }
+    }
+  ]
+}

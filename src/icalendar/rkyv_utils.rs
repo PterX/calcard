@@ -12,6 +12,10 @@ impl ArchivedICalendar {
     pub fn uids(&self) -> impl Iterator<Item = &str> {
         self.components
             .iter()
+            .filter(|component| {
+                component.component_type.is_calendar_object()
+                    || component.component_type == ICalendarComponentType::VCalendar
+            })
             .filter_map(|component| component.uid())
     }
 
@@ -366,6 +370,28 @@ impl ArchivedICalendarDuration {
 }
 
 impl ArchivedICalendarComponentType {
+    pub fn is_calendar_object(&self) -> bool {
+        matches!(
+            self,
+            ArchivedICalendarComponentType::VEvent
+                | ArchivedICalendarComponentType::VTodo
+                | ArchivedICalendarComponentType::VJournal
+                | ArchivedICalendarComponentType::VFreebusy
+                | ArchivedICalendarComponentType::VAvailability
+        )
+    }
+
+    pub(crate) fn converts_links(&self) -> bool {
+        matches!(
+            self,
+            ArchivedICalendarComponentType::VEvent
+                | ArchivedICalendarComponentType::VTodo
+                | ArchivedICalendarComponentType::Participant
+                | ArchivedICalendarComponentType::VLocation
+                | ArchivedICalendarComponentType::VCalendar
+        )
+    }
+
     pub fn has_time_ranges(&self) -> bool {
         matches!(
             self,

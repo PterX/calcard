@@ -7,7 +7,9 @@
 use crate::{
     common::{
         parser::Timestamp,
-        writer::{FoldingWriter, LineWriter, write_bytes, write_param_value, write_text},
+        writer::{
+            FoldingWriter, LineWriter, NeedsQuotes, write_bytes, write_param_value, write_text,
+        },
     },
     vcard::{media_type::legacy_media_type, *},
 };
@@ -17,7 +19,6 @@ impl ArchivedVCard {
     pub fn write_to(&self, out: &mut impl Write, version: VCardVersion) -> std::fmt::Result {
         write!(out, "BEGIN:VCARD\r\n")?;
         write!(out, "VERSION:{version}\r\n")?;
-        let is_v4 = matches!(version, VCardVersion::V4_0);
         for entry in self.entries.iter() {
             if !matches!(
                 entry.name,
@@ -25,7 +26,7 @@ impl ArchivedVCard {
                     | ArchivedVCardProperty::Begin
                     | ArchivedVCardProperty::End
             ) {
-                entry.write_to(out, true, is_v4)?;
+                entry.write_with_version(out, true, version)?;
             }
         }
 
@@ -34,12 +35,31 @@ impl ArchivedVCard {
 }
 
 impl ArchivedVCardEntry {
+    #[deprecated(since = "0.4.0", note = "use write_with_version")]
     pub fn write_to(
         &self,
         out: &mut impl Write,
         with_value: bool,
         is_v4: bool,
     ) -> std::fmt::Result {
+        self.write_with_version(
+            out,
+            with_value,
+            if is_v4 {
+                VCardVersion::V4_0
+            } else {
+                VCardVersion::V3_0
+            },
+        )
+    }
+
+    pub fn write_with_version(
+        &self,
+        out: &mut impl Write,
+        with_value: bool,
+        version: VCardVersion,
+    ) -> std::fmt::Result {
+        let is_v4 = matches!(version, VCardVersion::V4_0);
         let mut folded = FoldingWriter::new(out);
         let out = &mut folded;
 
@@ -65,8 +85,15 @@ impl ArchivedVCardEntry {
             }
 
             match &param.value {
+                ArchivedVCardParameterValue::Text(v)
+                    if param.name == VCardParameterName::Jsptr && !v.as_str().needs_quotes() =>
+                {
+                    out.write_atomic("\"")?;
+                    write_param_value(out, v, is_v4)?;
+                    out.write_atomic("\"")?;
+                }
                 ArchivedVCardParameterValue::Text(v) => {
-                    write_param_value(out, v)?;
+                    write_param_value(out, v, is_v4)?;
                 }
                 ArchivedVCardParameterValue::Integer(i) => {
                     write!(out, "{}", i)?;
@@ -81,19 +108,19 @@ impl ArchivedVCardEntry {
                     if types.is_none() {
                         types = Some(v);
                     }
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 ArchivedVCardParameterValue::Type(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 ArchivedVCardParameterValue::Calscale(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 ArchivedVCardParameterValue::Level(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 ArchivedVCardParameterValue::Phonetic(v) => {
-                    write_param_value(out, v.as_str())?;
+                    write_param_value(out, v.as_str(), is_v4)?;
                 }
                 ArchivedVCardParameterValue::Jscomps(v) => {
                     out.write_atomic("\"")?;
@@ -107,12 +134,22 @@ impl ArchivedVCardEntry {
             }
         }
 
+        let is_v21_base64 = matches!(version, VCardVersion::V2_1)
+            && self
+                .values
+                .iter()
+                .any(|v| matches!(v, ArchivedVCardValue::Binary(_)));
+
         if !is_v4 {
             if let Some(data) = self.values.iter().find_map(|v| match v {
                 ArchivedVCardValue::Binary(data) => Some(data),
                 _ => None,
             }) {
-                out.write_atomic(";ENCODING=b")?;
+                out.write_atomic(if is_v21_base64 {
+                    ";ENCODING=BASE64"
+                } else {
+                    ";ENCODING=b"
+                })?;
 
                 if let Some(media_type) = data.content_type.as_deref()
                     && !self
@@ -206,7 +243,11 @@ impl ArchivedVCardEntry {
                             let media_type = v.content_type.as_deref().unwrap_or_default();
                             out.write_str("data:")?;
                             out.write_str(media_type)?;
-                            out.write_str(";")?;
+                            if escape_semicolon {
+                                out.write_atomic("\\;")?;
+                            } else {
+                                out.write_str(";")?;
+                            }
                             out.write_atomic("base64\\,")?;
                         }
                         write_bytes(out, &v.data)?;
@@ -223,7 +264,11 @@ impl ArchivedVCardEntry {
                 }
             }
         }
-        out.end_line()
+        out.end_line()?;
+        if is_v21_base64 {
+            out.end_line()?;
+        }
+        Ok(())
     }
 }
 
@@ -592,5 +637,38 @@ mod tests {
             "archived missing charset: {archived_out}"
         );
         assert_eq!(owned, archived_out);
+    }
+
+    #[test]
+    fn archived_v21_base64_without_a_value_is_terminated() {
+        let input = concat!(
+            "BEGIN:VCARD\r\nVERSION:2.1\r\nFN:T\r\n",
+            "PHOTO;ENCODING=BASE64;TYPE=JPEG:/9j/4A==\r\n\r\n",
+            "END:VCARD\r\n"
+        )
+        .to_string();
+        let mut parser = Parser::new(&input);
+        let Entry::VCard(vcard) = parser.entry() else {
+            panic!("expected vcard");
+        };
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&vcard).unwrap();
+        let archived = rkyv::access::<ArchivedVCard, rkyv::rancor::Error>(&bytes).unwrap();
+        let photo = archived
+            .entries
+            .iter()
+            .find(|entry| entry.name.as_str() == "PHOTO")
+            .expect("photo");
+
+        for with_value in [true, false] {
+            let mut out = String::new();
+            photo
+                .write_with_version(&mut out, with_value, VCardVersion::V2_1)
+                .unwrap();
+            assert!(out.contains(";ENCODING=BASE64"), "{out}");
+            assert!(
+                out.ends_with("\r\n\r\n"),
+                "a vCard 2.1 BASE64 value is terminated by an empty line: {out:?}"
+            );
+        }
     }
 }

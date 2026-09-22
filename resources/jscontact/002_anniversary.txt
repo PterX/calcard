@@ -117,3 +117,40 @@ BIRTHPLACE;PROP-ID=k1;ALT-ID=1;LANGUAGE=en:123 Main Street\nAny Town\, CA 91921-
 BIRTHPLACE;PROP-ID=k1;ALT-ID=1;LANGUAGE=es:Calle Principal 123\nCualquier Ciudad\, CA 91921-1234\nEE.UU.
 LANGUAGE:en
 
+> test Anniversaries whose date does not convert
+"anniversaries": {
+  "a1": {
+    "kind": "birth",
+    "date": { "month": 2, "day": 257 },
+    "place": { "full": "Paris" }
+  },
+  "a2": {
+    "kind": "wedding",
+    "date": { "year": 70000 }
+  },
+  "a3": {
+    "kind": "death",
+    "place": { "full": "Rome" }
+  }
+}
+> convert
+BIRTHPLACE;PROP-ID=a1:Paris
+DEATHPLACE;PROP-ID=a3:Rome
+JSPROP;JSPTR="anniversaries/a1/date":{"day":257,"month":2}
+JSPROP;JSPTR="anniversaries/a2":{"date":{"year":70000},"kind":"wedding"}
+
+> test Anniversaries that do not convert
+"anniversaries": {
+  "a1": {
+    "kind": "wedding",
+    "date": { "year": 70000 },
+    "example.com:x": 1
+  },
+  "a2": {
+    "kind": "example.com:graduation",
+    "date": { "year": 2001 }
+  }
+}
+> convert
+JSPROP;JSPTR="anniversaries":{"a1":{"date":{"year":70000},"example.com:x":1,"kind":"wedding"},"a2":{"date":{"year":2001},"kind":"example.com:graduation"}}
+

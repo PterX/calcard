@@ -13,7 +13,9 @@ use crate::{
     common::{PartialDateTime, timezone::Tz},
     icalendar::ICalendarParameterName,
 };
-use chrono::{Datelike, NaiveDate, NaiveDateTime, Offset, TimeZone, Timelike, Utc, Weekday};
+use chrono::{
+    DateTime, Datelike, NaiveDate, NaiveDateTime, Offset, TimeZone, Timelike, Utc, Weekday,
+};
 use chrono_tz::{OffsetComponents, OffsetName};
 use std::{collections::HashMap, ops::Range, str::FromStr};
 
@@ -112,6 +114,22 @@ impl ICalendarComponent {
     }
 }
 
+impl ICalendarPeriod {
+    pub fn time_range(&self, tz: Tz) -> Option<(DateTime<Tz>, DateTime<Tz>)> {
+        match self {
+            ICalendarPeriod::Range { start, end } => start
+                .to_date_time_with_tz(tz)
+                .zip(end.to_date_time_with_tz(tz)),
+            ICalendarPeriod::Duration { start, duration } => start
+                .to_date_time_with_tz(tz)
+                .zip(duration.to_time_delta())
+                .and_then(|(start, duration)| {
+                    start.checked_add_signed(duration).map(|end| (start, end))
+                }),
+        }
+    }
+}
+
 impl ICalendarEntry {
     pub fn tz_id(&self) -> Option<&str> {
         self.parameters(&ICalendarParameterName::Tzid)
@@ -127,13 +145,7 @@ const TZ_RULE_ACTIVE_SECONDS: i64 = 366 * 86400;
 
 impl ICalendar {
     pub fn add_timezone(&mut self, tz_id: &str, from: i64, to: i64) -> Option<u32> {
-        if self
-            .components
-            .first()
-            .is_none_or(|root| root.component_type != ICalendarComponentType::VCalendar)
-        {
-            return None;
-        }
+        self.calendar_root()?;
 
         let observances = match Tz::from_str(tz_id).ok()? {
             Tz::Tz(tz) => build_observances(tz, from, to),
@@ -150,39 +162,36 @@ impl ICalendar {
             }
             Tz::Floating => return None,
         };
+        if observances.is_empty() {
+            return None;
+        }
 
-        let insert_at = self.components[0]
+        let tz_component_id = u32::try_from(self.components.len()).ok()?;
+        let first_component_id = tz_component_id.checked_add(1)?;
+        let last_component_id =
+            first_component_id.checked_add(u32::try_from(observances.len()).ok()?)?;
+        let insert_at = self
+            .calendar_root()?
             .component_ids
             .iter()
             .position(|component_id| {
-                self.components
-                    .get(*component_id as usize)
+                self.component_by_id(*component_id)
                     .is_none_or(|comp| comp.component_type != ICalendarComponentType::VTimezone)
-            })
-            .unwrap_or(self.components[0].component_ids.len());
+            });
 
-        let tz_component_id = self.components.len() as u32;
         self.components.reserve(observances.len() + 1);
         self.components.push(ICalendarComponent {
             component_type: ICalendarComponentType::VTimezone,
             entries: vec![
                 ICalendarEntry::new(ICalendarProperty::Tzid).with_value(tz_id.to_string()),
             ],
-            component_ids: Vec::with_capacity(observances.len()),
+            component_ids: (first_component_id..last_component_id).collect(),
         });
+        self.components
+            .extend(observances.into_iter().map(TzObservance::into_component));
 
-        let first_component_id = self.components.len() as u32;
-        for observance in observances {
-            self.components.push(observance.into_component());
-        }
-        let last_component_id = self.components.len() as u32;
-        self.components[tz_component_id as usize]
-            .component_ids
-            .extend(first_component_id..last_component_id);
-
-        self.components[0]
-            .component_ids
-            .insert(insert_at, tz_component_id);
+        let root_ids = &mut self.components.first_mut()?.component_ids;
+        root_ids.insert(insert_at.unwrap_or(root_ids.len()), tz_component_id);
 
         Some(tz_component_id)
     }

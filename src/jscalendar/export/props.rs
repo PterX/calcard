@@ -260,7 +260,9 @@ pub(super) fn convert_value<'x, I: JSCalendarId, B: JSCalendarId>(
                         }
                     }
                     ICalendarValueType::Float => {
-                        if let Ok(float) = s.as_ref().parse::<f64>() {
+                        if let Ok(float) = s.as_ref().parse::<f64>()
+                            && float.is_finite()
+                        {
                             return Ok(ICalendarValue::Float(float));
                         }
                     }
@@ -303,10 +305,18 @@ pub(super) fn convert_value<'x, I: JSCalendarId, B: JSCalendarId>(
             Ok(ICalendarValue::Text(s.into_owned()))
         }
         Value::Bool(b) => Ok(ICalendarValue::Boolean(b)),
-        Value::Number(n) => match n.try_cast_to_i64() {
-            Ok(i) => Ok(ICalendarValue::Integer(i)),
-            Err(f) => Ok(ICalendarValue::Float(f)),
-        },
+        Value::Number(n) => {
+            if let Some(integer) = n.as_i64() {
+                Ok(ICalendarValue::Integer(integer))
+            } else if let Some(integer) = n.as_u64() {
+                Ok(ICalendarValue::Text(integer.to_string()))
+            } else {
+                n.as_f64()
+                    .filter(|float| float.is_finite())
+                    .map(ICalendarValue::Float)
+                    .ok_or(Value::Number(n))
+            }
+        }
         value => Err(value),
     }
 }
@@ -352,7 +362,9 @@ impl<'x, I: JSCalendarId, B: JSCalendarId> ConvertedComponent<'x, I, B> {
                                         keys.push(match item {
                                             JsonPointerItem::Key(k) => k,
                                             JsonPointerItem::Number(n) => Key::Owned(n.to_string()),
-                                            JsonPointerItem::Root | JsonPointerItem::Wildcard => {
+                                            JsonPointerItem::Root
+                                            | JsonPointerItem::Wildcard
+                                            | JsonPointerItem::Invalid(_) => {
                                                 continue;
                                             }
                                         });
@@ -361,7 +373,9 @@ impl<'x, I: JSCalendarId, B: JSCalendarId> ConvertedComponent<'x, I, B> {
                                 JsonPointerItem::Number(v) => {
                                     keys.push(Key::Owned(v.to_string()));
                                 }
-                                JsonPointerItem::Root | JsonPointerItem::Wildcard => (),
+                                JsonPointerItem::Root
+                                | JsonPointerItem::Wildcard
+                                | JsonPointerItem::Invalid(_) => (),
                             }
                         }
 

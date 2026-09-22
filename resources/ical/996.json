@@ -1,42 +1,25 @@
 {
-  "errors": [
+  "errors": [],
+  "events": [
     {
       "comp_id": 0,
-      "error": {
-        "RRule": {
-          "ValidationError": {
-            "UntilBeforeStart": {
-              "until": "1864-05-09T00:00:00+00:00",
-              "dt_start": "1864-05-10T00:00:00+00:00"
-            }
-          }
-        }
-      }
+      "start": "1864-05-10T00:00:00+11:39",
+      "end": "1864-05-10T00:00:00+11:39"
     }
-  ],
-  "events": []
+  ]
 }
 {
-  "errors": [
-    {
-      "comp_id": 0,
-      "error": {
-        "RRule": {
-          "ValidationError": {
-            "InvalidFieldValue": {
-              "field": "BYSETPOS",
-              "value": "0"
-            }
-          }
-        }
-      }
-    }
-  ],
+  "errors": [],
   "events": [
     {
       "comp_id": 0,
       "start": "1864-05-09T00:00:00+11:39",
       "end": "1864-05-10T00:00:00+11:39"
+    },
+    {
+      "comp_id": 0,
+      "start": "1864-05-10T00:00:00+11:39",
+      "end": "1864-05-11T00:00:00+11:39"
     }
   ]
 }

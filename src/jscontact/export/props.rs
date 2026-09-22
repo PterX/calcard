@@ -12,7 +12,7 @@ use crate::{
         JSContactPhoneticSystem, JSContactProperty, JSContactValue,
     },
     vcard::{
-        VCardGramGender, VCardKind, VCardLevel, VCardPhonetic, VCardSex, VCardType, VCardValue,
+        VCardGramGender, VCardKind, VCardLevel, VCardPhonetic, VCardSex, VCardValue,
         VCardValueType, ValueType,
     },
 };
@@ -30,7 +30,7 @@ where
 {
     if let Some(item) = ptr.next() {
         match item {
-            JsonPointerItem::Root | JsonPointerItem::Wildcard => {}
+            JsonPointerItem::Root | JsonPointerItem::Wildcard | JsonPointerItem::Invalid(_) => {}
             JsonPointerItem::Key(key) => match obj {
                 Value::Object(obj) => {
                     return build_path(
@@ -95,6 +95,7 @@ where
 {
     let mut date = PartialDateTime::default();
     let mut calendar_scale = None;
+    let mut is_valid = true;
     let Some(object) = value.as_object() else {
         return Err(value);
     };
@@ -103,17 +104,29 @@ where
         match key {
             Key::Property(JSContactProperty::Day) => {
                 if let Value::Number(day) = value {
-                    date.day = Some(day.cast_to_i64() as u8);
+                    date.day = day
+                        .as_u64()
+                        .filter(|day| (1..=31).contains(day))
+                        .map(|day| day as u8);
+                    is_valid &= date.day.is_some();
                 }
             }
             Key::Property(JSContactProperty::Month) => {
                 if let Value::Number(month) = value {
-                    date.month = Some(month.cast_to_i64() as u8);
+                    date.month = month
+                        .as_u64()
+                        .filter(|month| (1..=12).contains(month))
+                        .map(|month| month as u8);
+                    is_valid &= date.month.is_some();
                 }
             }
             Key::Property(JSContactProperty::Year) => {
                 if let Value::Number(year) = value {
-                    date.year = Some(year.cast_to_i64() as u16);
+                    date.year = year
+                        .as_u64()
+                        .filter(|year| *year <= 9999)
+                        .map(|year| year as u16);
+                    is_valid &= date.year.is_some();
                 }
             }
             Key::Property(JSContactProperty::CalendarScale) => {
@@ -130,7 +143,7 @@ where
         }
     }
 
-    if date.year.is_some() || date.month.is_some() || date.day.is_some() {
+    if is_valid && (date.year.is_some() || date.month.is_some() || date.day.is_some()) {
         Ok((date, calendar_scale))
     } else {
         Err(value)
@@ -245,7 +258,9 @@ where
                         }
                     }
                     VCardValueType::Float => {
-                        if let Ok(float) = s.as_ref().parse::<f64>() {
+                        if let Ok(float) = s.as_ref().parse::<f64>()
+                            && float.is_finite()
+                        {
                             return Ok(VCardValue::Float(float));
                         }
                     }
@@ -267,39 +282,40 @@ where
             Ok(VCardValue::Text(s.into_owned()))
         }
         Value::Bool(b) => Ok(VCardValue::Boolean(b)),
-        Value::Number(n) => match n.try_cast_to_i64() {
-            Ok(i) => Ok(VCardValue::Integer(i)),
-            Err(f) => Ok(VCardValue::Float(f)),
+        Value::Number(n) => match n.as_i64() {
+            Some(integer) => Ok(VCardValue::Integer(integer)),
+            None => n
+                .as_f64()
+                .filter(|float| n.is_f64() && float.is_finite())
+                .map(VCardValue::Float)
+                .ok_or(Value::Number(n)),
         },
         value => Err(value),
     }
 }
 
-pub(super) fn convert_types<I, B>(
-    value: Value<'_, JSContactProperty<I>, JSContactValue<I, B>>,
-    is_context: bool,
-) -> Option<Vec<IanaType<VCardType, String>>>
+pub(super) trait U32Value {
+    fn as_u32(&self) -> Option<u32>;
+    fn as_pref(&self) -> Option<u32>;
+    fn as_index(&self) -> Option<u32>;
+}
+
+impl<I, B> U32Value for Value<'_, JSContactProperty<I>, JSContactValue<I, B>>
 where
     I: JSContactId,
     B: JSContactId,
 {
-    let mut types = Vec::new();
-    for typ in value.into_expanded_boolean_set() {
-        let typ = typ.to_string();
-        match VCardType::parse(typ.as_ref().as_bytes()) {
-            Some(typ) => types.push(IanaType::Iana(typ)),
-            None => {
-                if is_context && typ.eq_ignore_ascii_case("private") {
-                    types.push(IanaType::Iana(VCardType::Home));
-                } else if !is_context && typ.eq_ignore_ascii_case("mobile") {
-                    types.push(IanaType::Iana(VCardType::Cell));
-                } else {
-                    types.push(IanaType::Other(typ.to_ascii_uppercase()));
-                }
-            }
-        }
+    fn as_u32(&self) -> Option<u32> {
+        self.as_u64().and_then(|value| u32::try_from(value).ok())
     }
-    if !types.is_empty() { Some(types) } else { None }
+
+    fn as_pref(&self) -> Option<u32> {
+        self.as_u32().filter(|pref| (1..=100).contains(pref))
+    }
+
+    fn as_index(&self) -> Option<u32> {
+        self.as_u32().filter(|index| *index >= 1)
+    }
 }
 
 pub(super) fn map_kind<T, I, B>(
@@ -396,4 +412,128 @@ where
         .and_then(|obj| obj.as_object())
         .and_then(|obj| obj.get_ignore_case(name))
         .and_then(|obj| obj.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{U32Value, convert_anniversary, convert_value};
+    use crate::{
+        jscontact::{JSContactProperty, JSContactValue},
+        vcard::{VCardValue, VCardValueType, ValueType},
+    };
+    use jmap_tools::{Key, Map, Value};
+
+    type JSValue = Value<'static, JSContactProperty<String>, JSContactValue<String, String>>;
+
+    #[test]
+    fn convert_value_numbers_do_not_wrap() {
+        for (value, expected) in [
+            (
+                JSValue::Number((-5i64).into()),
+                Some(VCardValue::Integer(-5)),
+            ),
+            (
+                JSValue::Number(i64::MAX.into()),
+                Some(VCardValue::Integer(i64::MAX)),
+            ),
+            (JSValue::Number(u64::MAX.into()), None),
+            (JSValue::Number(1.5f64.into()), Some(VCardValue::Float(1.5))),
+            (JSValue::Number(f64::NAN.into()), None),
+            (JSValue::Number(f64::NEG_INFINITY.into()), None),
+        ] {
+            assert_eq!(
+                convert_value(value.clone(), &ValueType::Vcard(VCardValueType::Integer)).ok(),
+                expected,
+                "{value:?}"
+            );
+        }
+
+        for text in ["NaN", "inf", "-infinity"] {
+            assert_eq!(
+                convert_value(
+                    JSValue::Str(text.into()),
+                    &ValueType::Vcard(VCardValueType::Float)
+                )
+                .ok(),
+                Some(VCardValue::Text(text.to_string())),
+                "RFC 6350 Section 4.6: {text} is not a float value"
+            );
+        }
+    }
+
+    #[test]
+    fn u32_values_do_not_wrap() {
+        for (value, expected) in [
+            (JSValue::Number(1u64.into()), Some(1)),
+            (JSValue::Number(u32::MAX.into()), Some(u32::MAX)),
+            (JSValue::Number((-1i64).into()), None),
+            (JSValue::Number((u64::from(u32::MAX) + 2).into()), None),
+            (JSValue::Number(1.0f64.into()), None),
+        ] {
+            assert_eq!(value.as_u32(), expected, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn convert_anniversary_numbers_do_not_wrap() {
+        let date = |parts: &[(JSContactProperty<String>, JSValue)]| {
+            JSValue::Object(Map::from(
+                parts
+                    .iter()
+                    .map(|(key, value)| (Key::Property(key.clone()), value.clone()))
+                    .collect::<Vec<_>>(),
+            ))
+        };
+
+        for parts in [
+            [
+                (JSContactProperty::Month, JSValue::Number(2u64.into())),
+                (JSContactProperty::Day, JSValue::Number(257u64.into())),
+            ],
+            [
+                (JSContactProperty::Year, JSValue::Number(2000u64.into())),
+                (JSContactProperty::Month, JSValue::Number((-1i64).into())),
+            ],
+            [
+                (JSContactProperty::Year, JSValue::Number(70_000u64.into())),
+                (JSContactProperty::Month, JSValue::Number(1u64.into())),
+            ],
+            [
+                (JSContactProperty::Month, JSValue::Number(2u64.into())),
+                (JSContactProperty::Day, JSValue::Number(40u64.into())),
+            ],
+            [
+                (JSContactProperty::Year, JSValue::Number(2000u64.into())),
+                (JSContactProperty::Month, JSValue::Number(13u64.into())),
+            ],
+            [
+                (JSContactProperty::Year, JSValue::Number(2000u64.into())),
+                (JSContactProperty::Month, JSValue::Number(0u64.into())),
+            ],
+            [
+                (JSContactProperty::Month, JSValue::Number(2u64.into())),
+                (JSContactProperty::Day, JSValue::Number(0u64.into())),
+            ],
+            [
+                (JSContactProperty::Year, JSValue::Number(12_345u64.into())),
+                (JSContactProperty::Month, JSValue::Number(1u64.into())),
+            ],
+        ] {
+            assert!(
+                convert_anniversary(date(&parts)).is_err(),
+                "RFC 9553 Section 2.8.1: {parts:?}"
+            );
+        }
+
+        let (converted, _) = convert_anniversary(date(&[
+            (JSContactProperty::Year, JSValue::Number(1953u64.into())),
+            (JSContactProperty::Month, JSValue::Number(4u64.into())),
+            (JSContactProperty::Day, JSValue::Number(15u64.into())),
+        ]))
+        .expect("valid partial date");
+        assert_eq!(
+            (converted.year, converted.month, converted.day),
+            (Some(1953), Some(4), Some(15))
+        );
+    }
 }

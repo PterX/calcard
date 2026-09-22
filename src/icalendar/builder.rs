@@ -14,70 +14,115 @@ use crate::{
 use ahash::{AHashMap, AHashSet};
 
 impl ICalendar {
-    pub fn remove_component_ids(&mut self, component_ids: &[u32]) {
-        // Validate component IDs
-        let max_component_id = self.components.len() as u32;
-        let mut remove_component_ids = AHashSet::from_iter(
-            component_ids
-                .iter()
-                .filter(|id| **id < max_component_id)
-                .cloned(),
-        );
+    #[must_use]
+    pub fn remove_component_ids(&mut self, component_ids: &[u32]) -> bool {
+        let max_component_id = u32::try_from(self.components.len()).unwrap_or(u32::MAX);
+        let mut remove_component_ids: AHashSet<u32> = component_ids
+            .iter()
+            .copied()
+            .filter(|id| *id < max_component_id)
+            .collect();
 
-        // Add sub-components to the set
-        for (component_id, component) in self.components.iter().enumerate() {
-            if remove_component_ids.contains(&(component_id as u32)) {
-                remove_component_ids.extend(&component.component_ids);
-            }
-        }
-
-        if !remove_component_ids.is_empty() {
-            let id_mappings = (0..max_component_id)
-                .filter(|i| !remove_component_ids.contains(i))
-                .enumerate()
-                .map(|(new_id, old_id)| (old_id, new_id as u32))
-                .collect::<AHashMap<_, _>>();
-
-            for (component_id, mut component) in
-                std::mem::replace(&mut self.components, Vec::with_capacity(id_mappings.len()))
-                    .into_iter()
-                    .enumerate()
-            {
-                if !remove_component_ids.contains(&(component_id as u32)) {
-                    let component_ids = component
-                        .component_ids
-                        .iter()
-                        .filter_map(|id| id_mappings.get(id).cloned())
-                        .collect();
-                    component.component_ids = component_ids;
-                    self.components.push(component);
+        let mut pending = remove_component_ids.iter().copied().collect::<Vec<_>>();
+        while let Some(component_id) = pending.pop() {
+            let Some(component) = self.components.get(component_id as usize) else {
+                continue;
+            };
+            for child_id in &component.component_ids {
+                if *child_id < max_component_id && remove_component_ids.insert(*child_id) {
+                    pending.push(*child_id);
                 }
             }
         }
+
+        if remove_component_ids.is_empty() {
+            return true;
+        }
+
+        let removes_all_calendar_components = self.has_calendar_components()
+            && self.calendar_root().is_some_and(|root| {
+                !root.component_ids.iter().any(|id| {
+                    *id != 0 && *id < max_component_id && !remove_component_ids.contains(id)
+                })
+            });
+        if remove_component_ids.contains(&0) || removes_all_calendar_components {
+            return false;
+        }
+
+        let id_mappings = (0..max_component_id)
+            .filter(|i| !remove_component_ids.contains(i))
+            .zip(0u32..)
+            .collect::<AHashMap<_, _>>();
+
+        let components =
+            std::mem::replace(&mut self.components, Vec::with_capacity(id_mappings.len()));
+        self.components.extend(
+            (0..max_component_id)
+                .zip(components)
+                .filter(|(component_id, _)| !remove_component_ids.contains(component_id))
+                .map(|(_, mut component)| {
+                    component.component_ids = component
+                        .component_ids
+                        .iter()
+                        .filter_map(|id| id_mappings.get(id).copied())
+                        .collect();
+                    component
+                }),
+        );
+
+        true
     }
 
     pub fn copy_timezones(&mut self, other: &ICalendar) {
-        for component in &other.components {
-            if component.component_type == ICalendarComponentType::VTimezone {
-                let tz_component_id = self.components.len();
-                self.components[0]
-                    .component_ids
-                    .insert(1, tz_component_id as u32);
-                self.components.push(ICalendarComponent {
-                    component_type: ICalendarComponentType::VTimezone,
-                    entries: component.entries.clone(),
-                    component_ids: vec![],
-                });
-                for component_id in &component.component_ids {
-                    let item_id = self.components.len() as u32;
-                    let item = &other.components[*component_id as usize];
-                    self.components.push(ICalendarComponent {
-                        component_type: item.component_type.clone(),
-                        entries: item.entries.clone(),
-                        component_ids: vec![],
-                    });
-                    self.components[tz_component_id].component_ids.push(item_id);
-                }
+        if self.calendar_root().is_none() {
+            return;
+        }
+
+        for component in other
+            .components
+            .iter()
+            .filter(|component| component.component_type == ICalendarComponentType::VTimezone)
+        {
+            let items = component
+                .component_ids
+                .iter()
+                .filter_map(|component_id| other.component_by_id(*component_id));
+            let has_observances = items.clone().any(|item| {
+                matches!(
+                    item.component_type,
+                    ICalendarComponentType::Standard | ICalendarComponentType::Daylight
+                )
+            });
+            let item_count = items.clone().count();
+            let Some((tz_component_id, first_item_id, last_item_id)) =
+                u32::try_from(self.components.len())
+                    .ok()
+                    .filter(|_| has_observances)
+                    .and_then(|tz_component_id| {
+                        let first_item_id = tz_component_id.checked_add(1)?;
+                        let last_item_id =
+                            first_item_id.checked_add(u32::try_from(item_count).ok()?)?;
+                        Some((tz_component_id, first_item_id, last_item_id))
+                    })
+            else {
+                continue;
+            };
+
+            self.components.reserve(item_count + 1);
+            self.components.push(ICalendarComponent {
+                component_type: ICalendarComponentType::VTimezone,
+                entries: component.entries.clone(),
+                component_ids: (first_item_id..last_item_id).collect(),
+            });
+            self.components.extend(items.map(|item| ICalendarComponent {
+                component_type: item.component_type.clone(),
+                entries: item.entries.clone(),
+                component_ids: vec![],
+            }));
+
+            if let Some(root) = self.components.first_mut() {
+                let insert_at = root.component_ids.len().min(1);
+                root.component_ids.insert(insert_at, tz_component_id);
             }
         }
     }
@@ -714,7 +759,7 @@ mod tests {
     fn remove_component_ids() {
         let mut ical =
             ICalendar::parse(std::fs::read_to_string("resources/ical/007.ics").unwrap()).unwrap();
-        ical.remove_component_ids(&[2, 5, 7]);
+        assert!(ical.remove_component_ids(&[2, 5, 7]));
 
         let max_component_id = ical.components.len() as u32;
         for component in &ical.components {

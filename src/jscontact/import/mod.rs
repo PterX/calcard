@@ -5,7 +5,10 @@
  */
 
 use crate::{
-    common::{CalendarScale, IanaType},
+    common::{
+        CalendarScale, IanaType,
+        blob::{BlobIdFn, BlobIdGenerator, BlobIds, BlobOptions, NoBlobIds},
+    },
     jscontact::{JSContactId, JSContactProperty, JSContactValue},
     vcard::{
         Jscomp, VCardEntry, VCardLevel, VCardParameterName, VCardPhonetic, VCardProperty, VCardType,
@@ -20,6 +23,7 @@ pub mod entry;
 pub mod params;
 pub mod props;
 
+#[deprecated(since = "0.4.0", note = "use ImportOptions")]
 #[derive(Debug, Clone, Copy)]
 pub struct ConversionOptions {
     pub include_vcard_parameters: bool,
@@ -154,6 +158,7 @@ where
     }
 }
 
+#[allow(deprecated)]
 impl Default for ConversionOptions {
     fn default() -> Self {
         Self {
@@ -162,9 +167,69 @@ impl Default for ConversionOptions {
     }
 }
 
+#[allow(deprecated)]
 impl ConversionOptions {
     pub fn include_vcard_parameters(mut self, include: bool) -> Self {
         self.include_vcard_parameters = include;
         self
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImportOptions<G = NoBlobIds> {
+    include_vcard_parameters: bool,
+    blobs: BlobOptions<G>,
+}
+
+impl Default for ImportOptions {
+    fn default() -> Self {
+        Self {
+            include_vcard_parameters: true,
+            blobs: BlobOptions::default(),
+        }
+    }
+}
+
+#[allow(deprecated)]
+impl<G> From<ConversionOptions> for ImportOptions<G> {
+    fn from(options: ConversionOptions) -> Self {
+        Self {
+            include_vcard_parameters: options.include_vcard_parameters,
+            blobs: BlobOptions::default(),
+        }
+    }
+}
+
+impl ImportOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<G> ImportOptions<G> {
+    pub fn include_vcard_parameters(mut self, include: bool) -> Self {
+        self.include_vcard_parameters = include;
+        self
+    }
+
+    pub fn with_blob_ids<B, F>(self, blob_ids: F) -> ImportOptions<BlobIdFn<F>>
+    where
+        F: FnMut(&[u8]) -> Option<B>,
+    {
+        self.with_blob_id_generator(BlobIdFn(blob_ids))
+    }
+
+    pub fn with_blob_id_generator<T>(self, blob_id_generator: T) -> ImportOptions<T> {
+        ImportOptions {
+            include_vcard_parameters: self.include_vcard_parameters,
+            blobs: self.blobs.with_handler(blob_id_generator),
+        }
+    }
+
+    pub(super) fn blob_ids<B: Clone>(&mut self) -> Option<BlobIds<'_, B>>
+    where
+        G: BlobIdGenerator<B>,
+    {
+        self.blobs.blob_ids()
     }
 }
