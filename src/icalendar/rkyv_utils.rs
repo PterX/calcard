@@ -5,8 +5,10 @@
  */
 
 use super::*;
-use crate::common::{ArchivedPartialDateTime, timezone::Tz};
-use chrono::DateTime;
+use crate::common::{
+    ArchivedPartialDateTime,
+    timezone::{NominalDuration, Tz, ZonedDateTime},
+};
 
 impl ArchivedICalendar {
     pub fn uids(&self) -> impl Iterator<Item = &str> {
@@ -289,7 +291,7 @@ impl ArchivedUri {
 }
 
 impl ArchivedICalendarPeriod {
-    pub fn time_range(&self, tz: Tz) -> Option<(DateTime<Tz>, DateTime<Tz>)> {
+    pub fn time_range(&self, tz: Tz) -> Option<(ZonedDateTime, ZonedDateTime)> {
         match self {
             ArchivedICalendarPeriod::Range { start, end } => {
                 if let (Some(start), Some(end)) = (
@@ -307,16 +309,16 @@ impl ArchivedICalendarPeriod {
             ArchivedICalendarPeriod::Duration { start, duration } => start
                 .to_date_time()
                 .and_then(|start| start.to_date_time_with_tz(tz))
-                .zip(duration.to_time_delta())
+                .zip(duration.to_nominal())
                 .and_then(|(start, duration)| {
-                    start.checked_add_signed(duration).map(|end| (start, end))
+                    start.checked_add_nominal(duration).map(|end| (start, end))
                 }),
         }
     }
 }
 
 impl ArchivedPartialDateTime {
-    pub fn to_date_time_with_tz(&self, tz: Tz) -> Option<DateTime<Tz>> {
+    pub fn to_date_time_with_tz(&self, tz: Tz) -> Option<ZonedDateTime> {
         self.to_date_time()
             .and_then(|dt| dt.to_date_time_with_tz(tz))
     }
@@ -343,8 +345,20 @@ impl ArchivedPartialDateTime {
 }
 
 impl ArchivedICalendarDuration {
-    pub fn to_time_delta(&self) -> Option<chrono::TimeDelta> {
-        chrono::TimeDelta::new(self.as_seconds(), 0)
+    /// Returns this duration as an exact number of seconds.
+    /// Returns this duration as a calendar span.
+    pub fn to_nominal(&self) -> Option<NominalDuration> {
+        let days =
+            i32::try_from(i64::from(self.weeks.to_native()) * 7 + i64::from(self.days.to_native()))
+                .ok()?;
+        let seconds = i64::from(self.hours.to_native()) * 3600
+            + i64::from(self.minutes.to_native()) * 60
+            + i64::from(self.seconds.to_native());
+        Some(if self.neg {
+            NominalDuration::new(-days, -seconds)
+        } else {
+            NominalDuration::new(days, seconds)
+        })
     }
 
     pub fn as_seconds(&self) -> i64 {

@@ -12,7 +12,7 @@ use crate::{
         JSContactType, JSContactValue,
     },
 };
-use chrono::DateTime;
+use jiff::Timestamp;
 use jmap_tools::{Element, JsonPointer, JsonPointerItem, Key, Value};
 use std::{borrow::Cow, str::FromStr};
 
@@ -48,8 +48,9 @@ where
                 }
                 JSContactProperty::Created
                 | JSContactProperty::Updated
-                | JSContactProperty::Utc => DateTime::parse_from_rfc3339(value)
-                    .map(|dt| JSContactValue::Timestamp(dt.timestamp()))
+                | JSContactProperty::Utc => value
+                    .parse::<Timestamp>()
+                    .map(|dt| JSContactValue::Timestamp(dt.as_second()))
                     .ok(),
                 JSContactProperty::Kind => JSContactKind::from_str(value)
                     .ok()

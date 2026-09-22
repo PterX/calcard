@@ -8,7 +8,7 @@ use crate::{
     common::{
         Data, IanaString, IanaType, LinkRelation,
         blob::GeneratedBlobId,
-        timezone::{Tz, TzTimestamp},
+        timezone::{Tz, ZonedDateTime},
     },
     icalendar::{
         ICalendar, ICalendarEntry, ICalendarParameterName, ICalendarParameterValue,
@@ -26,7 +26,6 @@ use crate::{
         uuid5,
     },
 };
-use chrono::DateTime;
 use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Property, Value};
 use std::{borrow::Cow, collections::hash_map::Entry};
 
@@ -363,7 +362,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
                 self.entries.insert(
                     Key::Property(JSCalendarProperty::RecurrenceId),
                     Value::Element(JSCalendarValue::DateTime(JSCalendarDateTime::new(
-                        recurrence_id.to_naive_timestamp(),
+                        recurrence_id.naive_timestamp(),
                         true,
                     ))),
                 );
@@ -553,13 +552,12 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
 }
 
 impl JSCalendarDateTime {
-    pub(super) fn local_in(dt: DateTime<Tz>, tz: Option<Tz>) -> Self {
+    pub(super) fn local_in(dt: ZonedDateTime, tz: Option<Tz>) -> Self {
         JSCalendarDateTime::new(
             if dt.timezone().is_floating() || tz == Some(dt.timezone()) {
-                dt.to_naive_timestamp()
+                dt.naive_timestamp()
             } else {
-                dt.with_timezone(&tz.unwrap_or_default())
-                    .to_naive_timestamp()
+                dt.with_timezone(tz.unwrap_or_default()).naive_timestamp()
             },
             true,
         )

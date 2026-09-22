@@ -15,8 +15,7 @@ resolver = "2"
 [dependencies]
 jmap-tools = { version = "0.1.9", optional = true }
 ahash = "0.8.11"
-chrono = "0.4.40"
-chrono-tz = "0.10.3"
+jiff = "0.2.37"
 hashify = "0.2.7"
 mail-builder = { version = "1.0.0", default-features = false }
 mail-parser = "0.11"
@@ -26,14 +25,15 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 
 [features]
-default = ["jmap"]
+default = ["jmap", "tzdb-bundle"]
 rkyv = ["dep:rkyv"]
-serde = ["dep:serde", "chrono/serde"]
+serde = ["dep:serde"]
 jmap = ["jmap-tools", "uuid", "serde", "serde_json"]
-wasm = ["hashify/force-32bit"]
+tzdb-bundle = ["jiff/tzdb-bundle-always"]
+wasm = ["hashify/force-32bit", "jiff/js"]
 
 [dev-dependencies]
-chrono = { version = "0.4", features = ["serde"] }
+insta = "1.43"
 serde = { version = "1.0", features = ["derive"] }
 rkyv = { version = "0.8" }
 serde_json = "1.0"

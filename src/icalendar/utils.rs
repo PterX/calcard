@@ -12,7 +12,7 @@ use super::{
     ICalendarTransparency, ICalendarValue, Uri,
 };
 use crate::{
-    common::{IanaString, IanaType, PartialDateTime},
+    common::{IanaString, IanaType, PartialDateTime, timezone::NominalDuration},
     icalendar::{ICalendarParameterValue, ICalendarValueType},
 };
 
@@ -551,8 +551,17 @@ impl ICalendarDuration {
         }
     }
 
-    pub fn to_time_delta(&self) -> Option<chrono::TimeDelta> {
-        chrono::TimeDelta::new(self.as_seconds(), 0)
+    /// Returns this duration as an exact number of seconds.
+    /// Returns this duration as a calendar span.
+    pub fn to_nominal(&self) -> Option<NominalDuration> {
+        let days = i32::try_from(i64::from(self.weeks) * 7 + i64::from(self.days)).ok()?;
+        let seconds =
+            i64::from(self.hours) * 3600 + i64::from(self.minutes) * 60 + i64::from(self.seconds);
+        Some(if self.neg {
+            NominalDuration::new(-days, -seconds)
+        } else {
+            NominalDuration::new(days, seconds)
+        })
     }
 
     pub fn as_seconds(&self) -> i64 {

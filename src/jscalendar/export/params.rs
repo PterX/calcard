@@ -8,7 +8,7 @@ use crate::{
     common::{
         IanaParse, LinkRelation, PartialDateTime,
         parser::Boolean,
-        timezone::{Tz, TzTimestamp},
+        timezone::{Tz, ZonedDateTime},
     },
     icalendar::*,
     jscalendar::{
@@ -17,7 +17,7 @@ use crate::{
     },
     jscontact::export::params::ParamValue,
 };
-use chrono::{DateTime, NaiveDateTime, TimeZone};
+use jiff::{Timestamp, civil, tz::Offset};
 use jmap_tools::{Key, Value};
 use std::str::FromStr;
 
@@ -288,7 +288,7 @@ impl ICalendarEntry {
      it (Section 3.2.19 of [RFC5545]).
     */
 
-    pub(super) fn with_date(mut self, dt: DateTime<Tz>, is_date: bool) -> Self {
+    pub(super) fn with_date(mut self, dt: ZonedDateTime, is_date: bool) -> Self {
         if !is_date {
             return self.with_date_time(dt);
         }
@@ -299,11 +299,11 @@ impl ICalendarEntry {
                 .push(ICalendarParameter::value(ICalendarValueType::Date));
         }
         self.values
-            .push(PartialDateTime::from_date_timestamp(dt.to_naive_timestamp()).into());
+            .push(PartialDateTime::from_date_timestamp(dt.naive_timestamp()).into());
         self
     }
 
-    pub(super) fn with_dates(mut self, dts: Vec<DateTime<Tz>>, is_date: bool) -> Self {
+    pub(super) fn with_dates(mut self, dts: Vec<ZonedDateTime>, is_date: bool) -> Self {
         if !is_date {
             return self.with_date_times(dts);
         }
@@ -315,12 +315,12 @@ impl ICalendarEntry {
         }
         for dt in dts {
             self.values
-                .push(PartialDateTime::from_date_timestamp(dt.to_naive_timestamp()).into());
+                .push(PartialDateTime::from_date_timestamp(dt.naive_timestamp()).into());
         }
         self
     }
 
-    pub(super) fn with_date_time(mut self, dt: DateTime<Tz>) -> Self {
+    pub(super) fn with_date_time(mut self, dt: ZonedDateTime) -> Self {
         debug_assert!(self.values.is_empty());
 
         self.remove_period_value_type();
@@ -337,7 +337,7 @@ impl ICalendarEntry {
         self
     }
 
-    pub(super) fn with_period(mut self, dt: DateTime<Tz>, duration: ICalendarDuration) -> Self {
+    pub(super) fn with_period(mut self, dt: ZonedDateTime, duration: ICalendarDuration) -> Self {
         self = self.with_date_time(dt);
 
         if let Some(ICalendarValue::PartialDateTime(start)) = self.values.pop() {
@@ -356,7 +356,7 @@ impl ICalendarEntry {
         self
     }
 
-    pub(super) fn with_date_times(mut self, dts: Vec<DateTime<Tz>>) -> Self {
+    pub(super) fn with_date_times(mut self, dts: Vec<ZonedDateTime>) -> Self {
         debug_assert!(self.values.is_empty());
 
         self.remove_period_value_type();
@@ -387,7 +387,7 @@ impl ICalendarEntry {
 
     fn insert_date(
         &mut self,
-        mut dt: DateTime<Tz>,
+        mut dt: ZonedDateTime,
         has_tz_id: bool,
         add_tz_id: bool,
         entry_tz: Option<Tz>,
@@ -395,13 +395,13 @@ impl ICalendarEntry {
         if let Some(tz) = entry_tz
             && tz != dt.timezone()
         {
-            dt = dt.with_timezone(&tz);
+            dt = dt.with_timezone(tz);
         }
 
         let tz = dt.timezone();
         if has_tz_id {
             self.values
-                .push(PartialDateTime::from_naive_timestamp(dt.to_naive_timestamp()).into());
+                .push(PartialDateTime::from_naive_timestamp(dt.naive_timestamp()).into());
         } else if tz.is_utc() {
             self.values
                 .push(PartialDateTime::from_utc_timestamp(dt.timestamp()).into());
@@ -411,19 +411,22 @@ impl ICalendarEntry {
                     .push(ICalendarParameter::tzid(tz_name.into_owned()));
             }
             self.values
-                .push(PartialDateTime::from_naive_timestamp(dt.to_naive_timestamp()).into());
+                .push(PartialDateTime::from_naive_timestamp(dt.naive_timestamp()).into());
         }
     }
 }
 
 impl JSCalendarDateTime {
-    pub fn to_utc_date_time(&self) -> Option<DateTime<Tz>> {
-        DateTime::from_timestamp(self.timestamp, 0)
-            .and_then(|local| Tz::UTC.from_local_datetime(&local.naive_utc()).single())
+    pub fn to_utc_date_time(&self) -> Option<ZonedDateTime> {
+        Timestamp::from_second(self.timestamp)
+            .ok()
+            .map(|timestamp| Tz::UTC.from_timestamp(timestamp))
     }
 
-    pub fn to_naive_date_time(&self) -> Option<NaiveDateTime> {
-        DateTime::from_timestamp(self.timestamp, 0).map(|local| local.naive_utc())
+    pub fn to_naive_date_time(&self) -> Option<civil::DateTime> {
+        Timestamp::from_second(self.timestamp)
+            .ok()
+            .map(|timestamp| Offset::UTC.to_datetime(timestamp))
     }
 }
 

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
+use crate::common::timezone::ZonedDateTime;
 use crate::{
     common::{
         blob::{BlobOptions, BlobResolver, BlobResolverFn, NoBlobIds, ResolvedBlobs},
@@ -13,7 +14,6 @@ use crate::{
     icalendar::{ICalendar, ICalendarComponentType},
     jscalendar::{JSCalendarId, JSCalendarProperty, JSCalendarValue, RecurrenceOverrides},
 };
-use chrono::DateTime;
 use jmap_tools::{Key, Map, Value};
 use std::hash::Hash;
 
@@ -28,8 +28,8 @@ struct State<'x, I: JSCalendarId, B: JSCalendarId> {
     tz: Option<Tz>,
     tz_end: Option<Tz>,
     tz_rid: Option<Tz>,
-    start: Option<DateTime<Tz>>,
-    recurrence_id: Option<DateTime<Tz>>,
+    start: Option<ZonedDateTime>,
+    recurrence_id: Option<ZonedDateTime>,
     is_date: bool,
 }
 

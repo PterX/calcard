@@ -7,3 +7,5 @@ specs/
 *.md
 !CHANGELOG.md
 !README.md
+*.snap.new
+*.pending-snap

@@ -4,116 +4,178 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use super::DateTimeResult;
-use crate::common::PartialDateTime;
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Offset, TimeDelta, TimeZone, Utc};
+use super::{DateTimeResult, PartialDateTime, tzdb};
 use hashify::tiny_map;
-use std::{borrow::Cow, hash::Hash, str::FromStr};
+use jiff::{
+    SignedDuration, Timestamp,
+    civil::{Date, DateTime, Time},
+    tz::{AmbiguousOffset, Offset, TimeZone, TimeZoneDatabase},
+};
+use std::{borrow::Cow, hash::Hash, str::FromStr, sync::OnceLock};
 
-const MAX_LOCAL_TIME_GAP_HOURS: i64 = 24;
+/// The value type of the proprietary time zone name tables.
+type TzName = &'static str;
 
+pub(crate) const SECONDS_PER_DAY: i64 = 86_400;
+
+/// A reference to the time zone a calendar value is interpreted in.
+///
+/// The three forms map onto the three date-time forms of RFC 5545 section
+/// 3.3.5: a floating value carries no zone at all, a fixed value carries a UTC
+/// offset, and a named value references the IANA time zone database.
+///
+/// `Tz` is a small `Copy` value. Named zones are stored as an identifier into
+/// a committed table (see [`Tz::as_id`]) and resolved to a `jiff` time zone
+/// once per process, so passing a `Tz` around never touches a reference count.
 #[derive(Clone, Copy, Default, Eq)]
 pub enum Tz {
+    /// No time zone: the value means the same wall clock reading everywhere.
     #[default]
     Floating,
-    Fixed(FixedOffset),
-    Tz(chrono_tz::Tz),
+    /// A fixed offset from UTC.
+    Fixed(Offset),
+    /// A named IANA zone, held as an identifier into the time zone table.
+    Iana(u16),
 }
 
-pub trait TzTimestamp {
-    fn to_naive_timestamp(&self) -> i64;
-}
-
-impl PartialDateTime {
-    pub fn to_date_time_with_tz(&self, tz: Tz) -> Option<DateTime<Tz>> {
-        self.to_date_time()
-            .and_then(|dt| dt.to_date_time_with_tz(tz))
-    }
-}
-
-impl DateTimeResult {
-    pub fn tz(&self) -> Option<Tz> {
-        self.offset.map(|offset| {
-            if offset.local_minus_utc() == 0 {
-                Tz::UTC
-            } else {
-                Tz::Fixed(offset)
-            }
-        })
-    }
-
-    pub fn to_date_time_with_tz(&self, tz: Tz) -> Option<DateTime<Tz>> {
-        if let Some(offset) = self.offset {
-            if offset.local_minus_utc() == 0 {
-                Tz::UTC.from_utc_datetime(&self.date_time).into()
-            } else {
-                Tz::Fixed(offset)
-                    .from_local_datetime(&self.date_time)
-                    .single()
-            }
-        } else {
-            tz.from_local_datetime(&self.date_time).single()
-        }
-    }
-
-    pub fn resolve_with_tz(&self, tz: Tz) -> Option<DateTime<Tz>> {
-        match self.offset {
-            Some(_) => self.to_date_time_with_tz(tz),
-            None => tz.resolve_local_datetime(&self.date_time),
-        }
-    }
-}
+/// Resolved time zones, kept for the lifetime of the process.
+static RESOLVED: [OnceLock<Option<TimeZone>>; tzdb::len()] =
+    [const { OnceLock::new() }; tzdb::len()];
 
 impl Tz {
-    pub const UTC: Self = Self::Tz(chrono_tz::UTC);
+    /// The UTC time zone.
+    pub const UTC: Self = Self::Iana(tzdb::UTC_ID);
 
-    pub fn resolve_local_datetime(&self, local: &NaiveDateTime) -> Option<DateTime<Tz>> {
-        self.from_local_datetime(local).earliest().or_else(|| {
-            (1..=MAX_LOCAL_TIME_GAP_HOURS)
-                .filter_map(|hours| local.checked_sub_signed(TimeDelta::hours(hours)))
-                .find_map(|before_gap| self.from_local_datetime(&before_gap).latest())
-                .and_then(|before_gap| {
-                    let offset = *before_gap.offset();
-                    local
-                        .checked_sub_signed(TimeDelta::seconds(
-                            offset.fix().local_minus_utc().into(),
-                        ))
-                        .map(|utc| DateTime::from_naive_utc_and_offset(utc, offset))
-                })
-        })
+    /// Returns the time zone for an IANA name, if the database knows it and
+    /// the name has an identifier assigned.
+    pub fn iana(name: &str) -> Option<Self> {
+        let tz = Self::Iana(tzdb::name_to_id(name)?);
+        tz.time_zone().is_some().then_some(tz)
     }
 
-    pub fn as_id(&self) -> u16 {
+    /// Resolves a named zone, caching it for the lifetime of the process.
+    ///
+    /// Returns `None` for floating and fixed zones, and for a name the time
+    /// zone database does not know.
+    pub fn time_zone(&self) -> Option<&'static TimeZone> {
+        let Self::Iana(id) = *self else {
+            return None;
+        };
+        RESOLVED
+            .get(usize::from(id))?
+            .get_or_init(|| {
+                let name = tzdb::id_to_name(id)?;
+                TimeZone::get(name)
+                    .or_else(|_| TimeZoneDatabase::bundled().get(name))
+                    .ok()
+                    .or_else(|| Self::builtin_time_zone(name))
+            })
+            .as_ref()
+    }
+
+    fn builtin_time_zone(name: &str) -> Option<TimeZone> {
+        let name = name.strip_prefix("Etc/").unwrap_or(name);
+        if matches!(
+            name,
+            "UTC" | "UCT" | "Universal" | "Zulu" | "GMT" | "GMT0" | "GMT+0" | "GMT-0" | "Greenwich"
+        ) {
+            return Some(TimeZone::UTC);
+        }
+        let hours = name.strip_prefix("GMT")?.parse::<i8>().ok()?;
+        Offset::from_hours(-hours).ok().map(TimeZone::fixed)
+    }
+
+    /// Returns the UTC offset in effect at an instant.
+    fn offset_at(&self, timestamp: Timestamp) -> Offset {
         match self {
-            Tz::Tz(tz) => chrono_tz_to_id(tz),
-            Tz::Fixed(offset) => {
-                let offset = offset.local_minus_utc() / 60;
-                debug_assert!((-1440..=1440).contains(&offset) && offset != 0);
-                0x8000 | ((offset + 1440) as u16)
-            }
-            Tz::Floating => 0x8000,
+            Self::Floating => Offset::UTC,
+            Self::Fixed(offset) => *offset,
+            Self::Iana(_) => self
+                .time_zone()
+                .map_or(Offset::UTC, |tz| tz.to_offset(timestamp)),
         }
     }
 
+    /// Interprets a wall clock reading in this time zone.
+    pub fn from_local(&self, local: DateTime) -> Option<ZonedDateTime> {
+        self.interpret_local(local).map(|(zoned, _)| zoned)
+    }
+
+    pub(crate) fn interpret_local(&self, local: DateTime) -> Option<(ZonedDateTime, bool)> {
+        let (offset, in_gap) = match self {
+            Self::Floating => (Offset::UTC, false),
+            Self::Fixed(offset) => (*offset, false),
+            Self::Iana(_) => match self.time_zone()?.to_ambiguous_timestamp(local).offset() {
+                AmbiguousOffset::Unambiguous { offset } => (offset, false),
+                AmbiguousOffset::Fold { before, .. } => (before, false),
+                AmbiguousOffset::Gap { before, .. } => (before, true),
+            },
+        };
+        Some((
+            ZonedDateTime {
+                local,
+                offset,
+                tz: *self,
+            },
+            in_gap,
+        ))
+    }
+
+    /// Interprets an instant in this time zone.
+    pub fn from_timestamp(&self, timestamp: Timestamp) -> ZonedDateTime {
+        let offset = self.offset_at(timestamp);
+        ZonedDateTime {
+            local: offset.to_datetime(timestamp),
+            offset,
+            tz: *self,
+        }
+    }
+
+    /// Interprets a wall clock reading, kept for call sites that predate
+    /// [`Tz::from_local`] handling gaps itself.
+    #[inline]
+    pub fn resolve_local_datetime(&self, local: DateTime) -> Option<ZonedDateTime> {
+        self.from_local(local)
+    }
+
+    /// Returns the identifier for this time zone.
+    pub fn as_id(&self) -> u16 {
+        match self {
+            Self::Iana(id) => *id,
+            Self::Fixed(offset) => {
+                let minutes = offset.seconds() / 60;
+                debug_assert!((-1440..=1440).contains(&minutes));
+                0x8000 | ((minutes + 1440) as u16)
+            }
+            Self::Floating => 0x8000,
+        }
+    }
+
+    /// Returns the time zone an identifier refers to.
     pub fn from_id(id: u16) -> Option<Self> {
         if id & 0x8000 == 0 {
-            id_to_chrono_tz(id).map(Self::Tz)
+            tzdb::id_to_name(id).map(|_| Self::Iana(id))
         } else if id == 0x8000 {
             Some(Self::Floating)
         } else {
-            let offset = (id & 0x7FFF) as i16 - 1440;
-            debug_assert!((-1440..=1440).contains(&offset));
-            FixedOffset::east_opt(offset as i32 * 60).map(Self::Fixed)
+            let minutes = i32::from(id & 0x7FFF) - 1440;
+            (-1440..=1440)
+                .contains(&minutes)
+                .then(|| Offset::from_seconds(minutes * 60).ok())
+                .flatten()
+                .map(Self::Fixed)
         }
     }
 
+    /// Returns the IANA name of this time zone, if it has one.
     pub fn name(&self) -> Option<Cow<'static, str>> {
         match self {
-            Self::Tz(chrono_tz::Tz::UTC) => Some(Cow::Borrowed("Etc/UTC")),
-            Self::Tz(tz) => Some(Cow::Borrowed(tz.name())),
+            Self::Iana(id) if *id == tzdb::UTC_ID => Some(Cow::Borrowed("Etc/UTC")),
+            Self::Iana(id) => tzdb::id_to_name(*id).map(Cow::Borrowed),
             Self::Fixed(offset) => {
-                let hour = offset.local_minus_utc() / 3600;
+                let hour = offset.seconds() / 3600;
                 Some(if hour != 0 {
+                    // `Etc/GMT` names invert the sign of the offset.
                     Cow::Owned(format!(
                         "Etc/GMT{}{}",
                         if hour < 0 { "+" } else { "-" },
@@ -130,7 +192,7 @@ impl Tz {
     #[inline]
     pub fn to_resolved(&self) -> Option<Tz> {
         match self {
-            Tz::Floating => None,
+            Self::Floating => None,
             _ => Some(*self),
         }
     }
@@ -140,24 +202,42 @@ impl Tz {
         matches!(self, Self::Floating)
     }
 
+    /// Returns whether this zone is UTC, under any of its names.
     pub fn is_utc(&self) -> bool {
         match self {
-            Self::Tz(chrono_tz::UTC | chrono_tz::Tz::Etc__GMT | chrono_tz::Tz::Etc__UTC) => true,
-            Self::Fixed(offset) => offset.local_minus_utc() == 0,
-            _ => false,
+            Self::Iana(_) => self
+                .name()
+                .is_some_and(|name| matches!(name.as_ref(), "Etc/UTC" | "Etc/GMT" | "UTC" | "GMT")),
+            Self::Fixed(offset) => offset.seconds() == 0,
+            Self::Floating => false,
         }
     }
 
-    pub fn offset_from_utc_date(&self, utc: &NaiveDate) -> i32 {
+    /// Returns whether this zone has the same offset all year round.
+    pub fn has_fixed_offset(&self) -> bool {
         match self {
-            Tz::Floating => 0,
-            Tz::Fixed(offset) => offset.local_minus_utc(),
-            Tz::Tz(tz) => tz.offset_from_utc_date(utc).fix().local_minus_utc(),
+            Self::Floating | Self::Fixed(_) => true,
+            Self::Iana(_) => self
+                .time_zone()
+                .is_some_and(|tz| tz.following(Timestamp::MIN).next().is_none()),
         }
     }
 
+    /// Returns the offset from UTC, in seconds, in effect on a date.
+    pub fn offset_from_utc_date(&self, utc: Date) -> i32 {
+        match self {
+            Self::Floating => 0,
+            Self::Fixed(offset) => offset.seconds(),
+            Self::Iana(_) => Offset::UTC
+                .to_timestamp(utc.to_datetime(Time::midnight()))
+                .map_or(0, |timestamp| self.offset_at(timestamp).seconds()),
+        }
+    }
+
+    /// Returns the current offset from UTC, split into the parts a serialized
+    /// value is written from.
     pub fn offset_parts(&self) -> PartialDateTime {
-        let mut seconds = self.offset_from_utc_date(&Utc::now().date_naive());
+        let mut seconds = self.offset_at(Timestamp::now()).seconds();
 
         let tz_minus = if seconds < 0 {
             seconds = -seconds;
@@ -173,503 +253,11 @@ impl Tz {
             ..Default::default()
         }
     }
-
-    pub fn from_ms_cdo_zone_id(id: &str) -> Option<Self> {
-        // Source https://learn.microsoft.com/en-us/previous-versions/office/developer/exchange-server-2007/aa563018(v=exchg.80)
-
-        tiny_map!(id.as_bytes(),
-            "0" => chrono_tz::Tz::UTC,
-            "1" => chrono_tz::Tz::Europe__London,
-            "10" => chrono_tz::Tz::America__New_York,
-            "11" => chrono_tz::Tz::America__Chicago,
-            "12" => chrono_tz::Tz::America__Denver,
-            "13" => chrono_tz::Tz::America__Los_Angeles,
-            "14" => chrono_tz::Tz::America__Anchorage,
-            "15" => chrono_tz::Tz::Pacific__Honolulu,
-            "16" => chrono_tz::Tz::Pacific__Midway,
-            "17" => chrono_tz::Tz::Pacific__Auckland,
-            "18" => chrono_tz::Tz::Australia__Brisbane,
-            "19" => chrono_tz::Tz::Australia__Adelaide,
-            "2" => chrono_tz::Tz::Europe__Lisbon,
-            "20" => chrono_tz::Tz::Asia__Tokyo,
-            "21" => chrono_tz::Tz::Asia__Singapore,
-            "22" => chrono_tz::Tz::Asia__Bangkok,
-            "23" => chrono_tz::Tz::Asia__Calcutta,
-            "24" => chrono_tz::Tz::Asia__Muscat,
-            "25" => chrono_tz::Tz::Asia__Tehran,
-            "26" => chrono_tz::Tz::Asia__Baghdad,
-            "27" => chrono_tz::Tz::Asia__Jerusalem,
-            "28" => chrono_tz::Tz::America__St_Johns,
-            "29" => chrono_tz::Tz::Atlantic__Azores,
-            "3" => chrono_tz::Tz::Europe__Paris,
-            "30" => chrono_tz::Tz::America__Noronha,
-            "31" => chrono_tz::Tz::Africa__Casablanca,
-            "32" => chrono_tz::Tz::America__Argentina__Buenos_Aires,
-            "33" => chrono_tz::Tz::America__Caracas,
-            "34" => chrono_tz::Tz::America__Indiana__Indianapolis,
-            "35" => chrono_tz::Tz::America__Bogota,
-            "36" => chrono_tz::Tz::America__Edmonton,
-            "37" => chrono_tz::Tz::America__Mexico_City,
-            "38" => chrono_tz::Tz::America__Phoenix,
-            "39" => chrono_tz::Tz::Pacific__Kwajalein,
-            "4" => chrono_tz::Tz::Europe__Berlin,
-            "40" => chrono_tz::Tz::Pacific__Fiji,
-            "41" => chrono_tz::Tz::Asia__Magadan,
-            "42" => chrono_tz::Tz::Australia__Hobart,
-            "43" => chrono_tz::Tz::Pacific__Guam,
-            "44" => chrono_tz::Tz::Australia__Darwin,
-            "45" => chrono_tz::Tz::Asia__Shanghai,
-            "46" => chrono_tz::Tz::Asia__Almaty,
-            "47" => chrono_tz::Tz::Asia__Karachi,
-            "48" => chrono_tz::Tz::Asia__Kabul,
-            "49" => chrono_tz::Tz::Africa__Cairo,
-            "5" => chrono_tz::Tz::Europe__Bucharest,
-            "50" => chrono_tz::Tz::Africa__Harare,
-            "51" => chrono_tz::Tz::Europe__Moscow,
-            "53" => chrono_tz::Tz::Atlantic__Cape_Verde,
-            "54" => chrono_tz::Tz::Asia__Baku,
-            "55" => chrono_tz::Tz::America__Guatemala,
-            "56" => chrono_tz::Tz::Africa__Nairobi,
-            "58" => chrono_tz::Tz::Asia__Yekaterinburg,
-            "59" => chrono_tz::Tz::Europe__Helsinki,
-            "6" => chrono_tz::Tz::Europe__Prague,
-            "60" => chrono_tz::Tz::America__Godthab,
-            "61" => chrono_tz::Tz::Asia__Rangoon,
-            "62" => chrono_tz::Tz::Asia__Kathmandu,
-            "63" => chrono_tz::Tz::Asia__Irkutsk,
-            "64" => chrono_tz::Tz::Asia__Krasnoyarsk,
-            "65" => chrono_tz::Tz::America__Santiago,
-            "66" => chrono_tz::Tz::Asia__Colombo,
-            "67" => chrono_tz::Tz::Pacific__Tongatapu,
-            "68" => chrono_tz::Tz::Asia__Vladivostok,
-            "69" => chrono_tz::Tz::Africa__Luanda,
-            "7" => chrono_tz::Tz::Europe__Athens,
-            "70" => chrono_tz::Tz::Asia__Yakutsk,
-            "71" => chrono_tz::Tz::Asia__Dhaka,
-            "72" => chrono_tz::Tz::Asia__Seoul,
-            "73" => chrono_tz::Tz::Australia__Perth,
-            "74" => chrono_tz::Tz::Asia__Kuwait,
-            "75" => chrono_tz::Tz::Asia__Taipei,
-            "76" => chrono_tz::Tz::Australia__Sydney,
-            "8" => chrono_tz::Tz::America__Sao_Paulo,
-            "9" => chrono_tz::Tz::America__Halifax,
-        )
-        .map(Self::Tz)
-    }
-}
-
-impl TzTimestamp for DateTime<Tz> {
-    fn to_naive_timestamp(&self) -> i64 {
-        self.naive_local().and_utc().timestamp()
-    }
-}
-
-impl FromStr for Tz {
-    type Err = ();
-
-    /*
-      Calconnect recommends ignoring VTIMEZONE and just "guess" the timezone
-
-      See: https://standards.calconnect.org/cc/cc-r0602-2006.html
-
-    */
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // First try with the chrono_tz::Tz
-        if let Ok(tz) = chrono_tz::Tz::from_str(s) {
-            return Ok(Self::Tz(tz));
-        }
-
-        // Strip common prefixes
-        let mut s = s.trim();
-        let mut zone_offset = None;
-        let mut retry_chrono_tz = false;
-        if let Some(part) = s.strip_prefix('(') {
-            if let Some((zone, name)) = part.split_once(')') {
-                s = name.trim_start();
-                zone_offset = Some(zone.trim());
-            }
-        } else if let Some(mut name) = s.strip_prefix('/') {
-            /*
-               The presence of the SOLIDUS character as a prefix, indicates that
-               this "TZID" represents a unique ID in a globally defined time zone
-               registry (when such registry is defined).
-            */
-            if name.as_bytes().iter().filter(|&&c| c == b'/').count() > 2 {
-                // Extract zones such as '/softwarestudio.org/Olson_20011030_5/America/Chicago'
-                if let Some(new_name) = name.splitn(3, '/').nth(2) {
-                    name = new_name.strip_prefix("SystemV/").unwrap_or(new_name);
-                }
-            }
-            retry_chrono_tz = true;
-            s = name;
-        }
-
-        // Try again with chrono_tz::Tz
-        if retry_chrono_tz && let Ok(tz) = chrono_tz::Tz::from_str(s) {
-            return Ok(Self::Tz(tz));
-        }
-
-        // Map proprietary timezones to chrono_tz::Tz
-        let result = hashify::map!(s.as_bytes(), chrono_tz::Tz,
-        "AUS Central Standard Time" => chrono_tz::Tz::Australia__Darwin,
-        "AUS Central" => chrono_tz::Tz::Australia__Darwin,
-        "AUS Eastern Standard Time" => chrono_tz::Tz::Australia__Sydney,
-        "AUS Eastern" => chrono_tz::Tz::Australia__Sydney,
-        "Abu Dhabi, Muscat" => chrono_tz::Tz::Asia__Muscat,
-        "Adelaide, Central Australia" => chrono_tz::Tz::Australia__Adelaide,
-        "Afghanistan Standard Time" => chrono_tz::Tz::Asia__Kabul,
-        "Afghanistan" => chrono_tz::Tz::Asia__Kabul,
-        "Alaska" => chrono_tz::Tz::America__Anchorage,
-        "Alaskan Standard Time" => chrono_tz::Tz::America__Anchorage,
-        "Alaskan" => chrono_tz::Tz::America__Anchorage,
-        "Aleutian Standard Time" => chrono_tz::Tz::America__Adak,
-        "Almaty, Novosibirsk, North Central Asia" => chrono_tz::Tz::Asia__Almaty,
-        "Altai Standard Time" => chrono_tz::Tz::Asia__Barnaul,
-        "Amsterdam, Berlin, Bern, Rom, Stockholm, Wien" => chrono_tz::Tz::Europe__Berlin,
-        "Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna" => chrono_tz::Tz::Europe__Berlin,
-        "Arab Standard Time" => chrono_tz::Tz::Asia__Riyadh,
-        "Arab" => chrono_tz::Tz::Asia__Kuwait,
-        "Arab, Kuwait, Riyadh" => chrono_tz::Tz::Asia__Kuwait,
-        "Arabian Standard Time" => chrono_tz::Tz::Asia__Dubai,
-        "Arabian" => chrono_tz::Tz::Asia__Muscat,
-        "Arabic Standard Time" => chrono_tz::Tz::Asia__Baghdad,
-        "Arabic" => chrono_tz::Tz::Asia__Baghdad,
-        "Argentina Standard Time" => chrono_tz::Tz::America__Buenos_Aires,
-        "Argentina" => chrono_tz::Tz::America__Argentina__Buenos_Aires,
-        "Arizona" => chrono_tz::Tz::America__Phoenix,
-        "Armenian" => chrono_tz::Tz::Asia__Yerevan,
-        "Astana, Dhaka" => chrono_tz::Tz::Asia__Dhaka,
-        "Astrakhan Standard Time" => chrono_tz::Tz::Europe__Astrakhan,
-        "Athens, Istanbul, Minsk" => chrono_tz::Tz::Europe__Athens,
-        "Atlantic Standard Time" => chrono_tz::Tz::America__Halifax,
-        "Atlantic Time (Canada)" => chrono_tz::Tz::America__Halifax,
-        "Atlantic" => chrono_tz::Tz::America__Halifax,
-        "Auckland, Wellington" => chrono_tz::Tz::Pacific__Auckland,
-        "Aus Central W. Standard Time" => chrono_tz::Tz::Australia__Eucla,
-        "Azerbaijan Standard Time" => chrono_tz::Tz::Asia__Baku,
-        "Azerbijan" => chrono_tz::Tz::Asia__Baku,
-        "Azores Standard Time" => chrono_tz::Tz::Atlantic__Azores,
-        "Azores" => chrono_tz::Tz::Atlantic__Azores,
-        "Baghdad" => chrono_tz::Tz::Asia__Baghdad,
-        "Bahia Standard Time" => chrono_tz::Tz::America__Bahia,
-        "Baku, Tbilisi, Yerevan" => chrono_tz::Tz::Asia__Baku,
-        "Bangkok, Hanoi, Jakarta" => chrono_tz::Tz::Asia__Bangkok,
-        "Bangladesh Standard Time" => chrono_tz::Tz::Asia__Dhaka,
-        "Beijing, Chongqing, Hong Kong SAR, Urumqi" => chrono_tz::Tz::Asia__Shanghai,
-        "Belarus Standard Time" => chrono_tz::Tz::Europe__Minsk,
-        "Belgrade, Pozsony, Budapest, Ljubljana, Prague" => chrono_tz::Tz::Europe__Prague,
-        "Bogota, Lima, Quito" => chrono_tz::Tz::America__Bogota,
-        "Bougainville Standard Time" => chrono_tz::Tz::Pacific__Bougainville,
-        "Brasilia" => chrono_tz::Tz::America__Sao_Paulo,
-        "Brisbane, East Australia" => chrono_tz::Tz::Australia__Brisbane,
-        "Brussels, Copenhagen, Madrid, Paris" => chrono_tz::Tz::Europe__Paris,
-        "Bucharest" => chrono_tz::Tz::Europe__Bucharest,
-        "Buenos Aires" => chrono_tz::Tz::America__Argentina__Buenos_Aires,
-        "Cairo" => chrono_tz::Tz::Africa__Cairo,
-        "Canada Central Standard Time" => chrono_tz::Tz::America__Regina,
-        "Canada Central" => chrono_tz::Tz::America__Edmonton,
-        "Canberra, Melbourne, Sydney, Hobart" => chrono_tz::Tz::Australia__Sydney,
-        "Canberra, Melbourne, Sydney" => chrono_tz::Tz::Australia__Sydney,
-        "Cape Verde Is." => chrono_tz::Tz::Atlantic__Cape_Verde,
-        "Cape Verde Standard Time" => chrono_tz::Tz::Atlantic__Cape_Verde,
-        "Cape Verde" => chrono_tz::Tz::Atlantic__Cape_Verde,
-        "Caracas, La Paz" => chrono_tz::Tz::America__Caracas,
-        "Casablanca, Monrovia" => chrono_tz::Tz::Africa__Casablanca,
-        "Caucasus Standard Time" => chrono_tz::Tz::Asia__Yerevan,
-        "Caucasus" => chrono_tz::Tz::Asia__Yerevan,
-        "Cen. Australia Standard Time" => chrono_tz::Tz::Australia__Adelaide,
-        "Cen. Australia" => chrono_tz::Tz::Australia__Adelaide,
-        "Central America Standard Time" => chrono_tz::Tz::America__Guatemala,
-        "Central America" => chrono_tz::Tz::America__Guatemala,
-        "Central Asia Standard Time" => chrono_tz::Tz::Asia__Almaty,
-        "Central Asia" => chrono_tz::Tz::Asia__Dhaka,
-        "Central Brazilian Standard Time" => chrono_tz::Tz::America__Cuiaba,
-        "Central Brazilian" => chrono_tz::Tz::America__Manaus,
-        "Central Europe Standard Time" => chrono_tz::Tz::Europe__Budapest,
-        "Central Europe" => chrono_tz::Tz::Europe__Prague,
-        "Central European Standard Time" => chrono_tz::Tz::Europe__Warsaw,
-        "Central European" => chrono_tz::Tz::Europe__Sarajevo,
-        "Central Pacific Standard Time" => chrono_tz::Tz::Pacific__Guadalcanal,
-        "Central Pacific" => chrono_tz::Tz::Asia__Magadan,
-        "Central Standard Time (Mexico)" => chrono_tz::Tz::America__Mexico_City,
-        "Central Standard Time" => chrono_tz::Tz::America__Chicago,
-        "Central Time (US & Canada)" => chrono_tz::Tz::America__Chicago,
-        "Central Time (US and Canada)" => chrono_tz::Tz::America__Chicago,
-        "Central" => chrono_tz::Tz::America__Chicago,
-        "Chatham Islands Standard Time" => chrono_tz::Tz::Pacific__Chatham,
-        "China Standard Time" => chrono_tz::Tz::Asia__Shanghai,
-        "China" => chrono_tz::Tz::Asia__Shanghai,
-        "Cuba Standard Time" => chrono_tz::Tz::America__Havana,
-        "Darwin" => chrono_tz::Tz::Australia__Darwin,
-        "Dateline Standard Time" => chrono_tz::Tz::Etc__GMTPlus12,
-        "Dateline" => chrono_tz::Tz::Etc__GMTMinus12,
-        "E. Africa Standard Time" => chrono_tz::Tz::Africa__Nairobi,
-        "E. Africa" => chrono_tz::Tz::Africa__Nairobi,
-        "E. Australia Standard Time" => chrono_tz::Tz::Australia__Brisbane,
-        "E. Australia" => chrono_tz::Tz::Australia__Brisbane,
-        "E. Europe Standard Time" => chrono_tz::Tz::Europe__Chisinau,
-        "E. Europe" => chrono_tz::Tz::Europe__Minsk,
-        "E. South America Standard Time" => chrono_tz::Tz::America__Sao_Paulo,
-        "E. South America" => chrono_tz::Tz::America__Belem,
-        "East Africa, Nairobi" => chrono_tz::Tz::Africa__Nairobi,
-        "Easter Island Standard Time" => chrono_tz::Tz::Pacific__Easter,
-        "Eastern Standard Time (Mexico)" => chrono_tz::Tz::America__Cancun,
-        "Eastern Standard Time" => chrono_tz::Tz::America__New_York,
-        "Eastern Time (US & Canada)" => chrono_tz::Tz::America__New_York,
-        "Eastern Time (US and Canada)" => chrono_tz::Tz::America__New_York,
-        "Eastern" => chrono_tz::Tz::America__New_York,
-        "Egypt Standard Time" => chrono_tz::Tz::Africa__Cairo,
-        "Egypt" => chrono_tz::Tz::Africa__Cairo,
-        "Ekaterinburg Standard Time" => chrono_tz::Tz::Asia__Yekaterinburg,
-        "Ekaterinburg" => chrono_tz::Tz::Asia__Yekaterinburg,
-        "Eniwetok, Kwajalein, Dateline Time" => chrono_tz::Tz::Pacific__Kwajalein,
-        "FLE Standard Time" => chrono_tz::Tz::Europe__Kiev,
-        "FLE" => chrono_tz::Tz::Europe__Helsinki,
-        "Fiji Islands, Kamchatka, Marshall Is." => chrono_tz::Tz::Pacific__Fiji,
-        "Fiji Standard Time" => chrono_tz::Tz::Pacific__Fiji,
-        "Fiji" => chrono_tz::Tz::Pacific__Fiji,
-        "GMT Standard Time" => chrono_tz::Tz::Europe__London,
-        "GTB Standard Time" => chrono_tz::Tz::Europe__Bucharest,
-        "GTB" => chrono_tz::Tz::Europe__Athens,
-        "Georgian Standard Time" => chrono_tz::Tz::Asia__Tbilisi,
-        "Georgian" => chrono_tz::Tz::Asia__Tbilisi,
-        "Greenland Standard Time" => chrono_tz::Tz::America__Godthab,
-        "Greenland" => chrono_tz::Tz::America__Godthab,
-        "Greenwich Mean Time: Dublin, Edinburgh, Lisbon, London" => chrono_tz::Tz::Europe__Lisbon,
-        "Greenwich Mean Time; Dublin, Edinburgh, London" => chrono_tz::Tz::Europe__London,
-        "Greenwich Standard Time" => chrono_tz::Tz::Atlantic__Reykjavik,
-        "Greenwich" => chrono_tz::Tz::Atlantic__Reykjavik,
-        "Guam, Port Moresby" => chrono_tz::Tz::Pacific__Guam,
-        "Haiti Standard Time" => chrono_tz::Tz::America__PortauPrince,
-        "Harare, Pretoria" => chrono_tz::Tz::Africa__Harare,
-        "Hawaii" => chrono_tz::Tz::Pacific__Honolulu,
-        "Hawaiian Standard Time" => chrono_tz::Tz::Pacific__Honolulu,
-        "Hawaiian" => chrono_tz::Tz::Pacific__Honolulu,
-        "Helsinki, Riga, Tallinn" => chrono_tz::Tz::Europe__Helsinki,
-        "Hobart, Tasmania" => chrono_tz::Tz::Australia__Hobart,
-        "India Standard Time" => chrono_tz::Tz::Asia__Calcutta,
-        "India" => chrono_tz::Tz::Asia__Calcutta,
-        "Indiana (East)" => chrono_tz::Tz::America__Indiana__Indianapolis,
-        "Iran Standard Time" => chrono_tz::Tz::Asia__Tehran,
-        "Iran" => chrono_tz::Tz::Asia__Tehran,
-        "Irkutsk, Ulaan Bataar" => chrono_tz::Tz::Asia__Irkutsk,
-        "Islamabad, Karachi, Tashkent" => chrono_tz::Tz::Asia__Karachi,
-        "Israel Standard Time" => chrono_tz::Tz::Asia__Jerusalem,
-        "Israel" => chrono_tz::Tz::Asia__Jerusalem,
-        "Israel, Jerusalem Standard Time" => chrono_tz::Tz::Asia__Jerusalem,
-        "Jordan Standard Time" => chrono_tz::Tz::Asia__Amman,
-        "Jordan" => chrono_tz::Tz::Asia__Amman,
-        "Kabul" => chrono_tz::Tz::Asia__Kabul,
-        "Kaliningrad Standard Time" => chrono_tz::Tz::Europe__Kaliningrad,
-        "Kathmandu, Nepal" => chrono_tz::Tz::Asia__Kathmandu,
-        "Kolkata, Chennai, Mumbai, New Delhi, India Standard Time" => chrono_tz::Tz::Asia__Calcutta,
-        "Korea Standard Time" => chrono_tz::Tz::Asia__Seoul,
-        "Korea" => chrono_tz::Tz::Asia__Seoul,
-        "Krasnoyarsk" => chrono_tz::Tz::Asia__Krasnoyarsk,
-        "Kuala Lumpur, Singapore" => chrono_tz::Tz::Asia__Singapore,
-        "Libya Standard Time" => chrono_tz::Tz::Africa__Tripoli,
-        "Line Islands Standard Time" => chrono_tz::Tz::Pacific__Kiritimati,
-        "Lord Howe Standard Time" => chrono_tz::Tz::Australia__Lord_Howe,
-        "Magadan Standard Time" => chrono_tz::Tz::Asia__Magadan,
-        "Magadan, Solomon Is., New Caledonia" => chrono_tz::Tz::Asia__Magadan,
-        "Magallanes Standard Time" => chrono_tz::Tz::America__Punta_Arenas,
-        "Marquesas Standard Time" => chrono_tz::Tz::Pacific__Marquesas,
-        "Mauritius Standard Time" => chrono_tz::Tz::Indian__Mauritius,
-        "Mauritius" => chrono_tz::Tz::Indian__Mauritius,
-        "Mexico City, Tegucigalpa" => chrono_tz::Tz::America__Mexico_City,
-        "Mexico Standard Time 2" => chrono_tz::Tz::America__Chihuahua,
-        "Mexico" => chrono_tz::Tz::America__Mexico_City,
-        "Mid-Atlantic" => chrono_tz::Tz::America__Noronha,
-        "Middle East Standard Time" => chrono_tz::Tz::Asia__Beirut,
-        "Middle East" => chrono_tz::Tz::Asia__Beirut,
-        "Midway Island, Samoa" => chrono_tz::Tz::Pacific__Midway,
-        "Montevideo Standard Time" => chrono_tz::Tz::America__Montevideo,
-        "Montevideo" => chrono_tz::Tz::America__Montevideo,
-        "Morocco Standard Time" => chrono_tz::Tz::Africa__Casablanca,
-        "Morocco" => chrono_tz::Tz::Africa__Casablanca,
-        "Moscow, St. Petersburg, Volgograd" => chrono_tz::Tz::Europe__Moscow,
-        "Mountain Standard Time (Mexico)" => chrono_tz::Tz::America__Chihuahua,
-        "Mountain Standard Time" => chrono_tz::Tz::America__Denver,
-        "Mountain Time (US & Canada)" => chrono_tz::Tz::America__Denver,
-        "Mountain Time (US and Canada)" => chrono_tz::Tz::America__Denver,
-        "Mountain" => chrono_tz::Tz::America__Denver,
-        "Myanmar Standard Time" => chrono_tz::Tz::Asia__Rangoon,
-        "Myanmar" => chrono_tz::Tz::Asia__Rangoon,
-        "N. Central Asia Standard Time" => chrono_tz::Tz::Asia__Novosibirsk,
-        "N. Central Asia" => chrono_tz::Tz::Asia__Almaty,
-        "Namibia Standard Time" => chrono_tz::Tz::Africa__Windhoek,
-        "Namibia" => chrono_tz::Tz::Africa__Windhoek,
-        "Nepal Standard Time" => chrono_tz::Tz::Asia__Katmandu,
-        "Nepal" => chrono_tz::Tz::Asia__Kathmandu,
-        "New Zealand Standard Time" => chrono_tz::Tz::Pacific__Auckland,
-        "New Zealand" => chrono_tz::Tz::Pacific__Auckland,
-        "Newfoundland Standard Time" => chrono_tz::Tz::America__St_Johns,
-        "Newfoundland" => chrono_tz::Tz::America__St_Johns,
-        "Norfolk Standard Time" => chrono_tz::Tz::Pacific__Norfolk,
-        "North Asia East Standard Time" => chrono_tz::Tz::Asia__Irkutsk,
-        "North Asia East" => chrono_tz::Tz::Asia__Irkutsk,
-        "North Asia Standard Time" => chrono_tz::Tz::Asia__Krasnoyarsk,
-        "North Asia" => chrono_tz::Tz::Asia__Krasnoyarsk,
-        "North Korea Standard Time" => chrono_tz::Tz::Asia__Pyongyang,
-        "Omsk Standard Time" => chrono_tz::Tz::Asia__Omsk,
-        "Osaka, Sapporo, Tokyo" => chrono_tz::Tz::Asia__Tokyo,
-        "Japan" => chrono_tz::Tz::Asia__Tokyo,
-        "Pacific SA Standard Time" => chrono_tz::Tz::America__Santiago,
-        "Pacific SA" => chrono_tz::Tz::America__Santiago,
-        "Pacific Standard Time (Mexico)" => chrono_tz::Tz::America__Tijuana,
-        "Pacific Standard Time" => chrono_tz::Tz::America__Los_Angeles,
-        "Pacific Time (US & Canada)" => chrono_tz::Tz::America__Los_Angeles,
-        "Pacific Time (US & Canada); Tijuana" => chrono_tz::Tz::America__Los_Angeles,
-        "Pacific Time (US and Canada)" => chrono_tz::Tz::America__Los_Angeles,
-        "Pacific Time (US and Canada); Tijuana" => chrono_tz::Tz::America__Los_Angeles,
-        "Pacific" => chrono_tz::Tz::America__Los_Angeles,
-        "Pakistan Standard Time" => chrono_tz::Tz::Asia__Karachi,
-        "Pakistan" => chrono_tz::Tz::Asia__Karachi,
-        "Paraguay Standard Time" => chrono_tz::Tz::America__Asuncion,
-        "Paris, Madrid, Brussels, Copenhagen" => chrono_tz::Tz::Europe__Paris,
-        "Perth, Western Australia" => chrono_tz::Tz::Australia__Perth,
-        "Prague, Central Europe" => chrono_tz::Tz::Europe__Prague,
-        "Qyzylorda Standard Time" => chrono_tz::Tz::Asia__Qyzylorda,
-        "Rangoon" => chrono_tz::Tz::Asia__Rangoon,
-        "Romance Standard Time" => chrono_tz::Tz::Europe__Paris,
-        "Romance" => chrono_tz::Tz::Europe__Paris,
-        "Russia Time Zone 10" => chrono_tz::Tz::Asia__Srednekolymsk,
-        "Russia Time Zone 11" => chrono_tz::Tz::Asia__Kamchatka,
-        "Russia Time Zone 3" => chrono_tz::Tz::Europe__Samara,
-        "Russian Standard Time" => chrono_tz::Tz::Europe__Moscow,
-        "Russian" => chrono_tz::Tz::Europe__Moscow,
-        "SA Eastern Standard Time" => chrono_tz::Tz::America__Cayenne,
-        "SA Eastern" => chrono_tz::Tz::America__Belem,
-        "SA Pacific Standard Time" => chrono_tz::Tz::America__Bogota,
-        "SA Pacific" => chrono_tz::Tz::America__Bogota,
-        "SA Western Standard Time" => chrono_tz::Tz::America__La_Paz,
-        "SA Western" => chrono_tz::Tz::America__La_Paz,
-        "SE Asia Standard Time" => chrono_tz::Tz::Asia__Bangkok,
-        "SE Asia" => chrono_tz::Tz::Asia__Bangkok,
-        "Saint Pierre Standard Time" => chrono_tz::Tz::America__Miquelon,
-        "Sakhalin Standard Time" => chrono_tz::Tz::Asia__Sakhalin,
-        "Samoa Standard Time" => chrono_tz::Tz::Pacific__Apia,
-        "Samoa" => chrono_tz::Tz::Pacific__Apia,
-        "Santiago" => chrono_tz::Tz::America__Santiago,
-        "Sao Tome Standard Time" => chrono_tz::Tz::Africa__Sao_Tome,
-        "Sarajevo, Skopje, Sofija, Vilnius, Warsaw, Zagreb" => chrono_tz::Tz::Europe__Sarajevo,
-        "Saratov Standard Time" => chrono_tz::Tz::Europe__Saratov,
-        "Saskatchewan" => chrono_tz::Tz::America__Edmonton,
-        "Seoul, Korea Standard time" => chrono_tz::Tz::Asia__Seoul,
-        "Singapore Standard Time" => chrono_tz::Tz::Asia__Singapore,
-        "Singapore" => chrono_tz::Tz::Asia__Singapore,
-        "South Africa Standard Time" => chrono_tz::Tz::Africa__Johannesburg,
-        "South Africa" => chrono_tz::Tz::Africa__Harare,
-        "Sri Jayawardenepura, Sri Lanka" => chrono_tz::Tz::Asia__Colombo,
-        "Sri Lanka Standard Time" => chrono_tz::Tz::Asia__Colombo,
-        "Sri Lanka" => chrono_tz::Tz::Asia__Colombo,
-        "Sudan Standard Time" => chrono_tz::Tz::Africa__Khartoum,
-        "Syria Standard Time" => chrono_tz::Tz::Asia__Damascus,
-        "Taipei Standard Time" => chrono_tz::Tz::Asia__Taipei,
-        "Taipei" => chrono_tz::Tz::Asia__Taipei,
-        "Tasmania Standard Time" => chrono_tz::Tz::Australia__Hobart,
-        "Tasmania" => chrono_tz::Tz::Australia__Hobart,
-        "Tehran" => chrono_tz::Tz::Asia__Tehran,
-        "Tocantins Standard Time" => chrono_tz::Tz::America__Araguaina,
-        "Tokyo Standard Time" => chrono_tz::Tz::Asia__Tokyo,
-        "Tokyo" => chrono_tz::Tz::Asia__Tokyo,
-        "Tomsk Standard Time" => chrono_tz::Tz::Asia__Tomsk,
-        "Tonga Standard Time" => chrono_tz::Tz::Pacific__Tongatapu,
-        "Tonga" => chrono_tz::Tz::Pacific__Tongatapu,
-        "Transbaikal Standard Time" => chrono_tz::Tz::Asia__Chita,
-        "Turkey Standard Time" => chrono_tz::Tz::Europe__Istanbul,
-        "Turks And Caicos Standard Time" => chrono_tz::Tz::America__Grand_Turk,
-        "US Eastern Standard Time" => chrono_tz::Tz::America__Indianapolis,
-        "US Eastern" => chrono_tz::Tz::America__Indiana__Indianapolis,
-        "US Mountain Standard Time" => chrono_tz::Tz::America__Phoenix,
-        "US Mountain" => chrono_tz::Tz::America__Phoenix,
-        "UTC" => chrono_tz::Tz::Etc__GMT,
-        "UTC+12" => chrono_tz::Tz::Etc__GMTMinus12,
-        "UTC+13" => chrono_tz::Tz::Etc__GMTMinus13,
-        "UTC-02" => chrono_tz::Tz::Etc__GMTPlus2,
-        "UTC-08" => chrono_tz::Tz::Etc__GMTPlus8,
-        "UTC-09" => chrono_tz::Tz::Etc__GMTPlus9,
-        "UTC-11" => chrono_tz::Tz::Etc__GMTPlus11,
-        "Ulaanbaatar Standard Time" => chrono_tz::Tz::Asia__Ulaanbaatar,
-        "Universal Coordinated Time" => chrono_tz::Tz::UTC,
-        "Venezuela Standard Time" => chrono_tz::Tz::America__Caracas,
-        "Venezuela" => chrono_tz::Tz::America__Caracas,
-        "Vladivostok Standard Time" => chrono_tz::Tz::Asia__Vladivostok,
-        "Vladivostok" => chrono_tz::Tz::Asia__Vladivostok,
-        "Volgograd Standard Time" => chrono_tz::Tz::Europe__Volgograd,
-        "W. Australia Standard Time" => chrono_tz::Tz::Australia__Perth,
-        "W. Australia" => chrono_tz::Tz::Australia__Perth,
-        "W. Central Africa Standard Time" => chrono_tz::Tz::Africa__Lagos,
-        "W. Central Africa" => chrono_tz::Tz::Africa__Lagos,
-        "W. Europe Standard Time" => chrono_tz::Tz::Europe__Berlin,
-        "W. Europe" => chrono_tz::Tz::Europe__Amsterdam,
-        "W. Mongolia Standard Time" => chrono_tz::Tz::Asia__Hovd,
-        "West Asia Standard Time" => chrono_tz::Tz::Asia__Tashkent,
-        "West Asia" => chrono_tz::Tz::Asia__Tashkent,
-        "West Bank Standard Time" => chrono_tz::Tz::Asia__Hebron,
-        "West Central Africa" => chrono_tz::Tz::Africa__Luanda,
-        "West Pacific Standard Time" => chrono_tz::Tz::Pacific__Port_Moresby,
-        "West Pacific" => chrono_tz::Tz::Pacific__Guam,
-        "Yakutsk Standard Time" => chrono_tz::Tz::Asia__Yakutsk,
-        "Yakutsk" => chrono_tz::Tz::Asia__Yakutsk,
-        "Yukon Standard Time" => chrono_tz::Tz::America__Whitehorse,
-        "Nuku'alofa, Tonga" => chrono_tz::Tz::Pacific__Tongatapu,
-        );
-
-        if let Some(tz) = result {
-            return Ok(Self::Tz(*tz));
-        } else if let Some(zone_offset) = zone_offset {
-            let (zone, sign, time) = if let Some((zone, part)) = zone_offset.split_once('+') {
-                (zone.trim(), '-', part.trim())
-            } else if let Some((zone, part)) = zone_offset.split_once('-') {
-                (zone.trim(), '+', part.trim())
-            } else {
-                return Err(());
-            };
-            if !zone.eq_ignore_ascii_case("UTC") && !zone.eq_ignore_ascii_case("GMT") {
-                return Err(());
-            }
-            let mut zone = String::with_capacity(10);
-            zone.push_str("Etc/GMT");
-            zone.push(sign);
-
-            for (pos, ch) in time.chars().enumerate() {
-                if !ch.is_ascii_digit() {
-                    break;
-                } else if ch != '0' || pos > 0 {
-                    zone.push(ch);
-                }
-            }
-
-            if let Ok(tz) = chrono_tz::Tz::from_str(&zone) {
-                return Ok(Self::Tz(tz));
-            }
-        }
-        Err(())
-    }
 }
 
 impl PartialEq for Tz {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Floating, Self::Floating) => true,
-            (Self::Tz(l0), Self::Tz(r0)) => l0 == r0,
-            (Self::Fixed(l0), Self::Fixed(r0)) => l0 == r0,
-            _ => false,
-        }
-    }
-}
-
-impl From<Utc> for Tz {
-    fn from(_tz: Utc) -> Self {
-        Self::Tz(chrono_tz::UTC)
-    }
-}
-
-impl From<chrono_tz::Tz> for Tz {
-    fn from(tz: chrono_tz::Tz) -> Self {
-        Self::Tz(tz)
+        self.as_id() == other.as_id()
     }
 }
 
@@ -693,1375 +281,810 @@ impl Hash for Tz {
 
 impl std::fmt::Debug for Tz {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Floating => write!(f, "Floating"),
-            Self::Tz(tz) => tz.fmt(f),
-            Self::Fixed(fixed_offset) => fixed_offset.fmt(f),
-        }
+        std::fmt::Display::fmt(self, f)
     }
 }
 
 impl std::fmt::Display for Tz {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Floating => write!(f, "Floating"),
-            Self::Tz(tz) => tz.fmt(f),
-            Self::Fixed(fixed_offset) => fixed_offset.fmt(f),
+            Self::Floating => f.write_str("Floating"),
+            Self::Fixed(offset) => write!(f, "{offset}"),
+            Self::Iana(id) => match tzdb::id_to_name(*id) {
+                Some(name) => f.write_str(name),
+                None => write!(f, "Unknown({id})"),
+            },
         }
     }
 }
 
+/// A wall clock reading together with the time zone it belongs to.
 #[derive(Clone, Copy)]
-pub enum RRuleOffset {
-    Fixed(FixedOffset),
-    Tz(<chrono_tz::Tz as TimeZone>::Offset),
-    Floating,
+pub struct ZonedDateTime {
+    local: DateTime,
+    offset: Offset,
+    tz: Tz,
 }
 
-impl std::fmt::Debug for RRuleOffset {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NominalDuration {
+    civil: SignedDuration,
+    exact: SignedDuration,
+}
+
+impl NominalDuration {
+    pub const DAY: Self = Self::new(1, 0);
+
+    pub const fn new(days: i32, exact_seconds: i64) -> Self {
+        Self {
+            civil: SignedDuration::from_secs(days as i64 * SECONDS_PER_DAY),
+            exact: SignedDuration::from_secs(exact_seconds),
+        }
+    }
+
+    pub fn between(from: ZonedDateTime, to: ZonedDateTime) -> Self {
+        Self {
+            civil: SignedDuration::from_secs(to.naive_timestamp() - from.naive_timestamp()),
+            exact: SignedDuration::ZERO,
+        }
+    }
+}
+
+impl ZonedDateTime {
+    /// Returns the wall clock reading in this value's own time zone.
+    #[inline]
+    pub fn naive_local(&self) -> DateTime {
+        self.local
+    }
+
+    /// Returns the time zone this value is interpreted in.
+    #[inline]
+    pub fn timezone(&self) -> Tz {
+        self.tz
+    }
+
+    /// Returns the offset from UTC in effect at this value's instant.
+    #[inline]
+    pub fn offset(&self) -> Offset {
+        self.offset
+    }
+
+    /// Returns the instant this value refers to.
+    #[inline]
+    pub fn to_timestamp(&self) -> Timestamp {
+        self.offset
+            .to_timestamp(self.local)
+            .unwrap_or(if self.local < DateTime::default() {
+                Timestamp::MIN
+            } else {
+                Timestamp::MAX
+            })
+    }
+
+    /// Returns the instant this value refers to, in whole seconds since the
+    /// Unix epoch.
+    #[inline]
+    pub fn timestamp(&self) -> i64 {
+        self.to_timestamp().as_second()
+    }
+
+    /// Returns the wall clock reading as seconds since the Unix epoch, as
+    /// though it were UTC.
+    #[inline]
+    pub fn naive_timestamp(&self) -> i64 {
+        Offset::UTC
+            .to_timestamp(self.local)
+            .map_or(0, |timestamp| timestamp.as_second())
+    }
+
+    /// Returns the calendar date this value falls on in its own zone.
+    #[inline]
+    pub fn date(&self) -> Date {
+        self.local.date()
+    }
+
+    /// Returns how long has elapsed between another value and this one.
+    pub fn signed_duration_since(&self, earlier: Self) -> SignedDuration {
+        SignedDuration::from_secs(self.timestamp() - earlier.timestamp())
+    }
+
+    /// Returns the number of whole days between another value's date and this
+    /// one's, counted in each value's own zone.
+    pub fn days_since(&self, earlier: Self) -> i32 {
+        earlier
+            .local
+            .date()
+            .until(self.local.date())
+            .map_or(0, |span| span.get_days())
+    }
+
+    /// Returns this same instant, read in another time zone.
+    pub fn with_timezone(&self, tz: Tz) -> Self {
+        if tz == self.tz {
+            return *self;
+        }
+        match tz {
+            // A floating value keeps the wall clock reading and drops the
+            // instant, which is the only way to move into a floating zone.
+            Tz::Floating => Self {
+                local: self.local,
+                offset: Offset::UTC,
+                tz,
+            },
+            _ => tz.from_timestamp(self.to_timestamp()),
+        }
+    }
+
+    /// Returns this value moved by an exact duration.
+    /// shifts across a daylight saving transition.
+    pub fn checked_add(&self, duration: SignedDuration) -> Option<Self> {
+        let timestamp = self.to_timestamp().checked_add(duration).ok()?;
+        Some(self.tz.from_timestamp(timestamp))
+    }
+
+    /// Returns this value moved by a calendar span.
+    pub fn checked_add_nominal(&self, duration: NominalDuration) -> Option<Self> {
+        let moved = if duration.civil.is_zero() {
+            *self
+        } else {
+            self.tz
+                .from_local(self.local.checked_add(duration.civil).ok()?)?
+        };
+        if duration.exact.is_zero() {
+            Some(moved)
+        } else {
+            moved.checked_add(duration.exact)
+        }
+    }
+}
+
+impl PartialEq for ZonedDateTime {
+    /// Compares the instant, so the same moment read in two zones is equal.
+    fn eq(&self, other: &Self) -> bool {
+        self.to_timestamp() == other.to_timestamp()
+    }
+}
+
+impl Eq for ZonedDateTime {}
+
+impl PartialOrd for ZonedDateTime {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ZonedDateTime {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_timestamp().cmp(&other.to_timestamp())
+    }
+}
+
+impl Hash for ZonedDateTime {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.to_timestamp().hash(state);
+    }
+}
+
+impl std::fmt::Display for ZonedDateTime {
+    /// Writes the value in the form RFC 3339 defines, always spelling out the
+    /// offset.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Fixed(offset) => offset.fmt(f),
-            Self::Tz(offset) => offset.fmt(f),
-            Self::Floating => write!(f, "Floating"),
-        }
+        self.write_rfc3339(f, false)
     }
 }
 
-impl std::fmt::Display for RRuleOffset {
+impl std::fmt::Debug for ZonedDateTime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Fixed(offset) => offset.fmt(f),
-            Self::Tz(offset) => offset.fmt(f),
-            Self::Floating => write!(f, "Floating"),
-        }
+        write!(f, "{self} [{}]", self.tz)
     }
 }
 
-impl Offset for RRuleOffset {
-    fn fix(&self) -> FixedOffset {
-        match self {
-            Self::Fixed(tz) => tz.fix(),
-            Self::Tz(tz) => tz.fix(),
-            Self::Floating => FixedOffset::east_opt(0).unwrap(),
+impl ZonedDateTime {
+    /// Writes the value in the form RFC 3339 defines, abbreviating a zero
+    /// offset as `Z`.
+    fn write_rfc3339(&self, f: &mut std::fmt::Formatter<'_>, zulu: bool) -> std::fmt::Result {
+        let seconds = self.offset.seconds();
+        write!(
+            f,
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+            self.local.year(),
+            self.local.month(),
+            self.local.day(),
+            self.local.hour(),
+            self.local.minute(),
+            self.local.second(),
+        )?;
+        if zulu && seconds == 0 {
+            return f.write_str("Z");
         }
+        let (sign, seconds) = if seconds < 0 {
+            ('-', -seconds)
+        } else {
+            ('+', seconds)
+        };
+        write!(
+            f,
+            "{sign}{:02}:{:02}",
+            seconds / 3600,
+            (seconds % 3600) / 60
+        )
     }
 }
 
-impl TimeZone for Tz {
-    type Offset = RRuleOffset;
+#[cfg(any(test, feature = "serde"))]
+impl serde::Serialize for ZonedDateTime {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        /// Serializes with `Z` for a zero offset, the form RFC 3339 prefers
+        /// and the one a serialized expansion is read back from.
+        struct Zulu<'x>(&'x ZonedDateTime);
 
-    fn from_offset(offset: &Self::Offset) -> Self {
-        match offset {
-            RRuleOffset::Tz(offset) => Self::Tz(chrono_tz::Tz::from_offset(offset)),
-            RRuleOffset::Fixed(fixed_offset) => Self::Fixed(*fixed_offset),
-            RRuleOffset::Floating => Self::Floating,
+        impl std::fmt::Display for Zulu<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.write_rfc3339(f, true)
+            }
         }
-    }
 
-    #[allow(deprecated)]
-    fn offset_from_local_date(
-        &self,
-        local: &chrono::NaiveDate,
-    ) -> chrono::LocalResult<Self::Offset> {
-        match self {
-            Self::Fixed(tz) => tz
-                .from_local_date(local)
-                .map(|date| RRuleOffset::Fixed(*date.offset())),
-            Self::Tz(tz) => tz
-                .from_local_date(local)
-                .map(|date| RRuleOffset::Tz(*date.offset())),
-            Self::Floating => chrono::LocalResult::Single(RRuleOffset::Floating),
-        }
-    }
-
-    fn offset_from_local_datetime(
-        &self,
-        local: &chrono::NaiveDateTime,
-    ) -> chrono::LocalResult<Self::Offset> {
-        match self {
-            Self::Fixed(tz) => tz
-                .from_local_datetime(local)
-                .map(|date| RRuleOffset::Fixed(*date.offset())),
-            Self::Tz(tz) => tz
-                .from_local_datetime(local)
-                .map(|date| RRuleOffset::Tz(*date.offset())),
-            Self::Floating => chrono::LocalResult::Single(RRuleOffset::Floating),
-        }
-    }
-
-    #[allow(deprecated)]
-    fn offset_from_utc_date(&self, utc: &chrono::NaiveDate) -> Self::Offset {
-        match self {
-            Self::Fixed(tz) => RRuleOffset::Fixed(*tz.from_utc_date(utc).offset()),
-            Self::Tz(tz) => RRuleOffset::Tz(*tz.from_utc_date(utc).offset()),
-            Self::Floating => RRuleOffset::Floating,
-        }
-    }
-
-    fn offset_from_utc_datetime(&self, utc: &chrono::NaiveDateTime) -> Self::Offset {
-        match self {
-            Self::Fixed(tz) => RRuleOffset::Fixed(*tz.from_utc_datetime(utc).offset()),
-            Self::Tz(tz) => RRuleOffset::Tz(*tz.from_utc_datetime(utc).offset()),
-            Self::Floating => RRuleOffset::Floating,
-        }
+        serializer.collect_str(&Zulu(self))
     }
 }
 
-fn chrono_tz_to_id(tz: &chrono_tz::Tz) -> u16 {
-    match tz {
-        chrono_tz::Tz::Africa__Abidjan => 0,
-        chrono_tz::Tz::Africa__Accra => 1,
-        chrono_tz::Tz::Africa__Addis_Ababa => 2,
-        chrono_tz::Tz::Africa__Algiers => 3,
-        chrono_tz::Tz::Africa__Asmara => 4,
-        chrono_tz::Tz::Africa__Asmera => 5,
-        chrono_tz::Tz::Africa__Bamako => 6,
-        chrono_tz::Tz::Africa__Bangui => 7,
-        chrono_tz::Tz::Africa__Banjul => 8,
-        chrono_tz::Tz::Africa__Bissau => 9,
-        chrono_tz::Tz::Africa__Blantyre => 10,
-        chrono_tz::Tz::Africa__Brazzaville => 11,
-        chrono_tz::Tz::Africa__Bujumbura => 12,
-        chrono_tz::Tz::Africa__Cairo => 13,
-        chrono_tz::Tz::Africa__Casablanca => 14,
-        chrono_tz::Tz::Africa__Ceuta => 15,
-        chrono_tz::Tz::Africa__Conakry => 16,
-        chrono_tz::Tz::Africa__Dakar => 17,
-        chrono_tz::Tz::Africa__Dar_es_Salaam => 18,
-        chrono_tz::Tz::Africa__Djibouti => 19,
-        chrono_tz::Tz::Africa__Douala => 20,
-        chrono_tz::Tz::Africa__El_Aaiun => 21,
-        chrono_tz::Tz::Africa__Freetown => 22,
-        chrono_tz::Tz::Africa__Gaborone => 23,
-        chrono_tz::Tz::Africa__Harare => 24,
-        chrono_tz::Tz::Africa__Johannesburg => 25,
-        chrono_tz::Tz::Africa__Juba => 26,
-        chrono_tz::Tz::Africa__Kampala => 27,
-        chrono_tz::Tz::Africa__Khartoum => 28,
-        chrono_tz::Tz::Africa__Kigali => 29,
-        chrono_tz::Tz::Africa__Kinshasa => 30,
-        chrono_tz::Tz::Africa__Lagos => 31,
-        chrono_tz::Tz::Africa__Libreville => 32,
-        chrono_tz::Tz::Africa__Lome => 33,
-        chrono_tz::Tz::Africa__Luanda => 34,
-        chrono_tz::Tz::Africa__Lubumbashi => 35,
-        chrono_tz::Tz::Africa__Lusaka => 36,
-        chrono_tz::Tz::Africa__Malabo => 37,
-        chrono_tz::Tz::Africa__Maputo => 38,
-        chrono_tz::Tz::Africa__Maseru => 39,
-        chrono_tz::Tz::Africa__Mbabane => 40,
-        chrono_tz::Tz::Africa__Mogadishu => 41,
-        chrono_tz::Tz::Africa__Monrovia => 42,
-        chrono_tz::Tz::Africa__Nairobi => 43,
-        chrono_tz::Tz::Africa__Ndjamena => 44,
-        chrono_tz::Tz::Africa__Niamey => 45,
-        chrono_tz::Tz::Africa__Nouakchott => 46,
-        chrono_tz::Tz::Africa__Ouagadougou => 47,
-        chrono_tz::Tz::Africa__PortoNovo => 48,
-        chrono_tz::Tz::Africa__Sao_Tome => 49,
-        chrono_tz::Tz::Africa__Timbuktu => 50,
-        chrono_tz::Tz::Africa__Tripoli => 51,
-        chrono_tz::Tz::Africa__Tunis => 52,
-        chrono_tz::Tz::Africa__Windhoek => 53,
-        chrono_tz::Tz::America__Adak => 54,
-        chrono_tz::Tz::America__Anchorage => 55,
-        chrono_tz::Tz::America__Anguilla => 56,
-        chrono_tz::Tz::America__Antigua => 57,
-        chrono_tz::Tz::America__Araguaina => 58,
-        chrono_tz::Tz::America__Argentina__Buenos_Aires => 59,
-        chrono_tz::Tz::America__Argentina__Catamarca => 60,
-        chrono_tz::Tz::America__Argentina__ComodRivadavia => 61,
-        chrono_tz::Tz::America__Argentina__Cordoba => 62,
-        chrono_tz::Tz::America__Argentina__Jujuy => 63,
-        chrono_tz::Tz::America__Argentina__La_Rioja => 64,
-        chrono_tz::Tz::America__Argentina__Mendoza => 65,
-        chrono_tz::Tz::America__Argentina__Rio_Gallegos => 66,
-        chrono_tz::Tz::America__Argentina__Salta => 67,
-        chrono_tz::Tz::America__Argentina__San_Juan => 68,
-        chrono_tz::Tz::America__Argentina__San_Luis => 69,
-        chrono_tz::Tz::America__Argentina__Tucuman => 70,
-        chrono_tz::Tz::America__Argentina__Ushuaia => 71,
-        chrono_tz::Tz::America__Aruba => 72,
-        chrono_tz::Tz::America__Asuncion => 73,
-        chrono_tz::Tz::America__Atikokan => 74,
-        chrono_tz::Tz::America__Atka => 75,
-        chrono_tz::Tz::America__Bahia => 76,
-        chrono_tz::Tz::America__Bahia_Banderas => 77,
-        chrono_tz::Tz::America__Barbados => 78,
-        chrono_tz::Tz::America__Belem => 79,
-        chrono_tz::Tz::America__Belize => 80,
-        chrono_tz::Tz::America__BlancSablon => 81,
-        chrono_tz::Tz::America__Boa_Vista => 82,
-        chrono_tz::Tz::America__Bogota => 83,
-        chrono_tz::Tz::America__Boise => 84,
-        chrono_tz::Tz::America__Buenos_Aires => 85,
-        chrono_tz::Tz::America__Cambridge_Bay => 86,
-        chrono_tz::Tz::America__Campo_Grande => 87,
-        chrono_tz::Tz::America__Cancun => 88,
-        chrono_tz::Tz::America__Caracas => 89,
-        chrono_tz::Tz::America__Catamarca => 90,
-        chrono_tz::Tz::America__Cayenne => 91,
-        chrono_tz::Tz::America__Cayman => 92,
-        chrono_tz::Tz::America__Chicago => 93,
-        chrono_tz::Tz::America__Chihuahua => 94,
-        chrono_tz::Tz::America__Ciudad_Juarez => 95,
-        chrono_tz::Tz::America__Coral_Harbour => 96,
-        chrono_tz::Tz::America__Cordoba => 97,
-        chrono_tz::Tz::America__Costa_Rica => 98,
-        chrono_tz::Tz::America__Coyhaique => 99,
-        chrono_tz::Tz::America__Creston => 100,
-        chrono_tz::Tz::America__Cuiaba => 101,
-        chrono_tz::Tz::America__Curacao => 102,
-        chrono_tz::Tz::America__Danmarkshavn => 103,
-        chrono_tz::Tz::America__Dawson => 104,
-        chrono_tz::Tz::America__Dawson_Creek => 105,
-        chrono_tz::Tz::America__Denver => 106,
-        chrono_tz::Tz::America__Detroit => 107,
-        chrono_tz::Tz::America__Dominica => 108,
-        chrono_tz::Tz::America__Edmonton => 109,
-        chrono_tz::Tz::America__Eirunepe => 110,
-        chrono_tz::Tz::America__El_Salvador => 111,
-        chrono_tz::Tz::America__Ensenada => 112,
-        chrono_tz::Tz::America__Fort_Nelson => 113,
-        chrono_tz::Tz::America__Fort_Wayne => 114,
-        chrono_tz::Tz::America__Fortaleza => 115,
-        chrono_tz::Tz::America__Glace_Bay => 116,
-        chrono_tz::Tz::America__Godthab => 117,
-        chrono_tz::Tz::America__Goose_Bay => 118,
-        chrono_tz::Tz::America__Grand_Turk => 119,
-        chrono_tz::Tz::America__Grenada => 120,
-        chrono_tz::Tz::America__Guadeloupe => 121,
-        chrono_tz::Tz::America__Guatemala => 122,
-        chrono_tz::Tz::America__Guayaquil => 123,
-        chrono_tz::Tz::America__Guyana => 124,
-        chrono_tz::Tz::America__Halifax => 125,
-        chrono_tz::Tz::America__Havana => 126,
-        chrono_tz::Tz::America__Hermosillo => 127,
-        chrono_tz::Tz::America__Indiana__Indianapolis => 128,
-        chrono_tz::Tz::America__Indiana__Knox => 129,
-        chrono_tz::Tz::America__Indiana__Marengo => 130,
-        chrono_tz::Tz::America__Indiana__Petersburg => 131,
-        chrono_tz::Tz::America__Indiana__Tell_City => 132,
-        chrono_tz::Tz::America__Indiana__Vevay => 133,
-        chrono_tz::Tz::America__Indiana__Vincennes => 134,
-        chrono_tz::Tz::America__Indiana__Winamac => 135,
-        chrono_tz::Tz::America__Indianapolis => 136,
-        chrono_tz::Tz::America__Inuvik => 137,
-        chrono_tz::Tz::America__Iqaluit => 138,
-        chrono_tz::Tz::America__Jamaica => 139,
-        chrono_tz::Tz::America__Jujuy => 140,
-        chrono_tz::Tz::America__Juneau => 141,
-        chrono_tz::Tz::America__Kentucky__Louisville => 142,
-        chrono_tz::Tz::America__Kentucky__Monticello => 143,
-        chrono_tz::Tz::America__Knox_IN => 144,
-        chrono_tz::Tz::America__Kralendijk => 145,
-        chrono_tz::Tz::America__La_Paz => 146,
-        chrono_tz::Tz::America__Lima => 147,
-        chrono_tz::Tz::America__Los_Angeles => 148,
-        chrono_tz::Tz::America__Louisville => 149,
-        chrono_tz::Tz::America__Lower_Princes => 150,
-        chrono_tz::Tz::America__Maceio => 151,
-        chrono_tz::Tz::America__Managua => 152,
-        chrono_tz::Tz::America__Manaus => 153,
-        chrono_tz::Tz::America__Marigot => 154,
-        chrono_tz::Tz::America__Martinique => 155,
-        chrono_tz::Tz::America__Matamoros => 156,
-        chrono_tz::Tz::America__Mazatlan => 157,
-        chrono_tz::Tz::America__Mendoza => 158,
-        chrono_tz::Tz::America__Menominee => 159,
-        chrono_tz::Tz::America__Merida => 160,
-        chrono_tz::Tz::America__Metlakatla => 161,
-        chrono_tz::Tz::America__Mexico_City => 162,
-        chrono_tz::Tz::America__Miquelon => 163,
-        chrono_tz::Tz::America__Moncton => 164,
-        chrono_tz::Tz::America__Monterrey => 165,
-        chrono_tz::Tz::America__Montevideo => 166,
-        chrono_tz::Tz::America__Montreal => 167,
-        chrono_tz::Tz::America__Montserrat => 168,
-        chrono_tz::Tz::America__Nassau => 169,
-        chrono_tz::Tz::America__New_York => 170,
-        chrono_tz::Tz::America__Nipigon => 171,
-        chrono_tz::Tz::America__Nome => 172,
-        chrono_tz::Tz::America__Noronha => 173,
-        chrono_tz::Tz::America__North_Dakota__Beulah => 174,
-        chrono_tz::Tz::America__North_Dakota__Center => 175,
-        chrono_tz::Tz::America__North_Dakota__New_Salem => 176,
-        chrono_tz::Tz::America__Nuuk => 177,
-        chrono_tz::Tz::America__Ojinaga => 178,
-        chrono_tz::Tz::America__Panama => 179,
-        chrono_tz::Tz::America__Pangnirtung => 180,
-        chrono_tz::Tz::America__Paramaribo => 181,
-        chrono_tz::Tz::America__Phoenix => 182,
-        chrono_tz::Tz::America__PortauPrince => 183,
-        chrono_tz::Tz::America__Port_of_Spain => 184,
-        chrono_tz::Tz::America__Porto_Acre => 185,
-        chrono_tz::Tz::America__Porto_Velho => 186,
-        chrono_tz::Tz::America__Puerto_Rico => 187,
-        chrono_tz::Tz::America__Punta_Arenas => 188,
-        chrono_tz::Tz::America__Rainy_River => 189,
-        chrono_tz::Tz::America__Rankin_Inlet => 190,
-        chrono_tz::Tz::America__Recife => 191,
-        chrono_tz::Tz::America__Regina => 192,
-        chrono_tz::Tz::America__Resolute => 193,
-        chrono_tz::Tz::America__Rio_Branco => 194,
-        chrono_tz::Tz::America__Rosario => 195,
-        chrono_tz::Tz::America__Santa_Isabel => 196,
-        chrono_tz::Tz::America__Santarem => 197,
-        chrono_tz::Tz::America__Santiago => 198,
-        chrono_tz::Tz::America__Santo_Domingo => 199,
-        chrono_tz::Tz::America__Sao_Paulo => 200,
-        chrono_tz::Tz::America__Scoresbysund => 201,
-        chrono_tz::Tz::America__Shiprock => 202,
-        chrono_tz::Tz::America__Sitka => 203,
-        chrono_tz::Tz::America__St_Barthelemy => 204,
-        chrono_tz::Tz::America__St_Johns => 205,
-        chrono_tz::Tz::America__St_Kitts => 206,
-        chrono_tz::Tz::America__St_Lucia => 207,
-        chrono_tz::Tz::America__St_Thomas => 208,
-        chrono_tz::Tz::America__St_Vincent => 209,
-        chrono_tz::Tz::America__Swift_Current => 210,
-        chrono_tz::Tz::America__Tegucigalpa => 211,
-        chrono_tz::Tz::America__Thule => 212,
-        chrono_tz::Tz::America__Thunder_Bay => 213,
-        chrono_tz::Tz::America__Tijuana => 214,
-        chrono_tz::Tz::America__Toronto => 215,
-        chrono_tz::Tz::America__Tortola => 216,
-        chrono_tz::Tz::America__Vancouver => 217,
-        chrono_tz::Tz::America__Virgin => 218,
-        chrono_tz::Tz::America__Whitehorse => 219,
-        chrono_tz::Tz::America__Winnipeg => 220,
-        chrono_tz::Tz::America__Yakutat => 221,
-        chrono_tz::Tz::America__Yellowknife => 222,
-        chrono_tz::Tz::Antarctica__Casey => 223,
-        chrono_tz::Tz::Antarctica__Davis => 224,
-        chrono_tz::Tz::Antarctica__DumontDUrville => 225,
-        chrono_tz::Tz::Antarctica__Macquarie => 226,
-        chrono_tz::Tz::Antarctica__Mawson => 227,
-        chrono_tz::Tz::Antarctica__McMurdo => 228,
-        chrono_tz::Tz::Antarctica__Palmer => 229,
-        chrono_tz::Tz::Antarctica__Rothera => 230,
-        chrono_tz::Tz::Antarctica__South_Pole => 231,
-        chrono_tz::Tz::Antarctica__Syowa => 232,
-        chrono_tz::Tz::Antarctica__Troll => 233,
-        chrono_tz::Tz::Antarctica__Vostok => 234,
-        chrono_tz::Tz::Arctic__Longyearbyen => 235,
-        chrono_tz::Tz::Asia__Aden => 236,
-        chrono_tz::Tz::Asia__Almaty => 237,
-        chrono_tz::Tz::Asia__Amman => 238,
-        chrono_tz::Tz::Asia__Anadyr => 239,
-        chrono_tz::Tz::Asia__Aqtau => 240,
-        chrono_tz::Tz::Asia__Aqtobe => 241,
-        chrono_tz::Tz::Asia__Ashgabat => 242,
-        chrono_tz::Tz::Asia__Ashkhabad => 243,
-        chrono_tz::Tz::Asia__Atyrau => 244,
-        chrono_tz::Tz::Asia__Baghdad => 245,
-        chrono_tz::Tz::Asia__Bahrain => 246,
-        chrono_tz::Tz::Asia__Baku => 247,
-        chrono_tz::Tz::Asia__Bangkok => 248,
-        chrono_tz::Tz::Asia__Barnaul => 249,
-        chrono_tz::Tz::Asia__Beirut => 250,
-        chrono_tz::Tz::Asia__Bishkek => 251,
-        chrono_tz::Tz::Asia__Brunei => 252,
-        chrono_tz::Tz::Asia__Calcutta => 253,
-        chrono_tz::Tz::Asia__Chita => 254,
-        chrono_tz::Tz::Asia__Choibalsan => 255,
-        chrono_tz::Tz::Asia__Chongqing => 256,
-        chrono_tz::Tz::Asia__Chungking => 257,
-        chrono_tz::Tz::Asia__Colombo => 258,
-        chrono_tz::Tz::Asia__Dacca => 259,
-        chrono_tz::Tz::Asia__Damascus => 260,
-        chrono_tz::Tz::Asia__Dhaka => 261,
-        chrono_tz::Tz::Asia__Dili => 262,
-        chrono_tz::Tz::Asia__Dubai => 263,
-        chrono_tz::Tz::Asia__Dushanbe => 264,
-        chrono_tz::Tz::Asia__Famagusta => 265,
-        chrono_tz::Tz::Asia__Gaza => 266,
-        chrono_tz::Tz::Asia__Harbin => 267,
-        chrono_tz::Tz::Asia__Hebron => 268,
-        chrono_tz::Tz::Asia__Ho_Chi_Minh => 269,
-        chrono_tz::Tz::Asia__Hong_Kong => 270,
-        chrono_tz::Tz::Asia__Hovd => 271,
-        chrono_tz::Tz::Asia__Irkutsk => 272,
-        chrono_tz::Tz::Asia__Istanbul => 273,
-        chrono_tz::Tz::Asia__Jakarta => 274,
-        chrono_tz::Tz::Asia__Jayapura => 275,
-        chrono_tz::Tz::Asia__Jerusalem => 276,
-        chrono_tz::Tz::Asia__Kabul => 277,
-        chrono_tz::Tz::Asia__Kamchatka => 278,
-        chrono_tz::Tz::Asia__Karachi => 279,
-        chrono_tz::Tz::Asia__Kashgar => 280,
-        chrono_tz::Tz::Asia__Kathmandu => 281,
-        chrono_tz::Tz::Asia__Katmandu => 282,
-        chrono_tz::Tz::Asia__Khandyga => 283,
-        chrono_tz::Tz::Asia__Kolkata => 284,
-        chrono_tz::Tz::Asia__Krasnoyarsk => 285,
-        chrono_tz::Tz::Asia__Kuala_Lumpur => 286,
-        chrono_tz::Tz::Asia__Kuching => 287,
-        chrono_tz::Tz::Asia__Kuwait => 288,
-        chrono_tz::Tz::Asia__Macao => 289,
-        chrono_tz::Tz::Asia__Macau => 290,
-        chrono_tz::Tz::Asia__Magadan => 291,
-        chrono_tz::Tz::Asia__Makassar => 292,
-        chrono_tz::Tz::Asia__Manila => 293,
-        chrono_tz::Tz::Asia__Muscat => 294,
-        chrono_tz::Tz::Asia__Nicosia => 295,
-        chrono_tz::Tz::Asia__Novokuznetsk => 296,
-        chrono_tz::Tz::Asia__Novosibirsk => 297,
-        chrono_tz::Tz::Asia__Omsk => 298,
-        chrono_tz::Tz::Asia__Oral => 299,
-        chrono_tz::Tz::Asia__Phnom_Penh => 300,
-        chrono_tz::Tz::Asia__Pontianak => 301,
-        chrono_tz::Tz::Asia__Pyongyang => 302,
-        chrono_tz::Tz::Asia__Qatar => 303,
-        chrono_tz::Tz::Asia__Qostanay => 304,
-        chrono_tz::Tz::Asia__Qyzylorda => 305,
-        chrono_tz::Tz::Asia__Rangoon => 306,
-        chrono_tz::Tz::Asia__Riyadh => 307,
-        chrono_tz::Tz::Asia__Saigon => 308,
-        chrono_tz::Tz::Asia__Sakhalin => 309,
-        chrono_tz::Tz::Asia__Samarkand => 310,
-        chrono_tz::Tz::Asia__Seoul => 311,
-        chrono_tz::Tz::Asia__Shanghai => 312,
-        chrono_tz::Tz::Asia__Singapore => 313,
-        chrono_tz::Tz::Asia__Srednekolymsk => 314,
-        chrono_tz::Tz::Asia__Taipei => 315,
-        chrono_tz::Tz::Asia__Tashkent => 316,
-        chrono_tz::Tz::Asia__Tbilisi => 317,
-        chrono_tz::Tz::Asia__Tehran => 318,
-        chrono_tz::Tz::Asia__Tel_Aviv => 319,
-        chrono_tz::Tz::Asia__Thimbu => 320,
-        chrono_tz::Tz::Asia__Thimphu => 321,
-        chrono_tz::Tz::Asia__Tokyo => 322,
-        chrono_tz::Tz::Asia__Tomsk => 323,
-        chrono_tz::Tz::Asia__Ujung_Pandang => 324,
-        chrono_tz::Tz::Asia__Ulaanbaatar => 325,
-        chrono_tz::Tz::Asia__Ulan_Bator => 326,
-        chrono_tz::Tz::Asia__Urumqi => 327,
-        chrono_tz::Tz::Asia__UstNera => 328,
-        chrono_tz::Tz::Asia__Vientiane => 329,
-        chrono_tz::Tz::Asia__Vladivostok => 330,
-        chrono_tz::Tz::Asia__Yakutsk => 331,
-        chrono_tz::Tz::Asia__Yangon => 332,
-        chrono_tz::Tz::Asia__Yekaterinburg => 333,
-        chrono_tz::Tz::Asia__Yerevan => 334,
-        chrono_tz::Tz::Atlantic__Azores => 335,
-        chrono_tz::Tz::Atlantic__Bermuda => 336,
-        chrono_tz::Tz::Atlantic__Canary => 337,
-        chrono_tz::Tz::Atlantic__Cape_Verde => 338,
-        chrono_tz::Tz::Atlantic__Faeroe => 339,
-        chrono_tz::Tz::Atlantic__Faroe => 340,
-        chrono_tz::Tz::Atlantic__Jan_Mayen => 341,
-        chrono_tz::Tz::Atlantic__Madeira => 342,
-        chrono_tz::Tz::Atlantic__Reykjavik => 343,
-        chrono_tz::Tz::Atlantic__South_Georgia => 344,
-        chrono_tz::Tz::Atlantic__St_Helena => 345,
-        chrono_tz::Tz::Atlantic__Stanley => 346,
-        chrono_tz::Tz::Australia__ACT => 347,
-        chrono_tz::Tz::Australia__Adelaide => 348,
-        chrono_tz::Tz::Australia__Brisbane => 349,
-        chrono_tz::Tz::Australia__Broken_Hill => 350,
-        chrono_tz::Tz::Australia__Canberra => 351,
-        chrono_tz::Tz::Australia__Currie => 352,
-        chrono_tz::Tz::Australia__Darwin => 353,
-        chrono_tz::Tz::Australia__Eucla => 354,
-        chrono_tz::Tz::Australia__Hobart => 355,
-        chrono_tz::Tz::Australia__LHI => 356,
-        chrono_tz::Tz::Australia__Lindeman => 357,
-        chrono_tz::Tz::Australia__Lord_Howe => 358,
-        chrono_tz::Tz::Australia__Melbourne => 359,
-        chrono_tz::Tz::Australia__NSW => 360,
-        chrono_tz::Tz::Australia__North => 361,
-        chrono_tz::Tz::Australia__Perth => 362,
-        chrono_tz::Tz::Australia__Queensland => 363,
-        chrono_tz::Tz::Australia__South => 364,
-        chrono_tz::Tz::Australia__Sydney => 365,
-        chrono_tz::Tz::Australia__Tasmania => 366,
-        chrono_tz::Tz::Australia__Victoria => 367,
-        chrono_tz::Tz::Australia__West => 368,
-        chrono_tz::Tz::Australia__Yancowinna => 369,
-        chrono_tz::Tz::Brazil__Acre => 370,
-        chrono_tz::Tz::Brazil__DeNoronha => 371,
-        chrono_tz::Tz::Brazil__East => 372,
-        chrono_tz::Tz::Brazil__West => 373,
-        chrono_tz::Tz::CET => 374,
-        chrono_tz::Tz::CST6CDT => 375,
-        chrono_tz::Tz::Canada__Atlantic => 376,
-        chrono_tz::Tz::Canada__Central => 377,
-        chrono_tz::Tz::Canada__Eastern => 378,
-        chrono_tz::Tz::Canada__Mountain => 379,
-        chrono_tz::Tz::Canada__Newfoundland => 380,
-        chrono_tz::Tz::Canada__Pacific => 381,
-        chrono_tz::Tz::Canada__Saskatchewan => 382,
-        chrono_tz::Tz::Canada__Yukon => 383,
-        chrono_tz::Tz::Chile__Continental => 384,
-        chrono_tz::Tz::Chile__EasterIsland => 385,
-        chrono_tz::Tz::Cuba => 386,
-        chrono_tz::Tz::EET => 387,
-        chrono_tz::Tz::EST => 388,
-        chrono_tz::Tz::EST5EDT => 389,
-        chrono_tz::Tz::Egypt => 390,
-        chrono_tz::Tz::Eire => 391,
-        chrono_tz::Tz::Etc__GMT => 392,
-        chrono_tz::Tz::Etc__GMTPlus0 => 393,
-        chrono_tz::Tz::Etc__GMTPlus1 => 394,
-        chrono_tz::Tz::Etc__GMTPlus10 => 395,
-        chrono_tz::Tz::Etc__GMTPlus11 => 396,
-        chrono_tz::Tz::Etc__GMTPlus12 => 397,
-        chrono_tz::Tz::Etc__GMTPlus2 => 398,
-        chrono_tz::Tz::Etc__GMTPlus3 => 399,
-        chrono_tz::Tz::Etc__GMTPlus4 => 400,
-        chrono_tz::Tz::Etc__GMTPlus5 => 401,
-        chrono_tz::Tz::Etc__GMTPlus6 => 402,
-        chrono_tz::Tz::Etc__GMTPlus7 => 403,
-        chrono_tz::Tz::Etc__GMTPlus8 => 404,
-        chrono_tz::Tz::Etc__GMTPlus9 => 405,
-        chrono_tz::Tz::Etc__GMTMinus0 => 406,
-        chrono_tz::Tz::Etc__GMTMinus1 => 407,
-        chrono_tz::Tz::Etc__GMTMinus10 => 408,
-        chrono_tz::Tz::Etc__GMTMinus11 => 409,
-        chrono_tz::Tz::Etc__GMTMinus12 => 410,
-        chrono_tz::Tz::Etc__GMTMinus13 => 411,
-        chrono_tz::Tz::Etc__GMTMinus14 => 412,
-        chrono_tz::Tz::Etc__GMTMinus2 => 413,
-        chrono_tz::Tz::Etc__GMTMinus3 => 414,
-        chrono_tz::Tz::Etc__GMTMinus4 => 415,
-        chrono_tz::Tz::Etc__GMTMinus5 => 416,
-        chrono_tz::Tz::Etc__GMTMinus6 => 417,
-        chrono_tz::Tz::Etc__GMTMinus7 => 418,
-        chrono_tz::Tz::Etc__GMTMinus8 => 419,
-        chrono_tz::Tz::Etc__GMTMinus9 => 420,
-        chrono_tz::Tz::Etc__GMT0 => 421,
-        chrono_tz::Tz::Etc__Greenwich => 422,
-        chrono_tz::Tz::Etc__UCT => 423,
-        chrono_tz::Tz::Etc__UTC => 424,
-        chrono_tz::Tz::Etc__Universal => 425,
-        chrono_tz::Tz::Etc__Zulu => 426,
-        chrono_tz::Tz::Europe__Amsterdam => 427,
-        chrono_tz::Tz::Europe__Andorra => 428,
-        chrono_tz::Tz::Europe__Astrakhan => 429,
-        chrono_tz::Tz::Europe__Athens => 430,
-        chrono_tz::Tz::Europe__Belfast => 431,
-        chrono_tz::Tz::Europe__Belgrade => 432,
-        chrono_tz::Tz::Europe__Berlin => 433,
-        chrono_tz::Tz::Europe__Bratislava => 434,
-        chrono_tz::Tz::Europe__Brussels => 435,
-        chrono_tz::Tz::Europe__Bucharest => 436,
-        chrono_tz::Tz::Europe__Budapest => 437,
-        chrono_tz::Tz::Europe__Busingen => 438,
-        chrono_tz::Tz::Europe__Chisinau => 439,
-        chrono_tz::Tz::Europe__Copenhagen => 440,
-        chrono_tz::Tz::Europe__Dublin => 441,
-        chrono_tz::Tz::Europe__Gibraltar => 442,
-        chrono_tz::Tz::Europe__Guernsey => 443,
-        chrono_tz::Tz::Europe__Helsinki => 444,
-        chrono_tz::Tz::Europe__Isle_of_Man => 445,
-        chrono_tz::Tz::Europe__Istanbul => 446,
-        chrono_tz::Tz::Europe__Jersey => 447,
-        chrono_tz::Tz::Europe__Kaliningrad => 448,
-        chrono_tz::Tz::Europe__Kiev => 449,
-        chrono_tz::Tz::Europe__Kirov => 450,
-        chrono_tz::Tz::Europe__Kyiv => 451,
-        chrono_tz::Tz::Europe__Lisbon => 452,
-        chrono_tz::Tz::Europe__Ljubljana => 453,
-        chrono_tz::Tz::Europe__London => 454,
-        chrono_tz::Tz::Europe__Luxembourg => 455,
-        chrono_tz::Tz::Europe__Madrid => 456,
-        chrono_tz::Tz::Europe__Malta => 457,
-        chrono_tz::Tz::Europe__Mariehamn => 458,
-        chrono_tz::Tz::Europe__Minsk => 459,
-        chrono_tz::Tz::Europe__Monaco => 460,
-        chrono_tz::Tz::Europe__Moscow => 461,
-        chrono_tz::Tz::Europe__Nicosia => 462,
-        chrono_tz::Tz::Europe__Oslo => 463,
-        chrono_tz::Tz::Europe__Paris => 464,
-        chrono_tz::Tz::Europe__Podgorica => 465,
-        chrono_tz::Tz::Europe__Prague => 466,
-        chrono_tz::Tz::Europe__Riga => 467,
-        chrono_tz::Tz::Europe__Rome => 468,
-        chrono_tz::Tz::Europe__Samara => 469,
-        chrono_tz::Tz::Europe__San_Marino => 470,
-        chrono_tz::Tz::Europe__Sarajevo => 471,
-        chrono_tz::Tz::Europe__Saratov => 472,
-        chrono_tz::Tz::Europe__Simferopol => 473,
-        chrono_tz::Tz::Europe__Skopje => 474,
-        chrono_tz::Tz::Europe__Sofia => 475,
-        chrono_tz::Tz::Europe__Stockholm => 476,
-        chrono_tz::Tz::Europe__Tallinn => 477,
-        chrono_tz::Tz::Europe__Tirane => 478,
-        chrono_tz::Tz::Europe__Tiraspol => 479,
-        chrono_tz::Tz::Europe__Ulyanovsk => 480,
-        chrono_tz::Tz::Europe__Uzhgorod => 481,
-        chrono_tz::Tz::Europe__Vaduz => 482,
-        chrono_tz::Tz::Europe__Vatican => 483,
-        chrono_tz::Tz::Europe__Vienna => 484,
-        chrono_tz::Tz::Europe__Vilnius => 485,
-        chrono_tz::Tz::Europe__Volgograd => 486,
-        chrono_tz::Tz::Europe__Warsaw => 487,
-        chrono_tz::Tz::Europe__Zagreb => 488,
-        chrono_tz::Tz::Europe__Zaporozhye => 489,
-        chrono_tz::Tz::Europe__Zurich => 490,
-        chrono_tz::Tz::GB => 491,
-        chrono_tz::Tz::GBEire => 492,
-        chrono_tz::Tz::GMT => 493,
-        chrono_tz::Tz::GMTPlus0 => 494,
-        chrono_tz::Tz::GMTMinus0 => 495,
-        chrono_tz::Tz::GMT0 => 496,
-        chrono_tz::Tz::Greenwich => 497,
-        chrono_tz::Tz::HST => 498,
-        chrono_tz::Tz::Hongkong => 499,
-        chrono_tz::Tz::Iceland => 500,
-        chrono_tz::Tz::Indian__Antananarivo => 501,
-        chrono_tz::Tz::Indian__Chagos => 502,
-        chrono_tz::Tz::Indian__Christmas => 503,
-        chrono_tz::Tz::Indian__Cocos => 504,
-        chrono_tz::Tz::Indian__Comoro => 505,
-        chrono_tz::Tz::Indian__Kerguelen => 506,
-        chrono_tz::Tz::Indian__Mahe => 507,
-        chrono_tz::Tz::Indian__Maldives => 508,
-        chrono_tz::Tz::Indian__Mauritius => 509,
-        chrono_tz::Tz::Indian__Mayotte => 510,
-        chrono_tz::Tz::Indian__Reunion => 511,
-        chrono_tz::Tz::Iran => 512,
-        chrono_tz::Tz::Israel => 513,
-        chrono_tz::Tz::Jamaica => 514,
-        chrono_tz::Tz::Japan => 515,
-        chrono_tz::Tz::Kwajalein => 516,
-        chrono_tz::Tz::Libya => 517,
-        chrono_tz::Tz::MET => 518,
-        chrono_tz::Tz::MST => 519,
-        chrono_tz::Tz::MST7MDT => 520,
-        chrono_tz::Tz::Mexico__BajaNorte => 521,
-        chrono_tz::Tz::Mexico__BajaSur => 522,
-        chrono_tz::Tz::Mexico__General => 523,
-        chrono_tz::Tz::NZ => 524,
-        chrono_tz::Tz::NZCHAT => 525,
-        chrono_tz::Tz::Navajo => 526,
-        chrono_tz::Tz::PRC => 527,
-        chrono_tz::Tz::PST8PDT => 528,
-        chrono_tz::Tz::Pacific__Apia => 529,
-        chrono_tz::Tz::Pacific__Auckland => 530,
-        chrono_tz::Tz::Pacific__Bougainville => 531,
-        chrono_tz::Tz::Pacific__Chatham => 532,
-        chrono_tz::Tz::Pacific__Chuuk => 533,
-        chrono_tz::Tz::Pacific__Easter => 534,
-        chrono_tz::Tz::Pacific__Efate => 535,
-        chrono_tz::Tz::Pacific__Enderbury => 536,
-        chrono_tz::Tz::Pacific__Fakaofo => 537,
-        chrono_tz::Tz::Pacific__Fiji => 538,
-        chrono_tz::Tz::Pacific__Funafuti => 539,
-        chrono_tz::Tz::Pacific__Galapagos => 540,
-        chrono_tz::Tz::Pacific__Gambier => 541,
-        chrono_tz::Tz::Pacific__Guadalcanal => 542,
-        chrono_tz::Tz::Pacific__Guam => 543,
-        chrono_tz::Tz::Pacific__Honolulu => 544,
-        chrono_tz::Tz::Pacific__Johnston => 545,
-        chrono_tz::Tz::Pacific__Kanton => 546,
-        chrono_tz::Tz::Pacific__Kiritimati => 547,
-        chrono_tz::Tz::Pacific__Kosrae => 548,
-        chrono_tz::Tz::Pacific__Kwajalein => 549,
-        chrono_tz::Tz::Pacific__Majuro => 550,
-        chrono_tz::Tz::Pacific__Marquesas => 551,
-        chrono_tz::Tz::Pacific__Midway => 552,
-        chrono_tz::Tz::Pacific__Nauru => 553,
-        chrono_tz::Tz::Pacific__Niue => 554,
-        chrono_tz::Tz::Pacific__Norfolk => 555,
-        chrono_tz::Tz::Pacific__Noumea => 556,
-        chrono_tz::Tz::Pacific__Pago_Pago => 557,
-        chrono_tz::Tz::Pacific__Palau => 558,
-        chrono_tz::Tz::Pacific__Pitcairn => 559,
-        chrono_tz::Tz::Pacific__Pohnpei => 560,
-        chrono_tz::Tz::Pacific__Ponape => 561,
-        chrono_tz::Tz::Pacific__Port_Moresby => 562,
-        chrono_tz::Tz::Pacific__Rarotonga => 563,
-        chrono_tz::Tz::Pacific__Saipan => 564,
-        chrono_tz::Tz::Pacific__Samoa => 565,
-        chrono_tz::Tz::Pacific__Tahiti => 566,
-        chrono_tz::Tz::Pacific__Tarawa => 567,
-        chrono_tz::Tz::Pacific__Tongatapu => 568,
-        chrono_tz::Tz::Pacific__Truk => 569,
-        chrono_tz::Tz::Pacific__Wake => 570,
-        chrono_tz::Tz::Pacific__Wallis => 571,
-        chrono_tz::Tz::Pacific__Yap => 572,
-        chrono_tz::Tz::Poland => 573,
-        chrono_tz::Tz::Portugal => 574,
-        chrono_tz::Tz::ROC => 575,
-        chrono_tz::Tz::ROK => 576,
-        chrono_tz::Tz::Singapore => 577,
-        chrono_tz::Tz::Turkey => 578,
-        chrono_tz::Tz::UCT => 579,
-        chrono_tz::Tz::US__Alaska => 580,
-        chrono_tz::Tz::US__Aleutian => 581,
-        chrono_tz::Tz::US__Arizona => 582,
-        chrono_tz::Tz::US__Central => 583,
-        chrono_tz::Tz::US__EastIndiana => 584,
-        chrono_tz::Tz::US__Eastern => 585,
-        chrono_tz::Tz::US__Hawaii => 586,
-        chrono_tz::Tz::US__IndianaStarke => 587,
-        chrono_tz::Tz::US__Michigan => 588,
-        chrono_tz::Tz::US__Mountain => 589,
-        chrono_tz::Tz::US__Pacific => 590,
-        chrono_tz::Tz::US__Samoa => 591,
-        chrono_tz::Tz::UTC => 592,
-        chrono_tz::Tz::Universal => 593,
-        chrono_tz::Tz::WSU => 594,
-        chrono_tz::Tz::WET => 595,
-        chrono_tz::Tz::Zulu => 596,
+impl PartialDateTime {
+    pub fn to_date_time_with_tz(&self, tz: Tz) -> Option<ZonedDateTime> {
+        self.to_date_time()
+            .and_then(|dt| dt.to_date_time_with_tz(tz))
     }
 }
 
-fn id_to_chrono_tz(id: u16) -> Option<chrono_tz::Tz> {
-    match id {
-        0 => Some(chrono_tz::Tz::Africa__Abidjan),
-        1 => Some(chrono_tz::Tz::Africa__Accra),
-        2 => Some(chrono_tz::Tz::Africa__Addis_Ababa),
-        3 => Some(chrono_tz::Tz::Africa__Algiers),
-        4 => Some(chrono_tz::Tz::Africa__Asmara),
-        5 => Some(chrono_tz::Tz::Africa__Asmera),
-        6 => Some(chrono_tz::Tz::Africa__Bamako),
-        7 => Some(chrono_tz::Tz::Africa__Bangui),
-        8 => Some(chrono_tz::Tz::Africa__Banjul),
-        9 => Some(chrono_tz::Tz::Africa__Bissau),
-        10 => Some(chrono_tz::Tz::Africa__Blantyre),
-        11 => Some(chrono_tz::Tz::Africa__Brazzaville),
-        12 => Some(chrono_tz::Tz::Africa__Bujumbura),
-        13 => Some(chrono_tz::Tz::Africa__Cairo),
-        14 => Some(chrono_tz::Tz::Africa__Casablanca),
-        15 => Some(chrono_tz::Tz::Africa__Ceuta),
-        16 => Some(chrono_tz::Tz::Africa__Conakry),
-        17 => Some(chrono_tz::Tz::Africa__Dakar),
-        18 => Some(chrono_tz::Tz::Africa__Dar_es_Salaam),
-        19 => Some(chrono_tz::Tz::Africa__Djibouti),
-        20 => Some(chrono_tz::Tz::Africa__Douala),
-        21 => Some(chrono_tz::Tz::Africa__El_Aaiun),
-        22 => Some(chrono_tz::Tz::Africa__Freetown),
-        23 => Some(chrono_tz::Tz::Africa__Gaborone),
-        24 => Some(chrono_tz::Tz::Africa__Harare),
-        25 => Some(chrono_tz::Tz::Africa__Johannesburg),
-        26 => Some(chrono_tz::Tz::Africa__Juba),
-        27 => Some(chrono_tz::Tz::Africa__Kampala),
-        28 => Some(chrono_tz::Tz::Africa__Khartoum),
-        29 => Some(chrono_tz::Tz::Africa__Kigali),
-        30 => Some(chrono_tz::Tz::Africa__Kinshasa),
-        31 => Some(chrono_tz::Tz::Africa__Lagos),
-        32 => Some(chrono_tz::Tz::Africa__Libreville),
-        33 => Some(chrono_tz::Tz::Africa__Lome),
-        34 => Some(chrono_tz::Tz::Africa__Luanda),
-        35 => Some(chrono_tz::Tz::Africa__Lubumbashi),
-        36 => Some(chrono_tz::Tz::Africa__Lusaka),
-        37 => Some(chrono_tz::Tz::Africa__Malabo),
-        38 => Some(chrono_tz::Tz::Africa__Maputo),
-        39 => Some(chrono_tz::Tz::Africa__Maseru),
-        40 => Some(chrono_tz::Tz::Africa__Mbabane),
-        41 => Some(chrono_tz::Tz::Africa__Mogadishu),
-        42 => Some(chrono_tz::Tz::Africa__Monrovia),
-        43 => Some(chrono_tz::Tz::Africa__Nairobi),
-        44 => Some(chrono_tz::Tz::Africa__Ndjamena),
-        45 => Some(chrono_tz::Tz::Africa__Niamey),
-        46 => Some(chrono_tz::Tz::Africa__Nouakchott),
-        47 => Some(chrono_tz::Tz::Africa__Ouagadougou),
-        48 => Some(chrono_tz::Tz::Africa__PortoNovo),
-        49 => Some(chrono_tz::Tz::Africa__Sao_Tome),
-        50 => Some(chrono_tz::Tz::Africa__Timbuktu),
-        51 => Some(chrono_tz::Tz::Africa__Tripoli),
-        52 => Some(chrono_tz::Tz::Africa__Tunis),
-        53 => Some(chrono_tz::Tz::Africa__Windhoek),
-        54 => Some(chrono_tz::Tz::America__Adak),
-        55 => Some(chrono_tz::Tz::America__Anchorage),
-        56 => Some(chrono_tz::Tz::America__Anguilla),
-        57 => Some(chrono_tz::Tz::America__Antigua),
-        58 => Some(chrono_tz::Tz::America__Araguaina),
-        59 => Some(chrono_tz::Tz::America__Argentina__Buenos_Aires),
-        60 => Some(chrono_tz::Tz::America__Argentina__Catamarca),
-        61 => Some(chrono_tz::Tz::America__Argentina__ComodRivadavia),
-        62 => Some(chrono_tz::Tz::America__Argentina__Cordoba),
-        63 => Some(chrono_tz::Tz::America__Argentina__Jujuy),
-        64 => Some(chrono_tz::Tz::America__Argentina__La_Rioja),
-        65 => Some(chrono_tz::Tz::America__Argentina__Mendoza),
-        66 => Some(chrono_tz::Tz::America__Argentina__Rio_Gallegos),
-        67 => Some(chrono_tz::Tz::America__Argentina__Salta),
-        68 => Some(chrono_tz::Tz::America__Argentina__San_Juan),
-        69 => Some(chrono_tz::Tz::America__Argentina__San_Luis),
-        70 => Some(chrono_tz::Tz::America__Argentina__Tucuman),
-        71 => Some(chrono_tz::Tz::America__Argentina__Ushuaia),
-        72 => Some(chrono_tz::Tz::America__Aruba),
-        73 => Some(chrono_tz::Tz::America__Asuncion),
-        74 => Some(chrono_tz::Tz::America__Atikokan),
-        75 => Some(chrono_tz::Tz::America__Atka),
-        76 => Some(chrono_tz::Tz::America__Bahia),
-        77 => Some(chrono_tz::Tz::America__Bahia_Banderas),
-        78 => Some(chrono_tz::Tz::America__Barbados),
-        79 => Some(chrono_tz::Tz::America__Belem),
-        80 => Some(chrono_tz::Tz::America__Belize),
-        81 => Some(chrono_tz::Tz::America__BlancSablon),
-        82 => Some(chrono_tz::Tz::America__Boa_Vista),
-        83 => Some(chrono_tz::Tz::America__Bogota),
-        84 => Some(chrono_tz::Tz::America__Boise),
-        85 => Some(chrono_tz::Tz::America__Buenos_Aires),
-        86 => Some(chrono_tz::Tz::America__Cambridge_Bay),
-        87 => Some(chrono_tz::Tz::America__Campo_Grande),
-        88 => Some(chrono_tz::Tz::America__Cancun),
-        89 => Some(chrono_tz::Tz::America__Caracas),
-        90 => Some(chrono_tz::Tz::America__Catamarca),
-        91 => Some(chrono_tz::Tz::America__Cayenne),
-        92 => Some(chrono_tz::Tz::America__Cayman),
-        93 => Some(chrono_tz::Tz::America__Chicago),
-        94 => Some(chrono_tz::Tz::America__Chihuahua),
-        95 => Some(chrono_tz::Tz::America__Ciudad_Juarez),
-        96 => Some(chrono_tz::Tz::America__Coral_Harbour),
-        97 => Some(chrono_tz::Tz::America__Cordoba),
-        98 => Some(chrono_tz::Tz::America__Costa_Rica),
-        99 => Some(chrono_tz::Tz::America__Coyhaique),
-        100 => Some(chrono_tz::Tz::America__Creston),
-        101 => Some(chrono_tz::Tz::America__Cuiaba),
-        102 => Some(chrono_tz::Tz::America__Curacao),
-        103 => Some(chrono_tz::Tz::America__Danmarkshavn),
-        104 => Some(chrono_tz::Tz::America__Dawson),
-        105 => Some(chrono_tz::Tz::America__Dawson_Creek),
-        106 => Some(chrono_tz::Tz::America__Denver),
-        107 => Some(chrono_tz::Tz::America__Detroit),
-        108 => Some(chrono_tz::Tz::America__Dominica),
-        109 => Some(chrono_tz::Tz::America__Edmonton),
-        110 => Some(chrono_tz::Tz::America__Eirunepe),
-        111 => Some(chrono_tz::Tz::America__El_Salvador),
-        112 => Some(chrono_tz::Tz::America__Ensenada),
-        113 => Some(chrono_tz::Tz::America__Fort_Nelson),
-        114 => Some(chrono_tz::Tz::America__Fort_Wayne),
-        115 => Some(chrono_tz::Tz::America__Fortaleza),
-        116 => Some(chrono_tz::Tz::America__Glace_Bay),
-        117 => Some(chrono_tz::Tz::America__Godthab),
-        118 => Some(chrono_tz::Tz::America__Goose_Bay),
-        119 => Some(chrono_tz::Tz::America__Grand_Turk),
-        120 => Some(chrono_tz::Tz::America__Grenada),
-        121 => Some(chrono_tz::Tz::America__Guadeloupe),
-        122 => Some(chrono_tz::Tz::America__Guatemala),
-        123 => Some(chrono_tz::Tz::America__Guayaquil),
-        124 => Some(chrono_tz::Tz::America__Guyana),
-        125 => Some(chrono_tz::Tz::America__Halifax),
-        126 => Some(chrono_tz::Tz::America__Havana),
-        127 => Some(chrono_tz::Tz::America__Hermosillo),
-        128 => Some(chrono_tz::Tz::America__Indiana__Indianapolis),
-        129 => Some(chrono_tz::Tz::America__Indiana__Knox),
-        130 => Some(chrono_tz::Tz::America__Indiana__Marengo),
-        131 => Some(chrono_tz::Tz::America__Indiana__Petersburg),
-        132 => Some(chrono_tz::Tz::America__Indiana__Tell_City),
-        133 => Some(chrono_tz::Tz::America__Indiana__Vevay),
-        134 => Some(chrono_tz::Tz::America__Indiana__Vincennes),
-        135 => Some(chrono_tz::Tz::America__Indiana__Winamac),
-        136 => Some(chrono_tz::Tz::America__Indianapolis),
-        137 => Some(chrono_tz::Tz::America__Inuvik),
-        138 => Some(chrono_tz::Tz::America__Iqaluit),
-        139 => Some(chrono_tz::Tz::America__Jamaica),
-        140 => Some(chrono_tz::Tz::America__Jujuy),
-        141 => Some(chrono_tz::Tz::America__Juneau),
-        142 => Some(chrono_tz::Tz::America__Kentucky__Louisville),
-        143 => Some(chrono_tz::Tz::America__Kentucky__Monticello),
-        144 => Some(chrono_tz::Tz::America__Knox_IN),
-        145 => Some(chrono_tz::Tz::America__Kralendijk),
-        146 => Some(chrono_tz::Tz::America__La_Paz),
-        147 => Some(chrono_tz::Tz::America__Lima),
-        148 => Some(chrono_tz::Tz::America__Los_Angeles),
-        149 => Some(chrono_tz::Tz::America__Louisville),
-        150 => Some(chrono_tz::Tz::America__Lower_Princes),
-        151 => Some(chrono_tz::Tz::America__Maceio),
-        152 => Some(chrono_tz::Tz::America__Managua),
-        153 => Some(chrono_tz::Tz::America__Manaus),
-        154 => Some(chrono_tz::Tz::America__Marigot),
-        155 => Some(chrono_tz::Tz::America__Martinique),
-        156 => Some(chrono_tz::Tz::America__Matamoros),
-        157 => Some(chrono_tz::Tz::America__Mazatlan),
-        158 => Some(chrono_tz::Tz::America__Mendoza),
-        159 => Some(chrono_tz::Tz::America__Menominee),
-        160 => Some(chrono_tz::Tz::America__Merida),
-        161 => Some(chrono_tz::Tz::America__Metlakatla),
-        162 => Some(chrono_tz::Tz::America__Mexico_City),
-        163 => Some(chrono_tz::Tz::America__Miquelon),
-        164 => Some(chrono_tz::Tz::America__Moncton),
-        165 => Some(chrono_tz::Tz::America__Monterrey),
-        166 => Some(chrono_tz::Tz::America__Montevideo),
-        167 => Some(chrono_tz::Tz::America__Montreal),
-        168 => Some(chrono_tz::Tz::America__Montserrat),
-        169 => Some(chrono_tz::Tz::America__Nassau),
-        170 => Some(chrono_tz::Tz::America__New_York),
-        171 => Some(chrono_tz::Tz::America__Nipigon),
-        172 => Some(chrono_tz::Tz::America__Nome),
-        173 => Some(chrono_tz::Tz::America__Noronha),
-        174 => Some(chrono_tz::Tz::America__North_Dakota__Beulah),
-        175 => Some(chrono_tz::Tz::America__North_Dakota__Center),
-        176 => Some(chrono_tz::Tz::America__North_Dakota__New_Salem),
-        177 => Some(chrono_tz::Tz::America__Nuuk),
-        178 => Some(chrono_tz::Tz::America__Ojinaga),
-        179 => Some(chrono_tz::Tz::America__Panama),
-        180 => Some(chrono_tz::Tz::America__Pangnirtung),
-        181 => Some(chrono_tz::Tz::America__Paramaribo),
-        182 => Some(chrono_tz::Tz::America__Phoenix),
-        183 => Some(chrono_tz::Tz::America__PortauPrince),
-        184 => Some(chrono_tz::Tz::America__Port_of_Spain),
-        185 => Some(chrono_tz::Tz::America__Porto_Acre),
-        186 => Some(chrono_tz::Tz::America__Porto_Velho),
-        187 => Some(chrono_tz::Tz::America__Puerto_Rico),
-        188 => Some(chrono_tz::Tz::America__Punta_Arenas),
-        189 => Some(chrono_tz::Tz::America__Rainy_River),
-        190 => Some(chrono_tz::Tz::America__Rankin_Inlet),
-        191 => Some(chrono_tz::Tz::America__Recife),
-        192 => Some(chrono_tz::Tz::America__Regina),
-        193 => Some(chrono_tz::Tz::America__Resolute),
-        194 => Some(chrono_tz::Tz::America__Rio_Branco),
-        195 => Some(chrono_tz::Tz::America__Rosario),
-        196 => Some(chrono_tz::Tz::America__Santa_Isabel),
-        197 => Some(chrono_tz::Tz::America__Santarem),
-        198 => Some(chrono_tz::Tz::America__Santiago),
-        199 => Some(chrono_tz::Tz::America__Santo_Domingo),
-        200 => Some(chrono_tz::Tz::America__Sao_Paulo),
-        201 => Some(chrono_tz::Tz::America__Scoresbysund),
-        202 => Some(chrono_tz::Tz::America__Shiprock),
-        203 => Some(chrono_tz::Tz::America__Sitka),
-        204 => Some(chrono_tz::Tz::America__St_Barthelemy),
-        205 => Some(chrono_tz::Tz::America__St_Johns),
-        206 => Some(chrono_tz::Tz::America__St_Kitts),
-        207 => Some(chrono_tz::Tz::America__St_Lucia),
-        208 => Some(chrono_tz::Tz::America__St_Thomas),
-        209 => Some(chrono_tz::Tz::America__St_Vincent),
-        210 => Some(chrono_tz::Tz::America__Swift_Current),
-        211 => Some(chrono_tz::Tz::America__Tegucigalpa),
-        212 => Some(chrono_tz::Tz::America__Thule),
-        213 => Some(chrono_tz::Tz::America__Thunder_Bay),
-        214 => Some(chrono_tz::Tz::America__Tijuana),
-        215 => Some(chrono_tz::Tz::America__Toronto),
-        216 => Some(chrono_tz::Tz::America__Tortola),
-        217 => Some(chrono_tz::Tz::America__Vancouver),
-        218 => Some(chrono_tz::Tz::America__Virgin),
-        219 => Some(chrono_tz::Tz::America__Whitehorse),
-        220 => Some(chrono_tz::Tz::America__Winnipeg),
-        221 => Some(chrono_tz::Tz::America__Yakutat),
-        222 => Some(chrono_tz::Tz::America__Yellowknife),
-        223 => Some(chrono_tz::Tz::Antarctica__Casey),
-        224 => Some(chrono_tz::Tz::Antarctica__Davis),
-        225 => Some(chrono_tz::Tz::Antarctica__DumontDUrville),
-        226 => Some(chrono_tz::Tz::Antarctica__Macquarie),
-        227 => Some(chrono_tz::Tz::Antarctica__Mawson),
-        228 => Some(chrono_tz::Tz::Antarctica__McMurdo),
-        229 => Some(chrono_tz::Tz::Antarctica__Palmer),
-        230 => Some(chrono_tz::Tz::Antarctica__Rothera),
-        231 => Some(chrono_tz::Tz::Antarctica__South_Pole),
-        232 => Some(chrono_tz::Tz::Antarctica__Syowa),
-        233 => Some(chrono_tz::Tz::Antarctica__Troll),
-        234 => Some(chrono_tz::Tz::Antarctica__Vostok),
-        235 => Some(chrono_tz::Tz::Arctic__Longyearbyen),
-        236 => Some(chrono_tz::Tz::Asia__Aden),
-        237 => Some(chrono_tz::Tz::Asia__Almaty),
-        238 => Some(chrono_tz::Tz::Asia__Amman),
-        239 => Some(chrono_tz::Tz::Asia__Anadyr),
-        240 => Some(chrono_tz::Tz::Asia__Aqtau),
-        241 => Some(chrono_tz::Tz::Asia__Aqtobe),
-        242 => Some(chrono_tz::Tz::Asia__Ashgabat),
-        243 => Some(chrono_tz::Tz::Asia__Ashkhabad),
-        244 => Some(chrono_tz::Tz::Asia__Atyrau),
-        245 => Some(chrono_tz::Tz::Asia__Baghdad),
-        246 => Some(chrono_tz::Tz::Asia__Bahrain),
-        247 => Some(chrono_tz::Tz::Asia__Baku),
-        248 => Some(chrono_tz::Tz::Asia__Bangkok),
-        249 => Some(chrono_tz::Tz::Asia__Barnaul),
-        250 => Some(chrono_tz::Tz::Asia__Beirut),
-        251 => Some(chrono_tz::Tz::Asia__Bishkek),
-        252 => Some(chrono_tz::Tz::Asia__Brunei),
-        253 => Some(chrono_tz::Tz::Asia__Calcutta),
-        254 => Some(chrono_tz::Tz::Asia__Chita),
-        255 => Some(chrono_tz::Tz::Asia__Choibalsan),
-        256 => Some(chrono_tz::Tz::Asia__Chongqing),
-        257 => Some(chrono_tz::Tz::Asia__Chungking),
-        258 => Some(chrono_tz::Tz::Asia__Colombo),
-        259 => Some(chrono_tz::Tz::Asia__Dacca),
-        260 => Some(chrono_tz::Tz::Asia__Damascus),
-        261 => Some(chrono_tz::Tz::Asia__Dhaka),
-        262 => Some(chrono_tz::Tz::Asia__Dili),
-        263 => Some(chrono_tz::Tz::Asia__Dubai),
-        264 => Some(chrono_tz::Tz::Asia__Dushanbe),
-        265 => Some(chrono_tz::Tz::Asia__Famagusta),
-        266 => Some(chrono_tz::Tz::Asia__Gaza),
-        267 => Some(chrono_tz::Tz::Asia__Harbin),
-        268 => Some(chrono_tz::Tz::Asia__Hebron),
-        269 => Some(chrono_tz::Tz::Asia__Ho_Chi_Minh),
-        270 => Some(chrono_tz::Tz::Asia__Hong_Kong),
-        271 => Some(chrono_tz::Tz::Asia__Hovd),
-        272 => Some(chrono_tz::Tz::Asia__Irkutsk),
-        273 => Some(chrono_tz::Tz::Asia__Istanbul),
-        274 => Some(chrono_tz::Tz::Asia__Jakarta),
-        275 => Some(chrono_tz::Tz::Asia__Jayapura),
-        276 => Some(chrono_tz::Tz::Asia__Jerusalem),
-        277 => Some(chrono_tz::Tz::Asia__Kabul),
-        278 => Some(chrono_tz::Tz::Asia__Kamchatka),
-        279 => Some(chrono_tz::Tz::Asia__Karachi),
-        280 => Some(chrono_tz::Tz::Asia__Kashgar),
-        281 => Some(chrono_tz::Tz::Asia__Kathmandu),
-        282 => Some(chrono_tz::Tz::Asia__Katmandu),
-        283 => Some(chrono_tz::Tz::Asia__Khandyga),
-        284 => Some(chrono_tz::Tz::Asia__Kolkata),
-        285 => Some(chrono_tz::Tz::Asia__Krasnoyarsk),
-        286 => Some(chrono_tz::Tz::Asia__Kuala_Lumpur),
-        287 => Some(chrono_tz::Tz::Asia__Kuching),
-        288 => Some(chrono_tz::Tz::Asia__Kuwait),
-        289 => Some(chrono_tz::Tz::Asia__Macao),
-        290 => Some(chrono_tz::Tz::Asia__Macau),
-        291 => Some(chrono_tz::Tz::Asia__Magadan),
-        292 => Some(chrono_tz::Tz::Asia__Makassar),
-        293 => Some(chrono_tz::Tz::Asia__Manila),
-        294 => Some(chrono_tz::Tz::Asia__Muscat),
-        295 => Some(chrono_tz::Tz::Asia__Nicosia),
-        296 => Some(chrono_tz::Tz::Asia__Novokuznetsk),
-        297 => Some(chrono_tz::Tz::Asia__Novosibirsk),
-        298 => Some(chrono_tz::Tz::Asia__Omsk),
-        299 => Some(chrono_tz::Tz::Asia__Oral),
-        300 => Some(chrono_tz::Tz::Asia__Phnom_Penh),
-        301 => Some(chrono_tz::Tz::Asia__Pontianak),
-        302 => Some(chrono_tz::Tz::Asia__Pyongyang),
-        303 => Some(chrono_tz::Tz::Asia__Qatar),
-        304 => Some(chrono_tz::Tz::Asia__Qostanay),
-        305 => Some(chrono_tz::Tz::Asia__Qyzylorda),
-        306 => Some(chrono_tz::Tz::Asia__Rangoon),
-        307 => Some(chrono_tz::Tz::Asia__Riyadh),
-        308 => Some(chrono_tz::Tz::Asia__Saigon),
-        309 => Some(chrono_tz::Tz::Asia__Sakhalin),
-        310 => Some(chrono_tz::Tz::Asia__Samarkand),
-        311 => Some(chrono_tz::Tz::Asia__Seoul),
-        312 => Some(chrono_tz::Tz::Asia__Shanghai),
-        313 => Some(chrono_tz::Tz::Asia__Singapore),
-        314 => Some(chrono_tz::Tz::Asia__Srednekolymsk),
-        315 => Some(chrono_tz::Tz::Asia__Taipei),
-        316 => Some(chrono_tz::Tz::Asia__Tashkent),
-        317 => Some(chrono_tz::Tz::Asia__Tbilisi),
-        318 => Some(chrono_tz::Tz::Asia__Tehran),
-        319 => Some(chrono_tz::Tz::Asia__Tel_Aviv),
-        320 => Some(chrono_tz::Tz::Asia__Thimbu),
-        321 => Some(chrono_tz::Tz::Asia__Thimphu),
-        322 => Some(chrono_tz::Tz::Asia__Tokyo),
-        323 => Some(chrono_tz::Tz::Asia__Tomsk),
-        324 => Some(chrono_tz::Tz::Asia__Ujung_Pandang),
-        325 => Some(chrono_tz::Tz::Asia__Ulaanbaatar),
-        326 => Some(chrono_tz::Tz::Asia__Ulan_Bator),
-        327 => Some(chrono_tz::Tz::Asia__Urumqi),
-        328 => Some(chrono_tz::Tz::Asia__UstNera),
-        329 => Some(chrono_tz::Tz::Asia__Vientiane),
-        330 => Some(chrono_tz::Tz::Asia__Vladivostok),
-        331 => Some(chrono_tz::Tz::Asia__Yakutsk),
-        332 => Some(chrono_tz::Tz::Asia__Yangon),
-        333 => Some(chrono_tz::Tz::Asia__Yekaterinburg),
-        334 => Some(chrono_tz::Tz::Asia__Yerevan),
-        335 => Some(chrono_tz::Tz::Atlantic__Azores),
-        336 => Some(chrono_tz::Tz::Atlantic__Bermuda),
-        337 => Some(chrono_tz::Tz::Atlantic__Canary),
-        338 => Some(chrono_tz::Tz::Atlantic__Cape_Verde),
-        339 => Some(chrono_tz::Tz::Atlantic__Faeroe),
-        340 => Some(chrono_tz::Tz::Atlantic__Faroe),
-        341 => Some(chrono_tz::Tz::Atlantic__Jan_Mayen),
-        342 => Some(chrono_tz::Tz::Atlantic__Madeira),
-        343 => Some(chrono_tz::Tz::Atlantic__Reykjavik),
-        344 => Some(chrono_tz::Tz::Atlantic__South_Georgia),
-        345 => Some(chrono_tz::Tz::Atlantic__St_Helena),
-        346 => Some(chrono_tz::Tz::Atlantic__Stanley),
-        347 => Some(chrono_tz::Tz::Australia__ACT),
-        348 => Some(chrono_tz::Tz::Australia__Adelaide),
-        349 => Some(chrono_tz::Tz::Australia__Brisbane),
-        350 => Some(chrono_tz::Tz::Australia__Broken_Hill),
-        351 => Some(chrono_tz::Tz::Australia__Canberra),
-        352 => Some(chrono_tz::Tz::Australia__Currie),
-        353 => Some(chrono_tz::Tz::Australia__Darwin),
-        354 => Some(chrono_tz::Tz::Australia__Eucla),
-        355 => Some(chrono_tz::Tz::Australia__Hobart),
-        356 => Some(chrono_tz::Tz::Australia__LHI),
-        357 => Some(chrono_tz::Tz::Australia__Lindeman),
-        358 => Some(chrono_tz::Tz::Australia__Lord_Howe),
-        359 => Some(chrono_tz::Tz::Australia__Melbourne),
-        360 => Some(chrono_tz::Tz::Australia__NSW),
-        361 => Some(chrono_tz::Tz::Australia__North),
-        362 => Some(chrono_tz::Tz::Australia__Perth),
-        363 => Some(chrono_tz::Tz::Australia__Queensland),
-        364 => Some(chrono_tz::Tz::Australia__South),
-        365 => Some(chrono_tz::Tz::Australia__Sydney),
-        366 => Some(chrono_tz::Tz::Australia__Tasmania),
-        367 => Some(chrono_tz::Tz::Australia__Victoria),
-        368 => Some(chrono_tz::Tz::Australia__West),
-        369 => Some(chrono_tz::Tz::Australia__Yancowinna),
-        370 => Some(chrono_tz::Tz::Brazil__Acre),
-        371 => Some(chrono_tz::Tz::Brazil__DeNoronha),
-        372 => Some(chrono_tz::Tz::Brazil__East),
-        373 => Some(chrono_tz::Tz::Brazil__West),
-        374 => Some(chrono_tz::Tz::CET),
-        375 => Some(chrono_tz::Tz::CST6CDT),
-        376 => Some(chrono_tz::Tz::Canada__Atlantic),
-        377 => Some(chrono_tz::Tz::Canada__Central),
-        378 => Some(chrono_tz::Tz::Canada__Eastern),
-        379 => Some(chrono_tz::Tz::Canada__Mountain),
-        380 => Some(chrono_tz::Tz::Canada__Newfoundland),
-        381 => Some(chrono_tz::Tz::Canada__Pacific),
-        382 => Some(chrono_tz::Tz::Canada__Saskatchewan),
-        383 => Some(chrono_tz::Tz::Canada__Yukon),
-        384 => Some(chrono_tz::Tz::Chile__Continental),
-        385 => Some(chrono_tz::Tz::Chile__EasterIsland),
-        386 => Some(chrono_tz::Tz::Cuba),
-        387 => Some(chrono_tz::Tz::EET),
-        388 => Some(chrono_tz::Tz::EST),
-        389 => Some(chrono_tz::Tz::EST5EDT),
-        390 => Some(chrono_tz::Tz::Egypt),
-        391 => Some(chrono_tz::Tz::Eire),
-        392 => Some(chrono_tz::Tz::Etc__GMT),
-        393 => Some(chrono_tz::Tz::Etc__GMTPlus0),
-        394 => Some(chrono_tz::Tz::Etc__GMTPlus1),
-        395 => Some(chrono_tz::Tz::Etc__GMTPlus10),
-        396 => Some(chrono_tz::Tz::Etc__GMTPlus11),
-        397 => Some(chrono_tz::Tz::Etc__GMTPlus12),
-        398 => Some(chrono_tz::Tz::Etc__GMTPlus2),
-        399 => Some(chrono_tz::Tz::Etc__GMTPlus3),
-        400 => Some(chrono_tz::Tz::Etc__GMTPlus4),
-        401 => Some(chrono_tz::Tz::Etc__GMTPlus5),
-        402 => Some(chrono_tz::Tz::Etc__GMTPlus6),
-        403 => Some(chrono_tz::Tz::Etc__GMTPlus7),
-        404 => Some(chrono_tz::Tz::Etc__GMTPlus8),
-        405 => Some(chrono_tz::Tz::Etc__GMTPlus9),
-        406 => Some(chrono_tz::Tz::Etc__GMTMinus0),
-        407 => Some(chrono_tz::Tz::Etc__GMTMinus1),
-        408 => Some(chrono_tz::Tz::Etc__GMTMinus10),
-        409 => Some(chrono_tz::Tz::Etc__GMTMinus11),
-        410 => Some(chrono_tz::Tz::Etc__GMTMinus12),
-        411 => Some(chrono_tz::Tz::Etc__GMTMinus13),
-        412 => Some(chrono_tz::Tz::Etc__GMTMinus14),
-        413 => Some(chrono_tz::Tz::Etc__GMTMinus2),
-        414 => Some(chrono_tz::Tz::Etc__GMTMinus3),
-        415 => Some(chrono_tz::Tz::Etc__GMTMinus4),
-        416 => Some(chrono_tz::Tz::Etc__GMTMinus5),
-        417 => Some(chrono_tz::Tz::Etc__GMTMinus6),
-        418 => Some(chrono_tz::Tz::Etc__GMTMinus7),
-        419 => Some(chrono_tz::Tz::Etc__GMTMinus8),
-        420 => Some(chrono_tz::Tz::Etc__GMTMinus9),
-        421 => Some(chrono_tz::Tz::Etc__GMT0),
-        422 => Some(chrono_tz::Tz::Etc__Greenwich),
-        423 => Some(chrono_tz::Tz::Etc__UCT),
-        424 => Some(chrono_tz::Tz::Etc__UTC),
-        425 => Some(chrono_tz::Tz::Etc__Universal),
-        426 => Some(chrono_tz::Tz::Etc__Zulu),
-        427 => Some(chrono_tz::Tz::Europe__Amsterdam),
-        428 => Some(chrono_tz::Tz::Europe__Andorra),
-        429 => Some(chrono_tz::Tz::Europe__Astrakhan),
-        430 => Some(chrono_tz::Tz::Europe__Athens),
-        431 => Some(chrono_tz::Tz::Europe__Belfast),
-        432 => Some(chrono_tz::Tz::Europe__Belgrade),
-        433 => Some(chrono_tz::Tz::Europe__Berlin),
-        434 => Some(chrono_tz::Tz::Europe__Bratislava),
-        435 => Some(chrono_tz::Tz::Europe__Brussels),
-        436 => Some(chrono_tz::Tz::Europe__Bucharest),
-        437 => Some(chrono_tz::Tz::Europe__Budapest),
-        438 => Some(chrono_tz::Tz::Europe__Busingen),
-        439 => Some(chrono_tz::Tz::Europe__Chisinau),
-        440 => Some(chrono_tz::Tz::Europe__Copenhagen),
-        441 => Some(chrono_tz::Tz::Europe__Dublin),
-        442 => Some(chrono_tz::Tz::Europe__Gibraltar),
-        443 => Some(chrono_tz::Tz::Europe__Guernsey),
-        444 => Some(chrono_tz::Tz::Europe__Helsinki),
-        445 => Some(chrono_tz::Tz::Europe__Isle_of_Man),
-        446 => Some(chrono_tz::Tz::Europe__Istanbul),
-        447 => Some(chrono_tz::Tz::Europe__Jersey),
-        448 => Some(chrono_tz::Tz::Europe__Kaliningrad),
-        449 => Some(chrono_tz::Tz::Europe__Kiev),
-        450 => Some(chrono_tz::Tz::Europe__Kirov),
-        451 => Some(chrono_tz::Tz::Europe__Kyiv),
-        452 => Some(chrono_tz::Tz::Europe__Lisbon),
-        453 => Some(chrono_tz::Tz::Europe__Ljubljana),
-        454 => Some(chrono_tz::Tz::Europe__London),
-        455 => Some(chrono_tz::Tz::Europe__Luxembourg),
-        456 => Some(chrono_tz::Tz::Europe__Madrid),
-        457 => Some(chrono_tz::Tz::Europe__Malta),
-        458 => Some(chrono_tz::Tz::Europe__Mariehamn),
-        459 => Some(chrono_tz::Tz::Europe__Minsk),
-        460 => Some(chrono_tz::Tz::Europe__Monaco),
-        461 => Some(chrono_tz::Tz::Europe__Moscow),
-        462 => Some(chrono_tz::Tz::Europe__Nicosia),
-        463 => Some(chrono_tz::Tz::Europe__Oslo),
-        464 => Some(chrono_tz::Tz::Europe__Paris),
-        465 => Some(chrono_tz::Tz::Europe__Podgorica),
-        466 => Some(chrono_tz::Tz::Europe__Prague),
-        467 => Some(chrono_tz::Tz::Europe__Riga),
-        468 => Some(chrono_tz::Tz::Europe__Rome),
-        469 => Some(chrono_tz::Tz::Europe__Samara),
-        470 => Some(chrono_tz::Tz::Europe__San_Marino),
-        471 => Some(chrono_tz::Tz::Europe__Sarajevo),
-        472 => Some(chrono_tz::Tz::Europe__Saratov),
-        473 => Some(chrono_tz::Tz::Europe__Simferopol),
-        474 => Some(chrono_tz::Tz::Europe__Skopje),
-        475 => Some(chrono_tz::Tz::Europe__Sofia),
-        476 => Some(chrono_tz::Tz::Europe__Stockholm),
-        477 => Some(chrono_tz::Tz::Europe__Tallinn),
-        478 => Some(chrono_tz::Tz::Europe__Tirane),
-        479 => Some(chrono_tz::Tz::Europe__Tiraspol),
-        480 => Some(chrono_tz::Tz::Europe__Ulyanovsk),
-        481 => Some(chrono_tz::Tz::Europe__Uzhgorod),
-        482 => Some(chrono_tz::Tz::Europe__Vaduz),
-        483 => Some(chrono_tz::Tz::Europe__Vatican),
-        484 => Some(chrono_tz::Tz::Europe__Vienna),
-        485 => Some(chrono_tz::Tz::Europe__Vilnius),
-        486 => Some(chrono_tz::Tz::Europe__Volgograd),
-        487 => Some(chrono_tz::Tz::Europe__Warsaw),
-        488 => Some(chrono_tz::Tz::Europe__Zagreb),
-        489 => Some(chrono_tz::Tz::Europe__Zaporozhye),
-        490 => Some(chrono_tz::Tz::Europe__Zurich),
-        491 => Some(chrono_tz::Tz::GB),
-        492 => Some(chrono_tz::Tz::GBEire),
-        493 => Some(chrono_tz::Tz::GMT),
-        494 => Some(chrono_tz::Tz::GMTPlus0),
-        495 => Some(chrono_tz::Tz::GMTMinus0),
-        496 => Some(chrono_tz::Tz::GMT0),
-        497 => Some(chrono_tz::Tz::Greenwich),
-        498 => Some(chrono_tz::Tz::HST),
-        499 => Some(chrono_tz::Tz::Hongkong),
-        500 => Some(chrono_tz::Tz::Iceland),
-        501 => Some(chrono_tz::Tz::Indian__Antananarivo),
-        502 => Some(chrono_tz::Tz::Indian__Chagos),
-        503 => Some(chrono_tz::Tz::Indian__Christmas),
-        504 => Some(chrono_tz::Tz::Indian__Cocos),
-        505 => Some(chrono_tz::Tz::Indian__Comoro),
-        506 => Some(chrono_tz::Tz::Indian__Kerguelen),
-        507 => Some(chrono_tz::Tz::Indian__Mahe),
-        508 => Some(chrono_tz::Tz::Indian__Maldives),
-        509 => Some(chrono_tz::Tz::Indian__Mauritius),
-        510 => Some(chrono_tz::Tz::Indian__Mayotte),
-        511 => Some(chrono_tz::Tz::Indian__Reunion),
-        512 => Some(chrono_tz::Tz::Iran),
-        513 => Some(chrono_tz::Tz::Israel),
-        514 => Some(chrono_tz::Tz::Jamaica),
-        515 => Some(chrono_tz::Tz::Japan),
-        516 => Some(chrono_tz::Tz::Kwajalein),
-        517 => Some(chrono_tz::Tz::Libya),
-        518 => Some(chrono_tz::Tz::MET),
-        519 => Some(chrono_tz::Tz::MST),
-        520 => Some(chrono_tz::Tz::MST7MDT),
-        521 => Some(chrono_tz::Tz::Mexico__BajaNorte),
-        522 => Some(chrono_tz::Tz::Mexico__BajaSur),
-        523 => Some(chrono_tz::Tz::Mexico__General),
-        524 => Some(chrono_tz::Tz::NZ),
-        525 => Some(chrono_tz::Tz::NZCHAT),
-        526 => Some(chrono_tz::Tz::Navajo),
-        527 => Some(chrono_tz::Tz::PRC),
-        528 => Some(chrono_tz::Tz::PST8PDT),
-        529 => Some(chrono_tz::Tz::Pacific__Apia),
-        530 => Some(chrono_tz::Tz::Pacific__Auckland),
-        531 => Some(chrono_tz::Tz::Pacific__Bougainville),
-        532 => Some(chrono_tz::Tz::Pacific__Chatham),
-        533 => Some(chrono_tz::Tz::Pacific__Chuuk),
-        534 => Some(chrono_tz::Tz::Pacific__Easter),
-        535 => Some(chrono_tz::Tz::Pacific__Efate),
-        536 => Some(chrono_tz::Tz::Pacific__Enderbury),
-        537 => Some(chrono_tz::Tz::Pacific__Fakaofo),
-        538 => Some(chrono_tz::Tz::Pacific__Fiji),
-        539 => Some(chrono_tz::Tz::Pacific__Funafuti),
-        540 => Some(chrono_tz::Tz::Pacific__Galapagos),
-        541 => Some(chrono_tz::Tz::Pacific__Gambier),
-        542 => Some(chrono_tz::Tz::Pacific__Guadalcanal),
-        543 => Some(chrono_tz::Tz::Pacific__Guam),
-        544 => Some(chrono_tz::Tz::Pacific__Honolulu),
-        545 => Some(chrono_tz::Tz::Pacific__Johnston),
-        546 => Some(chrono_tz::Tz::Pacific__Kanton),
-        547 => Some(chrono_tz::Tz::Pacific__Kiritimati),
-        548 => Some(chrono_tz::Tz::Pacific__Kosrae),
-        549 => Some(chrono_tz::Tz::Pacific__Kwajalein),
-        550 => Some(chrono_tz::Tz::Pacific__Majuro),
-        551 => Some(chrono_tz::Tz::Pacific__Marquesas),
-        552 => Some(chrono_tz::Tz::Pacific__Midway),
-        553 => Some(chrono_tz::Tz::Pacific__Nauru),
-        554 => Some(chrono_tz::Tz::Pacific__Niue),
-        555 => Some(chrono_tz::Tz::Pacific__Norfolk),
-        556 => Some(chrono_tz::Tz::Pacific__Noumea),
-        557 => Some(chrono_tz::Tz::Pacific__Pago_Pago),
-        558 => Some(chrono_tz::Tz::Pacific__Palau),
-        559 => Some(chrono_tz::Tz::Pacific__Pitcairn),
-        560 => Some(chrono_tz::Tz::Pacific__Pohnpei),
-        561 => Some(chrono_tz::Tz::Pacific__Ponape),
-        562 => Some(chrono_tz::Tz::Pacific__Port_Moresby),
-        563 => Some(chrono_tz::Tz::Pacific__Rarotonga),
-        564 => Some(chrono_tz::Tz::Pacific__Saipan),
-        565 => Some(chrono_tz::Tz::Pacific__Samoa),
-        566 => Some(chrono_tz::Tz::Pacific__Tahiti),
-        567 => Some(chrono_tz::Tz::Pacific__Tarawa),
-        568 => Some(chrono_tz::Tz::Pacific__Tongatapu),
-        569 => Some(chrono_tz::Tz::Pacific__Truk),
-        570 => Some(chrono_tz::Tz::Pacific__Wake),
-        571 => Some(chrono_tz::Tz::Pacific__Wallis),
-        572 => Some(chrono_tz::Tz::Pacific__Yap),
-        573 => Some(chrono_tz::Tz::Poland),
-        574 => Some(chrono_tz::Tz::Portugal),
-        575 => Some(chrono_tz::Tz::ROC),
-        576 => Some(chrono_tz::Tz::ROK),
-        577 => Some(chrono_tz::Tz::Singapore),
-        578 => Some(chrono_tz::Tz::Turkey),
-        579 => Some(chrono_tz::Tz::UCT),
-        580 => Some(chrono_tz::Tz::US__Alaska),
-        581 => Some(chrono_tz::Tz::US__Aleutian),
-        582 => Some(chrono_tz::Tz::US__Arizona),
-        583 => Some(chrono_tz::Tz::US__Central),
-        584 => Some(chrono_tz::Tz::US__EastIndiana),
-        585 => Some(chrono_tz::Tz::US__Eastern),
-        586 => Some(chrono_tz::Tz::US__Hawaii),
-        587 => Some(chrono_tz::Tz::US__IndianaStarke),
-        588 => Some(chrono_tz::Tz::US__Michigan),
-        589 => Some(chrono_tz::Tz::US__Mountain),
-        590 => Some(chrono_tz::Tz::US__Pacific),
-        591 => Some(chrono_tz::Tz::US__Samoa),
-        592 => Some(chrono_tz::Tz::UTC),
-        593 => Some(chrono_tz::Tz::Universal),
-        594 => Some(chrono_tz::Tz::WSU),
-        595 => Some(chrono_tz::Tz::WET),
-        596 => Some(chrono_tz::Tz::Zulu),
-        _ => None,
+impl DateTimeResult {
+    /// Returns the time zone the value carried itself, if it carried one.
+    pub fn tz(&self) -> Option<Tz> {
+        self.offset.map(|offset| {
+            if offset.seconds() == 0 {
+                Tz::UTC
+            } else {
+                Tz::Fixed(offset)
+            }
+        })
+    }
+
+    /// Interprets the value, preferring the offset it carries itself over the
+    /// zone supplied by the caller.
+    pub fn to_date_time_with_tz(&self, tz: Tz) -> Option<ZonedDateTime> {
+        match self.offset {
+            Some(offset) if offset.seconds() == 0 => Tz::UTC.from_local(self.date_time),
+            Some(offset) => Tz::Fixed(offset).from_local(self.date_time),
+            None => tz.from_local(self.date_time),
+        }
+    }
+
+    /// Interprets the value the same way as [`Self::to_date_time_with_tz`].
+    #[inline]
+    pub fn resolve_with_tz(&self, tz: Tz) -> Option<ZonedDateTime> {
+        self.to_date_time_with_tz(tz)
+    }
+}
+
+impl Tz {
+    pub fn from_ms_cdo_zone_id(id: &str) -> Option<Self> {
+        // Source https://learn.microsoft.com/en-us/previous-versions/office/developer/exchange-server-2007/aa563018(v=exchg.80)
+        tiny_map!(id.as_bytes(),
+            "0" => "UTC",
+            "1" => "Europe/London",
+            "10" => "America/New_York",
+            "11" => "America/Chicago",
+            "12" => "America/Denver",
+            "13" => "America/Los_Angeles",
+            "14" => "America/Anchorage",
+            "15" => "Pacific/Honolulu",
+            "16" => "Pacific/Midway",
+            "17" => "Pacific/Auckland",
+            "18" => "Australia/Brisbane",
+            "19" => "Australia/Adelaide",
+            "2" => "Europe/Lisbon",
+            "20" => "Asia/Tokyo",
+            "21" => "Asia/Singapore",
+            "22" => "Asia/Bangkok",
+            "23" => "Asia/Calcutta",
+            "24" => "Asia/Muscat",
+            "25" => "Asia/Tehran",
+            "26" => "Asia/Baghdad",
+            "27" => "Asia/Jerusalem",
+            "28" => "America/St_Johns",
+            "29" => "Atlantic/Azores",
+            "3" => "Europe/Paris",
+            "30" => "America/Noronha",
+            "31" => "Africa/Casablanca",
+            "32" => "America/Argentina/Buenos_Aires",
+            "33" => "America/Caracas",
+            "34" => "America/Indiana/Indianapolis",
+            "35" => "America/Bogota",
+            "36" => "America/Edmonton",
+            "37" => "America/Mexico_City",
+            "38" => "America/Phoenix",
+            "39" => "Pacific/Kwajalein",
+            "4" => "Europe/Berlin",
+            "40" => "Pacific/Fiji",
+            "41" => "Asia/Magadan",
+            "42" => "Australia/Hobart",
+            "43" => "Pacific/Guam",
+            "44" => "Australia/Darwin",
+            "45" => "Asia/Shanghai",
+            "46" => "Asia/Almaty",
+            "47" => "Asia/Karachi",
+            "48" => "Asia/Kabul",
+            "49" => "Africa/Cairo",
+            "5" => "Europe/Bucharest",
+            "50" => "Africa/Harare",
+            "51" => "Europe/Moscow",
+            "53" => "Atlantic/Cape_Verde",
+            "54" => "Asia/Baku",
+            "55" => "America/Guatemala",
+            "56" => "Africa/Nairobi",
+            "58" => "Asia/Yekaterinburg",
+            "59" => "Europe/Helsinki",
+            "6" => "Europe/Prague",
+            "60" => "America/Godthab",
+            "61" => "Asia/Rangoon",
+            "62" => "Asia/Kathmandu",
+            "63" => "Asia/Irkutsk",
+            "64" => "Asia/Krasnoyarsk",
+            "65" => "America/Santiago",
+            "66" => "Asia/Colombo",
+            "67" => "Pacific/Tongatapu",
+            "68" => "Asia/Vladivostok",
+            "69" => "Africa/Luanda",
+            "7" => "Europe/Athens",
+            "70" => "Asia/Yakutsk",
+            "71" => "Asia/Dhaka",
+            "72" => "Asia/Seoul",
+            "73" => "Australia/Perth",
+            "74" => "Asia/Kuwait",
+            "75" => "Asia/Taipei",
+            "76" => "Australia/Sydney",
+            "8" => "America/Sao_Paulo",
+            "9" => "America/Halifax",
+        )
+        .and_then(Tz::iana)
+    }
+}
+
+impl FromStr for Tz {
+    type Err = ();
+
+    /*
+      Calconnect recommends ignoring VTIMEZONE and just "guess" the timezone
+
+      See: https://standards.calconnect.org/cc/cc-r0602-2006.html
+
+    */
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // First try the name as given
+        if let Some(tz) = Tz::iana(s) {
+            return Ok(tz);
+        }
+
+        // Strip common prefixes
+        let mut s = s.trim();
+        let mut zone_offset = None;
+        let mut retry_iana = false;
+        if let Some(part) = s.strip_prefix('(') {
+            if let Some((zone, name)) = part.split_once(')') {
+                s = name.trim_start();
+                zone_offset = Some(zone.trim());
+            }
+        } else if let Some(mut name) = s.strip_prefix('/') {
+            /*
+               The presence of the SOLIDUS character as a prefix, indicates that
+               this "TZID" represents a unique ID in a globally defined time zone
+               registry (when such registry is defined).
+            */
+            if name.as_bytes().iter().filter(|&&c| c == b'/').count() > 2 {
+                // Extract zones such as '/softwarestudio.org/Olson_20011030_5/America/Chicago'
+                if let Some(new_name) = name.splitn(3, '/').nth(2) {
+                    name = new_name.strip_prefix("SystemV/").unwrap_or(new_name);
+                }
+            }
+            retry_iana = true;
+            s = name;
+        }
+
+        // Try again with the stripped name
+        if retry_iana && let Some(tz) = Tz::iana(s) {
+            return Ok(tz);
+        }
+
+        // Map proprietary timezones to IANA names
+        let result = hashify::map!(s.as_bytes(), TzName,
+        "AUS Central Standard Time" => "Australia/Darwin",
+        "AUS Central" => "Australia/Darwin",
+        "AUS Eastern Standard Time" => "Australia/Sydney",
+        "AUS Eastern" => "Australia/Sydney",
+        "Abu Dhabi, Muscat" => "Asia/Muscat",
+        "Adelaide, Central Australia" => "Australia/Adelaide",
+        "Afghanistan Standard Time" => "Asia/Kabul",
+        "Afghanistan" => "Asia/Kabul",
+        "Alaska" => "America/Anchorage",
+        "Alaskan Standard Time" => "America/Anchorage",
+        "Alaskan" => "America/Anchorage",
+        "Aleutian Standard Time" => "America/Adak",
+        "Almaty, Novosibirsk, North Central Asia" => "Asia/Almaty",
+        "Altai Standard Time" => "Asia/Barnaul",
+        "Amsterdam, Berlin, Bern, Rom, Stockholm, Wien" => "Europe/Berlin",
+        "Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna" => "Europe/Berlin",
+        "Arab Standard Time" => "Asia/Riyadh",
+        "Arab" => "Asia/Kuwait",
+        "Arab, Kuwait, Riyadh" => "Asia/Kuwait",
+        "Arabian Standard Time" => "Asia/Dubai",
+        "Arabian" => "Asia/Muscat",
+        "Arabic Standard Time" => "Asia/Baghdad",
+        "Arabic" => "Asia/Baghdad",
+        "Argentina Standard Time" => "America/Buenos_Aires",
+        "Argentina" => "America/Argentina/Buenos_Aires",
+        "Arizona" => "America/Phoenix",
+        "Armenian" => "Asia/Yerevan",
+        "Astana, Dhaka" => "Asia/Dhaka",
+        "Astrakhan Standard Time" => "Europe/Astrakhan",
+        "Athens, Istanbul, Minsk" => "Europe/Athens",
+        "Atlantic Standard Time" => "America/Halifax",
+        "Atlantic Time (Canada)" => "America/Halifax",
+        "Atlantic" => "America/Halifax",
+        "Auckland, Wellington" => "Pacific/Auckland",
+        "Aus Central W. Standard Time" => "Australia/Eucla",
+        "Azerbaijan Standard Time" => "Asia/Baku",
+        "Azerbijan" => "Asia/Baku",
+        "Azores Standard Time" => "Atlantic/Azores",
+        "Azores" => "Atlantic/Azores",
+        "Baghdad" => "Asia/Baghdad",
+        "Bahia Standard Time" => "America/Bahia",
+        "Baku, Tbilisi, Yerevan" => "Asia/Baku",
+        "Bangkok, Hanoi, Jakarta" => "Asia/Bangkok",
+        "Bangladesh Standard Time" => "Asia/Dhaka",
+        "Beijing, Chongqing, Hong Kong SAR, Urumqi" => "Asia/Shanghai",
+        "Belarus Standard Time" => "Europe/Minsk",
+        "Belgrade, Pozsony, Budapest, Ljubljana, Prague" => "Europe/Prague",
+        "Bogota, Lima, Quito" => "America/Bogota",
+        "Bougainville Standard Time" => "Pacific/Bougainville",
+        "Brasilia" => "America/Sao_Paulo",
+        "Brisbane, East Australia" => "Australia/Brisbane",
+        "Brussels, Copenhagen, Madrid, Paris" => "Europe/Paris",
+        "Bucharest" => "Europe/Bucharest",
+        "Buenos Aires" => "America/Argentina/Buenos_Aires",
+        "Cairo" => "Africa/Cairo",
+        "Canada Central Standard Time" => "America/Regina",
+        "Canada Central" => "America/Edmonton",
+        "Canberra, Melbourne, Sydney, Hobart" => "Australia/Sydney",
+        "Canberra, Melbourne, Sydney" => "Australia/Sydney",
+        "Cape Verde Is." => "Atlantic/Cape_Verde",
+        "Cape Verde Standard Time" => "Atlantic/Cape_Verde",
+        "Cape Verde" => "Atlantic/Cape_Verde",
+        "Caracas, La Paz" => "America/Caracas",
+        "Casablanca, Monrovia" => "Africa/Casablanca",
+        "Caucasus Standard Time" => "Asia/Yerevan",
+        "Caucasus" => "Asia/Yerevan",
+        "Cen. Australia Standard Time" => "Australia/Adelaide",
+        "Cen. Australia" => "Australia/Adelaide",
+        "Central America Standard Time" => "America/Guatemala",
+        "Central America" => "America/Guatemala",
+        "Central Asia Standard Time" => "Asia/Almaty",
+        "Central Asia" => "Asia/Dhaka",
+        "Central Brazilian Standard Time" => "America/Cuiaba",
+        "Central Brazilian" => "America/Manaus",
+        "Central Europe Standard Time" => "Europe/Budapest",
+        "Central Europe" => "Europe/Prague",
+        "Central European Standard Time" => "Europe/Warsaw",
+        "Central European" => "Europe/Sarajevo",
+        "Central Pacific Standard Time" => "Pacific/Guadalcanal",
+        "Central Pacific" => "Asia/Magadan",
+        "Central Standard Time (Mexico)" => "America/Mexico_City",
+        "Central Standard Time" => "America/Chicago",
+        "Central Time (US & Canada)" => "America/Chicago",
+        "Central Time (US and Canada)" => "America/Chicago",
+        "Central" => "America/Chicago",
+        "Chatham Islands Standard Time" => "Pacific/Chatham",
+        "China Standard Time" => "Asia/Shanghai",
+        "China" => "Asia/Shanghai",
+        "Cuba Standard Time" => "America/Havana",
+        "Darwin" => "Australia/Darwin",
+        "Dateline Standard Time" => "Etc/GMT+12",
+        "Dateline" => "Etc/GMT-12",
+        "E. Africa Standard Time" => "Africa/Nairobi",
+        "E. Africa" => "Africa/Nairobi",
+        "E. Australia Standard Time" => "Australia/Brisbane",
+        "E. Australia" => "Australia/Brisbane",
+        "E. Europe Standard Time" => "Europe/Chisinau",
+        "E. Europe" => "Europe/Minsk",
+        "E. South America Standard Time" => "America/Sao_Paulo",
+        "E. South America" => "America/Belem",
+        "East Africa, Nairobi" => "Africa/Nairobi",
+        "Easter Island Standard Time" => "Pacific/Easter",
+        "Eastern Standard Time (Mexico)" => "America/Cancun",
+        "Eastern Standard Time" => "America/New_York",
+        "Eastern Time (US & Canada)" => "America/New_York",
+        "Eastern Time (US and Canada)" => "America/New_York",
+        "Eastern" => "America/New_York",
+        "Egypt Standard Time" => "Africa/Cairo",
+        "Egypt" => "Africa/Cairo",
+        "Ekaterinburg Standard Time" => "Asia/Yekaterinburg",
+        "Ekaterinburg" => "Asia/Yekaterinburg",
+        "Eniwetok, Kwajalein, Dateline Time" => "Pacific/Kwajalein",
+        "FLE Standard Time" => "Europe/Kiev",
+        "FLE" => "Europe/Helsinki",
+        "Fiji Islands, Kamchatka, Marshall Is." => "Pacific/Fiji",
+        "Fiji Standard Time" => "Pacific/Fiji",
+        "Fiji" => "Pacific/Fiji",
+        "GMT Standard Time" => "Europe/London",
+        "GTB Standard Time" => "Europe/Bucharest",
+        "GTB" => "Europe/Athens",
+        "Georgian Standard Time" => "Asia/Tbilisi",
+        "Georgian" => "Asia/Tbilisi",
+        "Greenland Standard Time" => "America/Godthab",
+        "Greenland" => "America/Godthab",
+        "Greenwich Mean Time: Dublin, Edinburgh, Lisbon, London" => "Europe/Lisbon",
+        "Greenwich Mean Time; Dublin, Edinburgh, London" => "Europe/London",
+        "Greenwich Standard Time" => "Atlantic/Reykjavik",
+        "Greenwich" => "Atlantic/Reykjavik",
+        "Guam, Port Moresby" => "Pacific/Guam",
+        "Haiti Standard Time" => "America/Port-au-Prince",
+        "Harare, Pretoria" => "Africa/Harare",
+        "Hawaii" => "Pacific/Honolulu",
+        "Hawaiian Standard Time" => "Pacific/Honolulu",
+        "Hawaiian" => "Pacific/Honolulu",
+        "Helsinki, Riga, Tallinn" => "Europe/Helsinki",
+        "Hobart, Tasmania" => "Australia/Hobart",
+        "India Standard Time" => "Asia/Calcutta",
+        "India" => "Asia/Calcutta",
+        "Indiana (East)" => "America/Indiana/Indianapolis",
+        "Iran Standard Time" => "Asia/Tehran",
+        "Iran" => "Asia/Tehran",
+        "Irkutsk, Ulaan Bataar" => "Asia/Irkutsk",
+        "Islamabad, Karachi, Tashkent" => "Asia/Karachi",
+        "Israel Standard Time" => "Asia/Jerusalem",
+        "Israel" => "Asia/Jerusalem",
+        "Israel, Jerusalem Standard Time" => "Asia/Jerusalem",
+        "Jordan Standard Time" => "Asia/Amman",
+        "Jordan" => "Asia/Amman",
+        "Kabul" => "Asia/Kabul",
+        "Kaliningrad Standard Time" => "Europe/Kaliningrad",
+        "Kathmandu, Nepal" => "Asia/Kathmandu",
+        "Kolkata, Chennai, Mumbai, New Delhi, India Standard Time" => "Asia/Calcutta",
+        "Korea Standard Time" => "Asia/Seoul",
+        "Korea" => "Asia/Seoul",
+        "Krasnoyarsk" => "Asia/Krasnoyarsk",
+        "Kuala Lumpur, Singapore" => "Asia/Singapore",
+        "Libya Standard Time" => "Africa/Tripoli",
+        "Line Islands Standard Time" => "Pacific/Kiritimati",
+        "Lord Howe Standard Time" => "Australia/Lord_Howe",
+        "Magadan Standard Time" => "Asia/Magadan",
+        "Magadan, Solomon Is., New Caledonia" => "Asia/Magadan",
+        "Magallanes Standard Time" => "America/Punta_Arenas",
+        "Marquesas Standard Time" => "Pacific/Marquesas",
+        "Mauritius Standard Time" => "Indian/Mauritius",
+        "Mauritius" => "Indian/Mauritius",
+        "Mexico City, Tegucigalpa" => "America/Mexico_City",
+        "Mexico Standard Time 2" => "America/Chihuahua",
+        "Mexico" => "America/Mexico_City",
+        "Mid-Atlantic" => "America/Noronha",
+        "Middle East Standard Time" => "Asia/Beirut",
+        "Middle East" => "Asia/Beirut",
+        "Midway Island, Samoa" => "Pacific/Midway",
+        "Montevideo Standard Time" => "America/Montevideo",
+        "Montevideo" => "America/Montevideo",
+        "Morocco Standard Time" => "Africa/Casablanca",
+        "Morocco" => "Africa/Casablanca",
+        "Moscow, St. Petersburg, Volgograd" => "Europe/Moscow",
+        "Mountain Standard Time (Mexico)" => "America/Chihuahua",
+        "Mountain Standard Time" => "America/Denver",
+        "Mountain Time (US & Canada)" => "America/Denver",
+        "Mountain Time (US and Canada)" => "America/Denver",
+        "Mountain" => "America/Denver",
+        "Myanmar Standard Time" => "Asia/Rangoon",
+        "Myanmar" => "Asia/Rangoon",
+        "N. Central Asia Standard Time" => "Asia/Novosibirsk",
+        "N. Central Asia" => "Asia/Almaty",
+        "Namibia Standard Time" => "Africa/Windhoek",
+        "Namibia" => "Africa/Windhoek",
+        "Nepal Standard Time" => "Asia/Katmandu",
+        "Nepal" => "Asia/Kathmandu",
+        "New Zealand Standard Time" => "Pacific/Auckland",
+        "New Zealand" => "Pacific/Auckland",
+        "Newfoundland Standard Time" => "America/St_Johns",
+        "Newfoundland" => "America/St_Johns",
+        "Norfolk Standard Time" => "Pacific/Norfolk",
+        "North Asia East Standard Time" => "Asia/Irkutsk",
+        "North Asia East" => "Asia/Irkutsk",
+        "North Asia Standard Time" => "Asia/Krasnoyarsk",
+        "North Asia" => "Asia/Krasnoyarsk",
+        "North Korea Standard Time" => "Asia/Pyongyang",
+        "Omsk Standard Time" => "Asia/Omsk",
+        "Osaka, Sapporo, Tokyo" => "Asia/Tokyo",
+        "Japan" => "Asia/Tokyo",
+        "Pacific SA Standard Time" => "America/Santiago",
+        "Pacific SA" => "America/Santiago",
+        "Pacific Standard Time (Mexico)" => "America/Tijuana",
+        "Pacific Standard Time" => "America/Los_Angeles",
+        "Pacific Time (US & Canada)" => "America/Los_Angeles",
+        "Pacific Time (US & Canada); Tijuana" => "America/Los_Angeles",
+        "Pacific Time (US and Canada)" => "America/Los_Angeles",
+        "Pacific Time (US and Canada); Tijuana" => "America/Los_Angeles",
+        "Pacific" => "America/Los_Angeles",
+        "Pakistan Standard Time" => "Asia/Karachi",
+        "Pakistan" => "Asia/Karachi",
+        "Paraguay Standard Time" => "America/Asuncion",
+        "Paris, Madrid, Brussels, Copenhagen" => "Europe/Paris",
+        "Perth, Western Australia" => "Australia/Perth",
+        "Prague, Central Europe" => "Europe/Prague",
+        "Qyzylorda Standard Time" => "Asia/Qyzylorda",
+        "Rangoon" => "Asia/Rangoon",
+        "Romance Standard Time" => "Europe/Paris",
+        "Romance" => "Europe/Paris",
+        "Russia Time Zone 10" => "Asia/Srednekolymsk",
+        "Russia Time Zone 11" => "Asia/Kamchatka",
+        "Russia Time Zone 3" => "Europe/Samara",
+        "Russian Standard Time" => "Europe/Moscow",
+        "Russian" => "Europe/Moscow",
+        "SA Eastern Standard Time" => "America/Cayenne",
+        "SA Eastern" => "America/Belem",
+        "SA Pacific Standard Time" => "America/Bogota",
+        "SA Pacific" => "America/Bogota",
+        "SA Western Standard Time" => "America/La_Paz",
+        "SA Western" => "America/La_Paz",
+        "SE Asia Standard Time" => "Asia/Bangkok",
+        "SE Asia" => "Asia/Bangkok",
+        "Saint Pierre Standard Time" => "America/Miquelon",
+        "Sakhalin Standard Time" => "Asia/Sakhalin",
+        "Samoa Standard Time" => "Pacific/Apia",
+        "Samoa" => "Pacific/Apia",
+        "Santiago" => "America/Santiago",
+        "Sao Tome Standard Time" => "Africa/Sao_Tome",
+        "Sarajevo, Skopje, Sofija, Vilnius, Warsaw, Zagreb" => "Europe/Sarajevo",
+        "Saratov Standard Time" => "Europe/Saratov",
+        "Saskatchewan" => "America/Edmonton",
+        "Seoul, Korea Standard time" => "Asia/Seoul",
+        "Singapore Standard Time" => "Asia/Singapore",
+        "Singapore" => "Asia/Singapore",
+        "South Africa Standard Time" => "Africa/Johannesburg",
+        "South Africa" => "Africa/Harare",
+        "Sri Jayawardenepura, Sri Lanka" => "Asia/Colombo",
+        "Sri Lanka Standard Time" => "Asia/Colombo",
+        "Sri Lanka" => "Asia/Colombo",
+        "Sudan Standard Time" => "Africa/Khartoum",
+        "Syria Standard Time" => "Asia/Damascus",
+        "Taipei Standard Time" => "Asia/Taipei",
+        "Taipei" => "Asia/Taipei",
+        "Tasmania Standard Time" => "Australia/Hobart",
+        "Tasmania" => "Australia/Hobart",
+        "Tehran" => "Asia/Tehran",
+        "Tocantins Standard Time" => "America/Araguaina",
+        "Tokyo Standard Time" => "Asia/Tokyo",
+        "Tokyo" => "Asia/Tokyo",
+        "Tomsk Standard Time" => "Asia/Tomsk",
+        "Tonga Standard Time" => "Pacific/Tongatapu",
+        "Tonga" => "Pacific/Tongatapu",
+        "Transbaikal Standard Time" => "Asia/Chita",
+        "Turkey Standard Time" => "Europe/Istanbul",
+        "Turks And Caicos Standard Time" => "America/Grand_Turk",
+        "US Eastern Standard Time" => "America/Indianapolis",
+        "US Eastern" => "America/Indiana/Indianapolis",
+        "US Mountain Standard Time" => "America/Phoenix",
+        "US Mountain" => "America/Phoenix",
+        "UTC" => "Etc/GMT",
+        "UTC+12" => "Etc/GMT-12",
+        "UTC+13" => "Etc/GMT-13",
+        "UTC-02" => "Etc/GMT+2",
+        "UTC-08" => "Etc/GMT+8",
+        "UTC-09" => "Etc/GMT+9",
+        "UTC-11" => "Etc/GMT+11",
+        "Ulaanbaatar Standard Time" => "Asia/Ulaanbaatar",
+        "Universal Coordinated Time" => "UTC",
+        "Venezuela Standard Time" => "America/Caracas",
+        "Venezuela" => "America/Caracas",
+        "Vladivostok Standard Time" => "Asia/Vladivostok",
+        "Vladivostok" => "Asia/Vladivostok",
+        "Volgograd Standard Time" => "Europe/Volgograd",
+        "W. Australia Standard Time" => "Australia/Perth",
+        "W. Australia" => "Australia/Perth",
+        "W. Central Africa Standard Time" => "Africa/Lagos",
+        "W. Central Africa" => "Africa/Lagos",
+        "W. Europe Standard Time" => "Europe/Berlin",
+        "W. Europe" => "Europe/Amsterdam",
+        "W. Mongolia Standard Time" => "Asia/Hovd",
+        "West Asia Standard Time" => "Asia/Tashkent",
+        "West Asia" => "Asia/Tashkent",
+        "West Bank Standard Time" => "Asia/Hebron",
+        "West Central Africa" => "Africa/Luanda",
+        "West Pacific Standard Time" => "Pacific/Port_Moresby",
+        "West Pacific" => "Pacific/Guam",
+        "Yakutsk Standard Time" => "Asia/Yakutsk",
+        "Yakutsk" => "Asia/Yakutsk",
+        "Yukon Standard Time" => "America/Whitehorse",
+        "Nuku'alofa, Tonga" => "Pacific/Tongatapu",
+        );
+
+        if let Some(name) = result {
+            if let Some(tz) = Tz::iana(name) {
+                return Ok(tz);
+            }
+        } else if let Some(zone_offset) = zone_offset {
+            let (zone, sign, time) = if let Some((zone, part)) = zone_offset.split_once('+') {
+                (zone.trim(), '-', part.trim())
+            } else if let Some((zone, part)) = zone_offset.split_once('-') {
+                (zone.trim(), '+', part.trim())
+            } else {
+                return Err(());
+            };
+            if !zone.eq_ignore_ascii_case("UTC") && !zone.eq_ignore_ascii_case("GMT") {
+                return Err(());
+            }
+            let mut zone = String::with_capacity(10);
+            zone.push_str("Etc/GMT");
+            zone.push(sign);
+
+            for (pos, ch) in time.chars().enumerate() {
+                if !ch.is_ascii_digit() {
+                    break;
+                } else if ch != '0' || pos > 0 {
+                    zone.push(ch);
+                }
+            }
+
+            if let Some(tz) = Tz::iana(&zone) {
+                return Ok(tz);
+            }
+        }
+        Err(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
+
+    fn iana(name: &str) -> Tz {
+        Tz::iana(name).expect(name)
+    }
 
     #[test]
     fn test_tz() {
-        for (zone_name, tz) in [
-            ("America/New_York", chrono_tz::Tz::America__New_York),
+        for (zone_name, expected) in [
+            ("America/New_York", "America/New_York"),
             (
                 "(GMT+10:00) Canberra, Melbourne, Sydney",
-                chrono_tz::Tz::Australia__Sydney,
+                "Australia/Sydney",
             ),
-            (
-                "(UTC-05:00) Eastern Time (US & Canada)",
-                chrono_tz::Tz::America__New_York,
-            ),
-            ("(GMT +01:00)", chrono_tz::Tz::Etc__GMTMinus1),
-            ("(GMT+01.00)", chrono_tz::Tz::Etc__GMTMinus1),
-            ("(UTC-03:00)", chrono_tz::Tz::Etc__GMTPlus3),
-            ("/Europe/Stockholm", chrono_tz::Tz::Europe__Stockholm),
+            ("(UTC-05:00) Eastern Time (US & Canada)", "America/New_York"),
+            ("(GMT +01:00)", "Etc/GMT-1"),
+            ("(GMT+01.00)", "Etc/GMT-1"),
+            ("(UTC-03:00)", "Etc/GMT+3"),
+            ("/Europe/Stockholm", "Europe/Stockholm"),
             (
                 "/softwarestudio.org/Olson_20011030_5/America/Chicago",
-                chrono_tz::Tz::America__Chicago,
+                "America/Chicago",
             ),
             (
                 "/freeassociation.sourceforge.net/Tzfile/Europe/Ljubljana",
-                chrono_tz::Tz::Europe__Ljubljana,
+                "Europe/Ljubljana",
             ),
             (
                 "/freeassociation.sourceforge.net/Tzfile/SystemV/EST5EDT",
-                chrono_tz::Tz::EST5EDT,
+                "EST5EDT",
             ),
         ] {
-            assert_eq!(Tz::from_str(zone_name).expect(zone_name), Tz::Tz(tz));
+            assert_eq!(Tz::from_str(zone_name).expect(zone_name), iana(expected));
         }
     }
 
     #[test]
     fn test_tz_id_rountrip() {
         for tz in [
-            Tz::Tz(chrono_tz::Tz::America__New_York),
-            Tz::Tz(chrono_tz::Tz::Europe__Ljubljana),
-            Tz::Tz(chrono_tz::Tz::UTC),
+            iana("America/New_York"),
+            iana("Europe/Ljubljana"),
+            Tz::UTC,
             Tz::Floating,
-            Tz::Fixed(chrono::FixedOffset::east_opt(14 * 3600).unwrap()),
-            Tz::Fixed(chrono::FixedOffset::west_opt(14 * 3600).unwrap()),
-            Tz::Fixed(chrono::FixedOffset::east_opt(3600).unwrap()),
-            Tz::Fixed(chrono::FixedOffset::west_opt(3600).unwrap()),
+            Tz::Fixed(Offset::constant(14)),
+            Tz::Fixed(Offset::constant(-14)),
+            Tz::Fixed(Offset::constant(1)),
+            Tz::Fixed(Offset::constant(-1)),
         ] {
             let id = tz.as_id();
             let tz_from_id = Tz::from_id(id).unwrap();
@@ -2071,34 +1094,34 @@ mod tests {
 
     #[test]
     fn rfc5545_3_3_5_resolves_ambiguous_and_nonexistent_local_times() {
-        let local = |text: &str| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S").unwrap();
+        let local = |text: &str| text.parse::<DateTime>().unwrap();
         for (tz, value, utc, written) in [
             (
-                Tz::Tz(chrono_tz::Tz::Europe__Berlin),
+                iana("Europe/Berlin"),
                 "2025-10-26T02:30:00",
                 "2025-10-26T00:30:00",
                 "2025-10-26T02:30:00",
             ),
             (
-                Tz::Tz(chrono_tz::Tz::Europe__Berlin),
+                iana("Europe/Berlin"),
                 "2025-03-30T02:30:00",
                 "2025-03-30T01:30:00",
                 "2025-03-30T02:30:00",
             ),
             (
-                Tz::Tz(chrono_tz::Tz::America__New_York),
+                iana("America/New_York"),
                 "2025-03-09T02:00:00",
                 "2025-03-09T07:00:00",
                 "2025-03-09T02:00:00",
             ),
             (
-                Tz::Tz(chrono_tz::Tz::Pacific__Apia),
+                iana("Pacific/Apia"),
                 "2011-12-30T12:00:00",
                 "2011-12-30T22:00:00",
                 "2011-12-30T12:00:00",
             ),
             (
-                Tz::Tz(chrono_tz::Tz::Europe__Berlin),
+                iana("Europe/Berlin"),
                 "2025-01-08T09:00:00",
                 "2025-01-08T08:00:00",
                 "2025-01-08T09:00:00",
@@ -2110,10 +1133,67 @@ mod tests {
                 "2025-03-30T02:30:00",
             ),
         ] {
-            let resolved = tz.resolve_local_datetime(&local(value)).expect(value);
-            assert_eq!(resolved.naive_utc(), local(utc), "{tz:?} {value}");
+            let resolved = tz.resolve_local_datetime(local(value)).expect(value);
+            assert_eq!(
+                Offset::UTC.to_datetime(resolved.to_timestamp()),
+                local(utc),
+                "{tz:?} {value}"
+            );
             assert_eq!(resolved.naive_local(), local(written), "{tz:?} {value}");
             assert_eq!(resolved.timezone(), tz, "{tz:?} {value}");
         }
+    }
+
+    #[test]
+    fn from_local_reports_readings_in_a_gap() {
+        let berlin = iana("Europe/Berlin");
+        let in_gap = |text: &str| {
+            berlin
+                .interpret_local(text.parse().unwrap())
+                .map(|(_, in_gap)| in_gap)
+        };
+        assert_eq!(in_gap("2025-03-30T02:30:00"), Some(true));
+        assert_eq!(in_gap("2025-03-30T03:30:00"), Some(false));
+        assert_eq!(in_gap("2025-10-26T02:30:00"), Some(false));
+    }
+
+    #[test]
+    fn fixed_offset_zones_resolve_without_a_database() {
+        for name in ["UTC", "Etc/UTC", "Zulu", "Etc/GMT", "GMT0", "Etc/Greenwich"] {
+            assert_eq!(Tz::builtin_time_zone(name), Some(TimeZone::UTC), "{name}");
+        }
+        assert_eq!(
+            Tz::builtin_time_zone("Etc/GMT+5"),
+            Some(TimeZone::fixed(Offset::constant(-5)))
+        );
+        assert_eq!(
+            Tz::builtin_time_zone("Etc/GMT-14"),
+            Some(TimeZone::fixed(Offset::constant(14)))
+        );
+        assert_eq!(Tz::builtin_time_zone("Europe/Berlin"), None);
+    }
+
+    #[test]
+    fn has_fixed_offset_follows_the_zone_rules() {
+        assert!(Tz::Floating.has_fixed_offset());
+        assert!(Tz::Fixed(Offset::constant(3)).has_fixed_offset());
+        assert!(Tz::UTC.has_fixed_offset());
+        assert!(iana("Etc/GMT+5").has_fixed_offset());
+        assert!(!iana("Europe/Berlin").has_fixed_offset());
+    }
+
+    #[test]
+    fn every_decodable_identifier_encodes_back_to_itself() {
+        for id in [0, tzdb::UTC_ID, 0x8000, 0x85A0, 0x8001, 0x8B3F] {
+            let tz = Tz::from_id(id).expect("decodable");
+            assert_eq!(tz.as_id(), id, "{tz:?}");
+        }
+    }
+
+    #[test]
+    fn identifiers_outside_the_encoding_do_not_resolve() {
+        assert_eq!(Tz::from_id(0x7FFF), None);
+        assert_eq!(Tz::from_id(0xFFFF), None);
+        assert_eq!(Tz::from_id(tzdb::len() as u16), None);
     }
 }

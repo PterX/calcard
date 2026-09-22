@@ -11,7 +11,7 @@ use crate::{
         blob::{BlobIdGenerator, NoBlobIds},
         export::ImportError,
         jsprop::JSPropPointer,
-        timezone::{Tz, TzTimestamp},
+        timezone::{Tz, ZonedDateTime},
     },
     icalendar::{timezone::TzResolver, *},
     jscalendar::{
@@ -22,7 +22,6 @@ use crate::{
         *,
     },
 };
-use chrono::DateTime;
 use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Value};
 
 impl ICalendar {
@@ -1190,7 +1189,7 @@ impl ICalendar {
                         state.entries.insert(
                             Key::Property(JSCalendarProperty::Start),
                             Value::Element(JSCalendarValue::DateTime(JSCalendarDateTime::new(
-                                dt.to_naive_timestamp(),
+                                dt.naive_timestamp(),
                                 true,
                             ))),
                         );
@@ -1238,7 +1237,7 @@ impl ICalendar {
                         .to_date_time()
                         .and_then(|dt| dt.to_date_time_with_tz(state.tz_end.unwrap_or_default()))
                         .and_then(|dt| {
-                            let delta = dt.signed_duration_since(start_date.unwrap()).num_seconds();
+                            let delta = dt.signed_duration_since(start_date.unwrap()).as_secs();
                             (delta > 0).then_some((delta, dt))
                         })
                     {
@@ -1253,9 +1252,7 @@ impl ICalendar {
                         */
 
                         let days = if !value.has_time() {
-                            dt.date_naive()
-                                .signed_duration_since(start_date.unwrap().date_naive())
-                                .num_days()
+                            i64::from(dt.days_since(start_date.unwrap()))
                         } else {
                             0
                         };
@@ -1335,8 +1332,8 @@ impl ICalendar {
                         state.entries.insert(
                             Key::Property(JSCalendarProperty::Due),
                             Value::Element(JSCalendarValue::DateTime(JSCalendarDateTime::new(
-                                dt.with_timezone(&state.tz_start.unwrap_or_default())
-                                    .to_naive_timestamp(),
+                                dt.with_timezone(state.tz_start.unwrap_or_default())
+                                    .naive_timestamp(),
                                 true,
                             ))),
                         );
@@ -1491,7 +1488,7 @@ impl ICalendar {
                                 period_to_date_time(&entry.entry.values[pos], tz).unwrap();
                             let key = Key::Property(JSCalendarProperty::DateTime(
                                 JSCalendarDateTime::new(
-                                    dt.with_timezone(&tz_start).to_naive_timestamp(),
+                                    dt.with_timezone(tz_start).naive_timestamp(),
                                     true,
                                 ),
                             ));
@@ -1622,8 +1619,8 @@ impl ICalendar {
                                 .map(|dt| {
                                     Value::Element(JSCalendarValue::DateTime(
                                         JSCalendarDateTime::new(
-                                            dt.with_timezone(&state.tz_start.unwrap_or_default())
-                                                .to_naive_timestamp(),
+                                            dt.with_timezone(state.tz_start.unwrap_or_default())
+                                                .naive_timestamp(),
                                             true,
                                         ),
                                     ))
@@ -2206,7 +2203,7 @@ impl ICalendar {
 fn period_to_date_time(
     value: &ICalendarValue,
     tz: Tz,
-) -> Option<(DateTime<Tz>, ICalendarDuration)> {
+) -> Option<(ZonedDateTime, ICalendarDuration)> {
     match value {
         ICalendarValue::Period(ICalendarPeriod::Range { start, end }) => {
             let start = start.to_date_time()?.to_date_time_with_tz(tz)?;
@@ -2214,7 +2211,7 @@ fn period_to_date_time(
 
             Some((
                 start,
-                ICalendarDuration::from_seconds(end.signed_duration_since(start).num_seconds()),
+                ICalendarDuration::from_seconds(end.signed_duration_since(start).as_secs()),
             ))
         }
         ICalendarValue::Period(ICalendarPeriod::Duration { start, duration }) => Some((

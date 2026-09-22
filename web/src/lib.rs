@@ -98,28 +98,28 @@ fn do_convert(input: &str) -> ConvertResult {
                 let jscalendar = icalendar.into_jscalendar::<String, String>();
                 let conversion = jscalendar.to_string_pretty();
                 match jscalendar.into_icalendar() {
-                    Some(roundtrip) => ConvertResult::ok(
+                    Ok(roundtrip) => ConvertResult::ok(
                         "iCalendar",
                         "JSCalendar",
                         conversion,
                         roundtrip.to_string(),
                         occurrences,
                     ),
-                    None => ConvertResult::error(BUG),
+                    Err(_) => ConvertResult::error(BUG),
                 }
             }
             Entry::VCard(vcard) => {
                 let jscontact = vcard.into_jscontact::<String, String>();
                 let conversion = jscontact.to_string_pretty();
                 match jscontact.into_vcard() {
-                    Some(roundtrip) => ConvertResult::ok(
+                    Ok(roundtrip) => ConvertResult::ok(
                         "vCard",
                         "JSContact",
                         conversion,
                         roundtrip.to_string(),
                         Vec::new(),
                     ),
-                    None => ConvertResult::error(BUG),
+                    Err(_) => ConvertResult::error(BUG),
                 }
             }
             Entry::InvalidLine(text) => ConvertResult::error(format!("Invalid line found: {text}")),
@@ -141,7 +141,7 @@ fn do_convert(input: &str) -> ConvertResult {
         if source.contains("\"Group\"") {
             match JSCalendar::<String, String>::parse(source.trim_end()) {
                 Ok(jscalendar) => match jscalendar.into_icalendar() {
-                    Some(icalendar) => {
+                    Ok(icalendar) => {
                         let conversion = icalendar.to_string();
                         let occurrences = expand(icalendar.expand_dates(Tz::Floating, 25));
                         let roundtrip = icalendar.into_jscalendar::<String, String>().to_string_pretty();
@@ -153,19 +153,19 @@ fn do_convert(input: &str) -> ConvertResult {
                             occurrences,
                         )
                     }
-                    None => ConvertResult::error(BUG),
+                    Err(_) => ConvertResult::error(BUG),
                 },
                 Err(err) => ConvertResult::error(format!("Failed to parse JSCalendar: {err}")),
             }
         } else if source.contains("\"Card\"") {
             match JSContact::<String, String>::parse(source.trim_end()) {
                 Ok(jscontact) => match jscontact.into_vcard() {
-                    Some(vcard) => {
+                    Ok(vcard) => {
                         let conversion = vcard.to_string();
                         let roundtrip = vcard.into_jscontact::<String, String>().to_string_pretty();
                         ConvertResult::ok("JSContact", "vCard", conversion, roundtrip, Vec::new())
                     }
-                    None => ConvertResult::error(BUG),
+                    Err(_) => ConvertResult::error(BUG),
                 },
                 Err(err) => ConvertResult::error(format!("Failed to parse JSContact: {err}")),
             }
@@ -180,18 +180,14 @@ fn do_convert(input: &str) -> ConvertResult {
 }
 
 fn expand(expanded: CalendarExpand) -> Vec<Occurrence> {
-    let mut events = expanded
-        .events
-        .into_iter()
-        .filter_map(|event| event.try_into_date_time())
-        .collect::<Vec<_>>();
-    events.sort_unstable_by(|a, b| a.start.cmp(&b.start));
+    let mut events = expanded.events;
+    events.sort_unstable_by_key(|event| event.start);
     events
         .into_iter()
         .map(|event| Occurrence {
             from: format!(
                 "{} ({})",
-                event.start.format("%a %b %-d, %Y %-I:%M%P"),
+                event.start.naive_local().strftime("%a %b %-d, %Y %-I:%M%P"),
                 event
                     .start
                     .timezone()
@@ -200,7 +196,7 @@ fn expand(expanded: CalendarExpand) -> Vec<Occurrence> {
             ),
             to: format!(
                 "{} ({})",
-                event.end.format("%a %b %-d, %Y %-I:%M%P"),
+                event.end.naive_local().strftime("%a %b %-d, %Y %-I:%M%P"),
                 event
                     .end
                     .timezone()

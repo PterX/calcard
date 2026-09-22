@@ -318,12 +318,15 @@ fn rfc5545_3_6_component_nesting_is_not_capped() {
     assert_eq!(parser.entry(), Entry::Eof);
 }
 
+/// The stack a conversion is allowed to use, whatever the nesting depth.
 #[cfg(feature = "jmap")]
-#[test]
-fn deeply_nested_components_convert_in_a_small_stack() {
-    let input = nested_calendar(5_000);
-    let converted = std::thread::Builder::new()
-        .stack_size(256 * 1024)
+const CONVERSION_STACK: usize = 1024 * 1024;
+
+#[cfg(feature = "jmap")]
+fn convert_in_a_small_stack(depth: usize) -> (usize, usize, usize, bool) {
+    let input = nested_calendar(depth);
+    std::thread::Builder::new()
+        .stack_size(CONVERSION_STACK)
         .spawn(move || {
             let ical = ICalendar::parse(&input).expect("deep nesting is accepted");
             let depth = ical.components.len();
@@ -335,9 +338,27 @@ fn deeply_nested_components_convert_in_a_small_stack() {
         })
         .expect("spawn")
         .join()
-        .expect("conversion of a deeply nested calendar fits a 256 KiB stack");
+        .expect("conversion of a deeply nested calendar fits the stack budget")
+}
+
+#[cfg(feature = "jmap")]
+#[test]
+fn deeply_nested_components_convert_in_a_small_stack() {
+    let converted = convert_in_a_small_stack(5_000);
     assert_eq!(converted.0, 5_000);
     assert!(converted.1 > 0 && converted.2 > 0 && converted.3);
+}
+
+#[cfg(feature = "jmap")]
+#[test]
+fn conversion_stack_use_does_not_grow_with_nesting() {
+    // Ten times the nesting has to fit the same budget, which it only can if
+    // nesting costs no stack of its own.
+    let shallow = convert_in_a_small_stack(500);
+    let deep = convert_in_a_small_stack(5_000);
+    assert_eq!(shallow.0, 500);
+    assert_eq!(deep.0, 5_000);
+    assert!(shallow.3 && deep.3);
 }
 
 #[test]

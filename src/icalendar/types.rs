@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::{Entry, Parser};
+use jiff::civil::Weekday;
 use std::borrow::Cow;
 
 impl IanaParse for ICalendarProperty {
@@ -473,16 +474,16 @@ impl IanaString for ICalendarWeekday {
     }
 }
 
-impl From<ICalendarWeekday> for chrono::Weekday {
+impl From<ICalendarWeekday> for Weekday {
     fn from(value: ICalendarWeekday) -> Self {
         match value {
-            ICalendarWeekday::Sunday => chrono::Weekday::Sun,
-            ICalendarWeekday::Monday => chrono::Weekday::Mon,
-            ICalendarWeekday::Tuesday => chrono::Weekday::Tue,
-            ICalendarWeekday::Wednesday => chrono::Weekday::Wed,
-            ICalendarWeekday::Thursday => chrono::Weekday::Thu,
-            ICalendarWeekday::Friday => chrono::Weekday::Fri,
-            ICalendarWeekday::Saturday => chrono::Weekday::Sat,
+            ICalendarWeekday::Sunday => Weekday::Sunday,
+            ICalendarWeekday::Monday => Weekday::Monday,
+            ICalendarWeekday::Tuesday => Weekday::Tuesday,
+            ICalendarWeekday::Wednesday => Weekday::Wednesday,
+            ICalendarWeekday::Thursday => Weekday::Thursday,
+            ICalendarWeekday::Friday => Weekday::Friday,
+            ICalendarWeekday::Saturday => Weekday::Saturday,
         }
     }
 }

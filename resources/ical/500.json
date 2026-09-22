@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "comp_id": 1,
+      "error": {
+        "RRule": {
+          "ValidationError": {
+            "UnsupportedCalendarScale": {
+              "type": "Hebrew"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "events": []
+}

@@ -5,6 +5,7 @@
  */
 
 use super::*;
+use jiff::Timestamp;
 
 impl IanaString for CalendarScale {
     fn as_str(&self) -> &'static str {
@@ -69,7 +70,7 @@ impl Encoding {
 
 impl PartialDateTime {
     pub fn now() -> Self {
-        Self::from_utc_timestamp(chrono::Utc::now().timestamp())
+        Self::from_utc_timestamp(Timestamp::now().as_second())
     }
 
     pub fn from_utc_timestamp(value: i64) -> Self {
@@ -115,26 +116,24 @@ impl PartialDateTime {
 
     pub fn to_date_time(&self) -> Option<DateTimeResult> {
         let mut dt = DateTimeResult {
-            date_time: NaiveDate::from_ymd_opt(
-                self.year? as i32,
-                self.month? as u32,
-                self.day? as u32,
-            )?
-            .and_hms_opt(
-                self.hour.unwrap_or(0) as u32,
-                self.minute.unwrap_or(0) as u32,
-                self.second.unwrap_or(0) as u32,
-            )?,
+            date_time: civil::DateTime::new(
+                i16::try_from(self.year?).ok()?,
+                i8::try_from(self.month?).ok()?,
+                i8::try_from(self.day?).ok()?,
+                i8::try_from(self.hour.unwrap_or(0)).ok()?,
+                i8::try_from(self.minute.unwrap_or(0)).ok()?,
+                i8::try_from(self.second.unwrap_or(0)).ok()?,
+                0,
+            )
+            .ok()?,
             offset: None,
         };
         if let Some(tz_hour) = self.tz_hour {
             let secs = (tz_hour as i32 * 3600) + (self.tz_minute.unwrap_or(0) as i32 * 60);
-            dt.offset = if self.tz_minus {
-                FixedOffset::west_opt(secs)?
-            } else {
-                FixedOffset::east_opt(secs)?
+            if i64::from(secs) >= timezone::SECONDS_PER_DAY {
+                return None;
             }
-            .into();
+            dt.offset = Some(Offset::from_seconds(if self.tz_minus { -secs } else { secs }).ok()?);
         }
         Some(dt)
     }
@@ -144,26 +143,24 @@ impl PartialDateTime {
 impl ArchivedPartialDateTime {
     pub fn to_date_time(&self) -> Option<DateTimeResult> {
         let mut dt = DateTimeResult {
-            date_time: NaiveDate::from_ymd_opt(
-                self.year.as_ref()?.to_native() as i32,
-                *self.month.as_ref()? as u32,
-                *self.day.as_ref()? as u32,
-            )?
-            .and_hms_opt(
-                self.hour.unwrap_or(0) as u32,
-                self.minute.unwrap_or(0) as u32,
-                self.second.unwrap_or(0) as u32,
-            )?,
+            date_time: civil::DateTime::new(
+                i16::try_from(self.year.as_ref()?.to_native()).ok()?,
+                i8::try_from(*self.month.as_ref()?).ok()?,
+                i8::try_from(*self.day.as_ref()?).ok()?,
+                i8::try_from(self.hour.unwrap_or(0)).ok()?,
+                i8::try_from(self.minute.unwrap_or(0)).ok()?,
+                i8::try_from(self.second.unwrap_or(0)).ok()?,
+                0,
+            )
+            .ok()?,
             offset: None,
         };
         if let Some(tz_hour) = self.tz_hour.as_ref() {
             let secs = (*tz_hour as i32 * 3600) + (self.tz_minute.unwrap_or(0) as i32 * 60);
-            dt.offset = if self.tz_minus {
-                FixedOffset::west_opt(secs)?
-            } else {
-                FixedOffset::east_opt(secs)?
+            if i64::from(secs) >= timezone::SECONDS_PER_DAY {
+                return None;
             }
-            .into();
+            dt.offset = Some(Offset::from_seconds(if self.tz_minus { -secs } else { secs }).ok()?);
         }
         Some(dt)
     }

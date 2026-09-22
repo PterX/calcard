@@ -5,9 +5,9 @@
  */
 
 use ahash::AHashMap;
-use chrono::DateTime;
 use jmap_tools::{JsonPointer, Key, Value};
 
+use crate::common::timezone::ZonedDateTime;
 use crate::{
     common::{
         blob::{BlobIdFn, BlobIdGenerator, BlobIds, BlobOptions, NoBlobIds},
@@ -51,7 +51,7 @@ struct State<I: JSCalendarId, B: JSCalendarId> {
     link_ids: LinkIds,
     jsid: Option<String>,
     uid: Option<String>,
-    recurrence_id: Option<DateTime<Tz>>,
+    recurrence_id: Option<ZonedDateTime>,
     tz_start: Option<Tz>,
     tz_end: Option<Tz>,
     has_dates: bool,

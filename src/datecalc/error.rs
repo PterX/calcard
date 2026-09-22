@@ -4,17 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::{common::IanaString, icalendar::ICalendarFrequency};
-use std::{
-    borrow::Cow,
-    fmt::{Display, Formatter},
+use crate::{
+    common::{CalendarScale, IanaString},
+    icalendar::ICalendarFrequency,
 };
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "serde"), derive(serde::Serialize))]
 pub enum RRuleError {
     ValidationError(ValidationError),
-    IterError(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,19 +41,12 @@ pub enum ValidationError {
         by_rule: String,
         freq: ICalendarFrequency,
     },
-    UntilBeforeStart {
-        until: String,
-        dt_start: String,
-    },
     TooBigInterval(u16),
-    StartYearOutOfRange(i32),
-    UnableToGenerateTimeset,
-    InvalidByRuleWithByEaster,
-    DtStartUntilMismatchTimezone {
-        dt_start_tz: Cow<'static, str>,
-        until_tz: Cow<'static, str>,
-        expected: Vec<Cow<'static, str>>,
-    },
+    /// The rule is written in a calendar other than the Gregorian one.
+    ///
+    /// RFC 7529 scales place instances on entirely different dates, so a rule
+    /// naming one cannot be expanded by treating the scale as absent.
+    UnsupportedCalendarScale(CalendarScale),
 }
 
 impl From<ValidationError> for RRuleError {
@@ -63,49 +55,10 @@ impl From<ValidationError> for RRuleError {
     }
 }
 
-impl From<String> for RRuleError {
-    fn from(err: String) -> Self {
-        Self::IterError(err)
-    }
-}
-
-impl RRuleError {
-    pub fn new_iter_err<S: AsRef<str>>(msg: S) -> Self {
-        Self::IterError(msg.as_ref().to_owned())
-    }
-}
-
-pub(crate) fn checked_mul_u32(v1: u32, v2: u32, hint: Option<&str>) -> Result<u32, RRuleError> {
-    v1.checked_mul(v2).ok_or_else(|| match hint {
-        Some(hint) => RRuleError::new_iter_err(format!(
-            "Could not multiply number, would overflow (`{} * {}`), {}.",
-            v1, v2, hint
-        )),
-        None => RRuleError::new_iter_err(format!(
-            "Could not multiply number, would overflow (`{} * {}`).",
-            v1, v2,
-        )),
-    })
-}
-
-pub(crate) fn checked_add_u32(v1: u32, v2: u32, hint: Option<&str>) -> Result<u32, RRuleError> {
-    v1.checked_add(v2).ok_or_else(|| match hint {
-        Some(hint) => RRuleError::new_iter_err(format!(
-            "Could not add numbers, would overflow (`{} + {}`), {}.",
-            v1, v2, hint
-        )),
-        None => RRuleError::new_iter_err(format!(
-            "Could not add numbers, would overflow (`{} + {}`).",
-            v1, v2,
-        )),
-    })
-}
-
 impl Display for RRuleError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RRuleError::ValidationError(err) => write!(f, "{}", err),
-            RRuleError::IterError(err) => write!(f, "Iteration error: {}", err),
+            RRuleError::ValidationError(err) => write!(f, "{err}"),
         }
     }
 }
@@ -144,32 +97,14 @@ impl Display for ValidationError {
                 "Invalid BY rule `{by_rule}` with frequency `{}`",
                 freq.as_str()
             ),
-            ValidationError::UntilBeforeStart { until, dt_start } => write!(
-                f,
-                "Until date `{until}` is before the start date `{dt_start}`"
-            ),
             ValidationError::TooBigInterval(interval) => write!(
                 f,
                 "Interval of {interval} is too big. The maximum interval is 32767."
             ),
-            ValidationError::StartYearOutOfRange(year) => write!(
+            ValidationError::UnsupportedCalendarScale(rscale) => write!(
                 f,
-                "Start year {year} is out of range. The valid range is 1970 to 2038."
-            ),
-            ValidationError::UnableToGenerateTimeset => {
-                write!(f, "Unable to generate timeset")
-            }
-            ValidationError::InvalidByRuleWithByEaster => {
-                write!(f, "BYEASTER cannot be used with BYxxx rules")
-            }
-            ValidationError::DtStartUntilMismatchTimezone {
-                dt_start_tz,
-                until_tz,
-                expected,
-            } => write!(
-                f,
-                "DTSTART timezone `{dt_start_tz}` does not match UNTIL timezone `{until_tz}`, expected timezones: {:?}",
-                expected
+                "Recurrence rules in the {} calendar are not supported",
+                rscale.as_str()
             ),
         }
     }

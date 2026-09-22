@@ -1261,11 +1261,12 @@ fn participant_calendar_address_change_replaces_the_member() {
     let patch = JSCalendar::<String, String>(Value::Object(
         OverrideDiff::new(&base).diff(
             JSCalendarDateTime::new(
-                chrono::NaiveDate::from_ymd_opt(2025, 1, 8)
-                    .and_then(|date| date.and_hms_opt(9, 0, 0))
+                jiff::civil::date(2025, 1, 8)
+                    .at(9, 0, 0, 0)
+                    .to_zoned(jiff::tz::TimeZone::UTC)
                     .unwrap()
-                    .and_utc()
-                    .timestamp(),
+                    .timestamp()
+                    .as_second(),
                 true,
             ),
             instance,

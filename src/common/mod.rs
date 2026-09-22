@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use chrono::{FixedOffset, NaiveDate, NaiveDateTime};
+use jiff::{civil, tz::Offset};
 use mail_parser::DateTime;
 
 #[cfg(feature = "jmap")]
@@ -21,6 +21,7 @@ pub mod parser;
 pub mod timezone;
 pub mod tokenizer;
 pub mod types;
+mod tzdb;
 pub mod writer;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -102,8 +103,8 @@ pub struct Data {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DateTimeResult {
-    pub date_time: NaiveDateTime,
-    pub offset: Option<FixedOffset>,
+    pub date_time: civil::DateTime,
+    pub offset: Option<Offset>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

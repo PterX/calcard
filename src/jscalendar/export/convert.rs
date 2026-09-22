@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::datecalc::{RRuleIter, rrule::RRule};
+use crate::datecalc::rrule::RRule;
 use crate::{
     common::{
         IanaParse, PartialDateTime,
         blob::BlobResolver,
         export::{ExportError, RejectedPatch},
-        timezone::{Tz, TzTimestamp},
+        timezone::{Tz, ZonedDateTime},
     },
     icalendar::*,
     jscalendar::{
@@ -21,7 +21,7 @@ use crate::{
     },
 };
 use ahash::{AHashMap, AHashSet};
-use chrono::{DateTime, NaiveDateTime, TimeDelta, TimeZone};
+use jiff::{civil, tz::Offset};
 use jmap_tools::{JsonPointer, JsonPointerHandler, JsonPointerItem, Key, Map, Value};
 use std::str::FromStr;
 
@@ -389,7 +389,7 @@ impl ICalendar {
 
         // Add start date
         if let Some(start) =
-            start.and_then(|dt| state.tz.unwrap_or_default().resolve_local_datetime(&dt))
+            start.and_then(|dt| state.tz.unwrap_or_default().resolve_local_datetime(dt))
         {
             state.start = Some(start);
         }
@@ -1703,16 +1703,16 @@ impl ICalendar {
                                 rrule.until = value
                                     .to_naive_date_time()
                                     .and_then(|dt| {
-                                        state.tz.unwrap_or_default().resolve_local_datetime(&dt)
+                                        state.tz.unwrap_or_default().resolve_local_datetime(dt)
                                     })
                                     .map(|dt| {
                                         if state.is_date {
                                             PartialDateTime::from_date_timestamp(
-                                                dt.to_naive_timestamp(),
+                                                dt.naive_timestamp(),
                                             )
                                         } else if dt.timezone().is_floating() {
                                             PartialDateTime::from_naive_timestamp(
-                                                dt.to_naive_timestamp(),
+                                                dt.naive_timestamp(),
                                             )
                                         } else {
                                             PartialDateTime::from_utc_timestamp(dt.timestamp())
@@ -1904,7 +1904,7 @@ impl ICalendar {
                 ) => {
                     if let Some(dt) = dt
                         .to_naive_date_time()
-                        .and_then(|dt| state.tz.unwrap_or_default().resolve_local_datetime(&dt))
+                        .and_then(|dt| state.tz.unwrap_or_default().resolve_local_datetime(dt))
                     {
                         component.entries.push(
                             ICalendarEntry::new(ICalendarProperty::Due)
@@ -1923,7 +1923,7 @@ impl ICalendar {
                             .tz_rid
                             .or(state.tz)
                             .unwrap_or_default()
-                            .resolve_local_datetime(&dt)
+                            .resolve_local_datetime(dt)
                     }) {
                         add_recurrence_id = false;
                         component.entries.push(
@@ -1948,14 +1948,13 @@ impl ICalendar {
                     })
                     .import_converted(&[JSCalendarProperty::Duration], &mut root_conversions);
                     if entry.name == ICalendarProperty::Dtend {
-                        if let Some(end) = state.start.and_then(|start| {
-                            start.checked_add_signed(TimeDelta::seconds(duration.as_seconds()))
-                        }) {
+                        if let Some(end) = state.start.and_then(|start| end_after(start, &duration))
+                        {
                             component.entries.push(
                                 entry.with_date(
                                     state
                                         .tz_end
-                                        .map(|tz_end| end.with_timezone(&tz_end))
+                                        .map(|tz_end| end.with_timezone(tz_end))
                                         .unwrap_or(end),
                                     state.is_date,
                                 ),
@@ -2277,6 +2276,7 @@ impl ICalendar {
                     component.non_recurrence_instances(
                         start,
                         state.tz.unwrap_or_default(),
+                        state.is_date,
                         overrides
                             .as_vec()
                             .iter()
@@ -2312,7 +2312,7 @@ impl ICalendar {
                 });
                 let Some(dt) = jsdt
                     .to_naive_date_time()
-                    .and_then(|dt| state.tz.unwrap_or_default().resolve_local_datetime(&dt))
+                    .and_then(|dt| state.tz.unwrap_or_default().resolve_local_datetime(dt))
                 else {
                     continue;
                 };
@@ -3290,6 +3290,14 @@ impl ParameterText for str {
     }
 }
 
+/// Returns the end of an event that starts at `start` and lasts `duration`.
+///
+/// RFC 5545 section 3.3.6 keeps the day and week components of a duration
+/// nominal, so the end depends on where the start falls.
+fn end_after(start: ZonedDateTime, duration: &ICalendarDuration) -> Option<ZonedDateTime> {
+    start.checked_add_nominal(duration.to_nominal()?)
+}
+
 fn parse_geo(text: Cow<'_, str>) -> Vec<ICalendarValue> {
     if let Some((a, b)) = text
         .strip_prefix("geo:")
@@ -3311,7 +3319,7 @@ fn push_recurrence_date<I: JSCalendarId, B: JSCalendarId>(
     component: &mut ICalendarComponent,
     conversions: &mut Option<ConvertedComponent<'_, I, B>>,
     jsdt: JSCalendarDateTime,
-    dt: DateTime<Tz>,
+    dt: ZonedDateTime,
     has_converted_prop: bool,
 ) {
     if has_converted_prop {
@@ -3333,12 +3341,12 @@ fn push_recurrence_date<I: JSCalendarId, B: JSCalendarId>(
 
 #[derive(Default)]
 struct RecurrenceDates {
-    dates: Vec<DateTime<Tz>>,
-    converted: Vec<(usize, Vec<DateTime<Tz>>)>,
+    dates: Vec<ZonedDateTime>,
+    converted: Vec<(usize, Vec<ZonedDateTime>)>,
 }
 
 impl RecurrenceDates {
-    fn push(&mut self, dt: DateTime<Tz>) {
+    fn push(&mut self, dt: ZonedDateTime) {
         match self.converted.last_mut() {
             Some((_, dates)) => dates.push(dt),
             None => self.dates.push(dt),
@@ -3349,7 +3357,7 @@ impl RecurrenceDates {
         &mut self,
         component: &mut ICalendarComponent,
         entry: ICalendarEntry,
-        dt: DateTime<Tz>,
+        dt: ZonedDateTime,
     ) {
         self.converted.push((component.entries.len(), vec![dt]));
         component.entries.push(entry);
@@ -3376,14 +3384,24 @@ impl RecurrenceDates {
 }
 
 impl ICalendarComponent {
+    /// Returns the candidate wall clock readings the rule does not generate.
+    ///
+    /// The rule is expanded in `tz` rather than as a floating series, because
+    /// an UNTIL value is written in UTC: comparing it against a floating
+    /// instance would place the bound an offset away from where it belongs and
+    /// drop the last instance of the series. Instances are then compared by
+    /// wall clock reading, which is the space the candidates are keyed in.
     fn non_recurrence_instances(
         &self,
-        start: NaiveDateTime,
+        start: civil::DateTime,
         tz: Tz,
+        is_date: bool,
         candidates: impl Iterator<Item = i64>,
         max_expansions: usize,
     ) -> AHashSet<i64> {
-        let start_timestamp = start.and_utc().timestamp();
+        let start_timestamp = Offset::UTC
+            .to_timestamp(start)
+            .map_or(0, |ts| ts.as_second());
         let mut pending = candidates
             .filter(|candidate| *candidate != start_timestamp)
             .collect::<AHashSet<_>>();
@@ -3399,22 +3417,16 @@ impl ICalendarComponent {
                 }
                 _ => None,
             })
-            && let Some(floating_start) = Tz::Floating.from_local_datetime(&start).single()
-            && let Some(rule) = RRule::from_floating_ical(rule)
-            && let Ok(rule) = rule.with_floating_until(tz).validate(floating_start)
+            && let Some(zoned_start) = tz.from_local(start)
+            && let Ok(rule) = RRule::from_ical(rule, zoned_start, is_date)
             && let Some(last) = pending
                 .iter()
-                .filter(|candidate| {
-                    **candidate > start_timestamp
-                        && rule
-                            .until
-                            .is_none_or(|until| until.to_naive_timestamp() >= **candidate)
-                })
+                .filter(|candidate| **candidate > start_timestamp)
                 .max()
                 .copied()
         {
-            for date in RRuleIter::new(&rule, &floating_start, true).take(max_expansions) {
-                let date = date.to_naive_timestamp();
+            for date in rule.iter().take(max_expansions) {
+                let date = date.naive_timestamp();
                 if date > last || (pending.remove(&date) && pending.is_empty()) {
                     break;
                 }
