@@ -10,59 +10,60 @@ use super::*;
 
 impl IanaParse for VCardProperty {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
-            "BEGIN" => VCardProperty::Begin,
-            "END" => VCardProperty::End,
-            "SOURCE" => VCardProperty::Source,
-            "KIND" => VCardProperty::Kind,
-            "XML" => VCardProperty::Xml,
-            "FN" => VCardProperty::Fn,
-            "N" => VCardProperty::N,
-            "NICKNAME" => VCardProperty::Nickname,
-            "PHOTO" => VCardProperty::Photo,
-            "BDAY" => VCardProperty::Bday,
-            "ANNIVERSARY" => VCardProperty::Anniversary,
-            "GENDER" => VCardProperty::Gender,
-            "ADR" => VCardProperty::Adr,
-            "TEL" => VCardProperty::Tel,
-            "EMAIL" => VCardProperty::Email,
-            "IMPP" => VCardProperty::Impp,
-            "LANG" => VCardProperty::Lang,
-            "TZ" => VCardProperty::Tz,
-            "GEO" => VCardProperty::Geo,
-            "TITLE" => VCardProperty::Title,
-            "ROLE" => VCardProperty::Role,
-            "LOGO" => VCardProperty::Logo,
-            "ORG" => VCardProperty::Org,
-            "MEMBER" => VCardProperty::Member,
-            "RELATED" => VCardProperty::Related,
-            "CATEGORIES" => VCardProperty::Categories,
-            "NOTE" => VCardProperty::Note,
-            "PRODID" => VCardProperty::Prodid,
-            "REV" => VCardProperty::Rev,
-            "SOUND" => VCardProperty::Sound,
-            "UID" => VCardProperty::Uid,
-            "CLIENTPIDMAP" => VCardProperty::Clientpidmap,
-            "URL" => VCardProperty::Url,
-            "VERSION" => VCardProperty::Version,
-            "KEY" => VCardProperty::Key,
-            "FBURL" => VCardProperty::Fburl,
-            "CALADRURI" => VCardProperty::Caladruri,
-            "CALURI" => VCardProperty::Caluri,
-            "BIRTHPLACE" => VCardProperty::Birthplace,
-            "DEATHPLACE" => VCardProperty::Deathplace,
-            "DEATHDATE" => VCardProperty::Deathdate,
-            "EXPERTISE" => VCardProperty::Expertise,
-            "HOBBY" => VCardProperty::Hobby,
-            "INTEREST" => VCardProperty::Interest,
-            "ORG-DIRECTORY" => VCardProperty::OrgDirectory,
-            "CONTACT-URI" => VCardProperty::ContactUri,
-            "CREATED" => VCardProperty::Created,
-            "GRAMGENDER" => VCardProperty::Gramgender,
-            "LANGUAGE" => VCardProperty::Language,
-            "PRONOUNS" => VCardProperty::Pronouns,
-            "SOCIALPROFILE" => VCardProperty::Socialprofile,
-            "JSPROP" => VCardProperty::Jsprop,
+        hashify::fnc_map_ignore_case!(value,
+            "BEGIN" => Some(VCardProperty::Begin),
+            "END" => Some(VCardProperty::End),
+            "SOURCE" => Some(VCardProperty::Source),
+            "KIND" => Some(VCardProperty::Kind),
+            "XML" => Some(VCardProperty::Xml),
+            "FN" => Some(VCardProperty::Fn),
+            "N" => Some(VCardProperty::N),
+            "NICKNAME" => Some(VCardProperty::Nickname),
+            "PHOTO" => Some(VCardProperty::Photo),
+            "BDAY" => Some(VCardProperty::Bday),
+            "ANNIVERSARY" => Some(VCardProperty::Anniversary),
+            "GENDER" => Some(VCardProperty::Gender),
+            "ADR" => Some(VCardProperty::Adr),
+            "TEL" => Some(VCardProperty::Tel),
+            "EMAIL" => Some(VCardProperty::Email),
+            "IMPP" => Some(VCardProperty::Impp),
+            "LANG" => Some(VCardProperty::Lang),
+            "TZ" => Some(VCardProperty::Tz),
+            "GEO" => Some(VCardProperty::Geo),
+            "TITLE" => Some(VCardProperty::Title),
+            "ROLE" => Some(VCardProperty::Role),
+            "LOGO" => Some(VCardProperty::Logo),
+            "ORG" => Some(VCardProperty::Org),
+            "MEMBER" => Some(VCardProperty::Member),
+            "RELATED" => Some(VCardProperty::Related),
+            "CATEGORIES" => Some(VCardProperty::Categories),
+            "NOTE" => Some(VCardProperty::Note),
+            "PRODID" => Some(VCardProperty::Prodid),
+            "REV" => Some(VCardProperty::Rev),
+            "SOUND" => Some(VCardProperty::Sound),
+            "UID" => Some(VCardProperty::Uid),
+            "CLIENTPIDMAP" => Some(VCardProperty::Clientpidmap),
+            "URL" => Some(VCardProperty::Url),
+            "VERSION" => Some(VCardProperty::Version),
+            "KEY" => Some(VCardProperty::Key),
+            "FBURL" => Some(VCardProperty::Fburl),
+            "CALADRURI" => Some(VCardProperty::Caladruri),
+            "CALURI" => Some(VCardProperty::Caluri),
+            "BIRTHPLACE" => Some(VCardProperty::Birthplace),
+            "DEATHPLACE" => Some(VCardProperty::Deathplace),
+            "DEATHDATE" => Some(VCardProperty::Deathdate),
+            "EXPERTISE" => Some(VCardProperty::Expertise),
+            "HOBBY" => Some(VCardProperty::Hobby),
+            "INTEREST" => Some(VCardProperty::Interest),
+            "ORG-DIRECTORY" => Some(VCardProperty::OrgDirectory),
+            "CONTACT-URI" => Some(VCardProperty::ContactUri),
+            "CREATED" => Some(VCardProperty::Created),
+            "GRAMGENDER" => Some(VCardProperty::Gramgender),
+            "LANGUAGE" => Some(VCardProperty::Language),
+            "PRONOUNS" => Some(VCardProperty::Pronouns),
+            "SOCIALPROFILE" => Some(VCardProperty::Socialprofile),
+            "JSPROP" => Some(VCardProperty::Jsprop),
+            _ => None,
         )
     }
 }
@@ -273,7 +274,7 @@ impl IanaString for VCardValueType {
 
 impl IanaParse for VCardValueType {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
+        hashify::map_ignore_case!(value, VCardValueType,
             "BOOLEAN" => VCardValueType::Boolean,
             "DATE" => VCardValueType::Date,
             "DATE-AND-OR-TIME" => VCardValueType::DateAndOrTime,
@@ -287,12 +288,13 @@ impl IanaParse for VCardValueType {
             "URI" => VCardValueType::Uri,
             "UTC-OFFSET" => VCardValueType::UtcOffset,
         )
+        .copied()
     }
 }
 
 impl IanaParse for VCardLevel {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
+        hashify::map_ignore_case!(value, VCardLevel,
             "beginner" => VCardLevel::Beginner,
             "average" => VCardLevel::Average,
             "expert" => VCardLevel::Expert,
@@ -300,6 +302,7 @@ impl IanaParse for VCardLevel {
             "medium" => VCardLevel::Medium,
             "low" => VCardLevel::Low,
         )
+        .copied()
     }
 }
 
@@ -318,11 +321,12 @@ impl IanaString for VCardLevel {
 
 impl IanaParse for VCardPhonetic {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
-            "ipa" => VCardPhonetic::Ipa,
-            "jyut" => VCardPhonetic::Jyut,
-            "piny" => VCardPhonetic::Piny,
-            "script" => VCardPhonetic::Script,
+        hashify::fnc_map_ignore_case!(value,
+            "ipa" => Some(VCardPhonetic::Ipa),
+            "jyut" => Some(VCardPhonetic::Jyut),
+            "piny" => Some(VCardPhonetic::Piny),
+            "script" => Some(VCardPhonetic::Script),
+            _ => None,
         )
     }
 }
@@ -340,39 +344,40 @@ impl IanaString for VCardPhonetic {
 
 impl IanaParse for VCardType {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
-            "work" => VCardType::Work,
-            "home" => VCardType::Home,
-            "billing" => VCardType::Billing,
-            "delivery" => VCardType::Delivery,
-            "contact" => VCardType::Contact,
-            "acquaintance" => VCardType::Acquaintance,
-            "friend" => VCardType::Friend,
-            "met" => VCardType::Met,
-            "co-worker" => VCardType::CoWorker,
-            "colleague" => VCardType::Colleague,
-            "co-resident" => VCardType::CoResident,
-            "neighbor" => VCardType::Neighbor,
-            "child" => VCardType::Child,
-            "parent" => VCardType::Parent,
-            "sibling" => VCardType::Sibling,
-            "spouse" => VCardType::Spouse,
-            "kin" => VCardType::Kin,
-            "muse" => VCardType::Muse,
-            "crush" => VCardType::Crush,
-            "date" => VCardType::Date,
-            "sweetheart" => VCardType::Sweetheart,
-            "me" => VCardType::Me,
-            "agent" => VCardType::Agent,
-            "emergency" => VCardType::Emergency,
-            "text" => VCardType::Text,
-            "voice" => VCardType::Voice,
-            "fax" => VCardType::Fax,
-            "cell" => VCardType::Cell,
-            "video" => VCardType::Video,
-            "pager" => VCardType::Pager,
-            "textphone" => VCardType::Textphone,
-            "main-number" => VCardType::MainNumber,
+        hashify::fnc_map_ignore_case!(value,
+            "work" => Some(VCardType::Work),
+            "home" => Some(VCardType::Home),
+            "billing" => Some(VCardType::Billing),
+            "delivery" => Some(VCardType::Delivery),
+            "contact" => Some(VCardType::Contact),
+            "acquaintance" => Some(VCardType::Acquaintance),
+            "friend" => Some(VCardType::Friend),
+            "met" => Some(VCardType::Met),
+            "co-worker" => Some(VCardType::CoWorker),
+            "colleague" => Some(VCardType::Colleague),
+            "co-resident" => Some(VCardType::CoResident),
+            "neighbor" => Some(VCardType::Neighbor),
+            "child" => Some(VCardType::Child),
+            "parent" => Some(VCardType::Parent),
+            "sibling" => Some(VCardType::Sibling),
+            "spouse" => Some(VCardType::Spouse),
+            "kin" => Some(VCardType::Kin),
+            "muse" => Some(VCardType::Muse),
+            "crush" => Some(VCardType::Crush),
+            "date" => Some(VCardType::Date),
+            "sweetheart" => Some(VCardType::Sweetheart),
+            "me" => Some(VCardType::Me),
+            "agent" => Some(VCardType::Agent),
+            "emergency" => Some(VCardType::Emergency),
+            "text" => Some(VCardType::Text),
+            "voice" => Some(VCardType::Voice),
+            "fax" => Some(VCardType::Fax),
+            "cell" => Some(VCardType::Cell),
+            "video" => Some(VCardType::Video),
+            "pager" => Some(VCardType::Pager),
+            "textphone" => Some(VCardType::Textphone),
+            "main-number" => Some(VCardType::MainNumber),
+            _ => None,
         )
     }
 }
@@ -418,7 +423,7 @@ impl IanaString for VCardType {
 
 impl IanaParse for VCardGramGender {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
+        hashify::map_ignore_case!(value, VCardGramGender,
             "animate" => VCardGramGender::Animate,
             "common" => VCardGramGender::Common,
             "feminine" => VCardGramGender::Feminine,
@@ -426,6 +431,7 @@ impl IanaParse for VCardGramGender {
             "masculine" => VCardGramGender::Masculine,
             "neuter" => VCardGramGender::Neuter,
         )
+        .copied()
     }
 }
 
@@ -444,13 +450,14 @@ impl IanaString for VCardGramGender {
 
 impl IanaParse for VCardSex {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
+        hashify::map_ignore_case!(value, VCardSex,
             "M" => VCardSex::Male,
             "F" => VCardSex::Female,
             "O" => VCardSex::Other,
             "N" => VCardSex::NoneOrNotApplicable,
             "U" => VCardSex::Unknown,
         )
+        .copied()
     }
 }
 
@@ -468,7 +475,7 @@ impl IanaString for VCardSex {
 
 impl IanaParse for VCardKind {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
+        hashify::map_ignore_case!(value, VCardKind,
             "individual" => VCardKind::Individual,
             "group" => VCardKind::Group,
             "org" => VCardKind::Org,
@@ -476,6 +483,7 @@ impl IanaParse for VCardKind {
             "application" => VCardKind::Application,
             "device" => VCardKind::Device,
         )
+        .copied()
     }
 }
 
@@ -494,34 +502,35 @@ impl IanaString for VCardKind {
 
 impl VCardParameterName {
     pub fn try_parse(input: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(input,
-            b"LANGUAGE" => VCardParameterName::Language,
-            b"VALUE" => VCardParameterName::Value,
-            b"PREF" => VCardParameterName::Pref,
-            b"ALTID" => VCardParameterName::Altid,
-            b"PID" => VCardParameterName::Pid,
-            b"TYPE" => VCardParameterName::Type,
-            b"MEDIATYPE" => VCardParameterName::Mediatype,
-            b"CALSCALE" => VCardParameterName::Calscale,
-            b"SORT-AS" => VCardParameterName::SortAs,
-            b"GEO" => VCardParameterName::Geo,
-            b"TZ" => VCardParameterName::Tz,
-            b"INDEX" => VCardParameterName::Index,
-            b"LEVEL" => VCardParameterName::Level,
-            b"GROUP" => VCardParameterName::Group,
-            b"CC" => VCardParameterName::Cc,
-            b"AUTHOR" => VCardParameterName::Author,
-            b"AUTHOR-NAME" => VCardParameterName::AuthorName,
-            b"CREATED" => VCardParameterName::Created,
-            b"DERIVED" => VCardParameterName::Derived,
-            b"LABEL" => VCardParameterName::Label,
-            b"PHONETIC" => VCardParameterName::Phonetic,
-            b"PROP-ID" => VCardParameterName::PropId,
-            b"SCRIPT" => VCardParameterName::Script,
-            b"SERVICE-TYPE" => VCardParameterName::ServiceType,
-            b"USERNAME" => VCardParameterName::Username,
-            b"JSPTR" => VCardParameterName::Jsptr,
-            b"JSCOMPS" => VCardParameterName::Jscomps,
+        hashify::fnc_map_ignore_case!(input,
+            b"LANGUAGE" => Some(VCardParameterName::Language),
+            b"VALUE" => Some(VCardParameterName::Value),
+            b"PREF" => Some(VCardParameterName::Pref),
+            b"ALTID" => Some(VCardParameterName::Altid),
+            b"PID" => Some(VCardParameterName::Pid),
+            b"TYPE" => Some(VCardParameterName::Type),
+            b"MEDIATYPE" => Some(VCardParameterName::Mediatype),
+            b"CALSCALE" => Some(VCardParameterName::Calscale),
+            b"SORT-AS" => Some(VCardParameterName::SortAs),
+            b"GEO" => Some(VCardParameterName::Geo),
+            b"TZ" => Some(VCardParameterName::Tz),
+            b"INDEX" => Some(VCardParameterName::Index),
+            b"LEVEL" => Some(VCardParameterName::Level),
+            b"GROUP" => Some(VCardParameterName::Group),
+            b"CC" => Some(VCardParameterName::Cc),
+            b"AUTHOR" => Some(VCardParameterName::Author),
+            b"AUTHOR-NAME" => Some(VCardParameterName::AuthorName),
+            b"CREATED" => Some(VCardParameterName::Created),
+            b"DERIVED" => Some(VCardParameterName::Derived),
+            b"LABEL" => Some(VCardParameterName::Label),
+            b"PHONETIC" => Some(VCardParameterName::Phonetic),
+            b"PROP-ID" => Some(VCardParameterName::PropId),
+            b"SCRIPT" => Some(VCardParameterName::Script),
+            b"SERVICE-TYPE" => Some(VCardParameterName::ServiceType),
+            b"USERNAME" => Some(VCardParameterName::Username),
+            b"JSPTR" => Some(VCardParameterName::Jsptr),
+            b"JSCOMPS" => Some(VCardParameterName::Jscomps),
+            _ => None,
         )
     }
 
@@ -598,11 +607,12 @@ impl VCardParameterName {
 
 impl VCardVersion {
     pub fn try_parse(input: &str) -> Option<Self> {
-        hashify::tiny_map!(input.as_bytes(),
+        hashify::map!(input.as_bytes(), VCardVersion,
             b"4.0" => VCardVersion::V4_0,
             b"3.0" => VCardVersion::V3_0,
             b"2.1" => VCardVersion::V2_1,
             b"2.0" => VCardVersion::V2_0,
         )
+        .copied()
     }
 }

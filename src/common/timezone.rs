@@ -5,7 +5,7 @@
  */
 
 use super::{DateTimeResult, PartialDateTime, tzdb};
-use hashify::tiny_map;
+use hashify::map;
 use jiff::{
     SignedDuration, Timestamp,
     civil::{Date, DateTime, Time},
@@ -580,7 +580,7 @@ impl DateTimeResult {
 impl Tz {
     pub fn from_ms_cdo_zone_id(id: &str) -> Option<Self> {
         // Source https://learn.microsoft.com/en-us/previous-versions/office/developer/exchange-server-2007/aa563018(v=exchg.80)
-        tiny_map!(id.as_bytes(),
+        map!(id.as_bytes(), &'static str,
             "0" => "UTC",
             "1" => "Europe/London",
             "10" => "America/New_York",
@@ -657,6 +657,7 @@ impl Tz {
             "8" => "America/Sao_Paulo",
             "9" => "America/Halifax",
         )
+        .copied()
         .and_then(Tz::iana)
     }
 }

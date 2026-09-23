@@ -26,9 +26,10 @@ Then open http://localhost:8080.
 
 ## Crate features
 
-The WASM build enables calcard's `wasm` feature (32-bit `hashify`) on top of the
-default `jmap` feature, which provides the `jscalendar` and `jscontact` modules the
-conversions depend on. `getrandom` is pulled in with the `js` backend so the
+The WASM build uses calcard's default `jmap` feature, which provides the
+`jscalendar` and `jscontact` modules the conversions depend on. calcard enables
+`jiff/js` by itself when built for `wasm32-unknown-unknown`, so no extra feature
+is needed. `getrandom` is pulled in with the `js` backend so the
 transitive `ahash` dependency links on `wasm32-unknown-unknown`.
 
 ## Deploy

@@ -47,24 +47,26 @@ impl IanaString for ArchivedCalendarScale {
 
 impl IanaParse for CalendarScale {
     fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
-            "gregorian" => CalendarScale::Gregorian,
-            "chinese" => CalendarScale::Chinese,
-            "islamic-civil" => CalendarScale::IslamicCivil,
-            "hebrew" => CalendarScale::Hebrew,
-            "ethiopic" => CalendarScale::Ethiopic,
+        hashify::fnc_map_ignore_case!(value,
+            "gregorian" => Some(CalendarScale::Gregorian),
+            "chinese" => Some(CalendarScale::Chinese),
+            "islamic-civil" => Some(CalendarScale::IslamicCivil),
+            "hebrew" => Some(CalendarScale::Hebrew),
+            "ethiopic" => Some(CalendarScale::Ethiopic),
+            _ => None,
         )
     }
 }
 
 impl Encoding {
     pub fn parse(value: &[u8]) -> Option<Self> {
-        hashify::tiny_map_ignore_case!(value,
+        hashify::map_ignore_case!(value, Encoding,
             b"QUOTED-PRINTABLE" => Encoding::QuotedPrintable,
             b"BASE64" => Encoding::Base64,
             b"Q" => Encoding::QuotedPrintable,
             b"B" => Encoding::Base64,
         )
+        .copied()
     }
 }
 

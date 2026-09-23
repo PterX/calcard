@@ -16,7 +16,7 @@ resolver = "2"
 jmap-tools = { version = "0.1.9", optional = true }
 ahash = "0.8.11"
 jiff = "0.2.37"
-hashify = "0.2.7"
+hashify = "0.3"
 mail-builder = { version = "1.0.0", default-features = false }
 mail-parser = "0.11"
 uuid = { version = "1.26", default-features = false, features = ["v5"], optional = true }
@@ -24,13 +24,15 @@ rkyv = { version = "0.8", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+jiff = { version = "0.2.37", features = ["js"] }
+
 [features]
 default = ["jmap", "tzdb-bundle"]
 rkyv = ["dep:rkyv"]
 serde = ["dep:serde"]
 jmap = ["jmap-tools", "uuid", "serde", "serde_json"]
 tzdb-bundle = ["jiff/tzdb-bundle-always"]
-wasm = ["hashify/force-32bit", "jiff/js"]
 
 [dev-dependencies]
 insta = "1.43"

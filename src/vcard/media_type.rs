@@ -37,23 +37,26 @@ pub(crate) fn legacy_media_type(property: &str, media_type: &str) -> Option<Stri
 
 fn legacy_alias(property: &str, token: &[u8]) -> Option<&'static str> {
     match property {
-        "PHOTO" | "LOGO" => hashify::tiny_map_ignore_case!(token,
+        "PHOTO" | "LOGO" => hashify::map_ignore_case!(token, &'static str,
             b"JPG" => "image/jpeg",
             b"TIF" => "image/tiff",
-        ),
-        "SOUND" => hashify::tiny_map_ignore_case!(token,
+        )
+        .copied(),
+        "SOUND" => hashify::map_ignore_case!(token, &'static str,
             b"AIF" => "audio/aiff",
             b"AIFF" => "audio/aiff",
             b"MP3" => "audio/mpeg",
             b"PCM" => "audio/l16",
             b"WAV" => "audio/wav",
             b"WAVE" => "audio/wav",
-        ),
-        "KEY" => hashify::tiny_map_ignore_case!(token,
+        )
+        .copied(),
+        "KEY" => hashify::map_ignore_case!(token, &'static str,
             b"GPG" => "application/pgp-keys",
             b"PGP" => "application/pgp-keys",
             b"X509" => "application/x-x509-user-cert",
-        ),
+        )
+        .copied(),
         _ => None,
     }
 }

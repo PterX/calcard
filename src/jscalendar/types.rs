@@ -12,123 +12,124 @@ impl<I: JSCalendarId> FromStr for JSCalendarProperty<I> {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
-            "@type" => JSCalendarProperty::Type,
-            "acknowledged" => JSCalendarProperty::Acknowledged,
-            "action" => JSCalendarProperty::Action,
-            "alerts" => JSCalendarProperty::Alerts,
-            "baseEventId" => JSCalendarProperty::BaseEventId,
-            "byDay" => JSCalendarProperty::ByDay,
-            "byHour" => JSCalendarProperty::ByHour,
-            "byMinute" => JSCalendarProperty::ByMinute,
-            "byMonth" => JSCalendarProperty::ByMonth,
-            "byMonthDay" => JSCalendarProperty::ByMonthDay,
-            "bySecond" => JSCalendarProperty::BySecond,
-            "bySetPosition" => JSCalendarProperty::BySetPosition,
-            "byWeekNo" => JSCalendarProperty::ByWeekNo,
-            "byYearDay" => JSCalendarProperty::ByYearDay,
-            "calendarAddress" => JSCalendarProperty::CalendarAddress,
-            "calendarIds" => JSCalendarProperty::CalendarIds,
-            "categories" => JSCalendarProperty::Categories,
-            "color" => JSCalendarProperty::Color,
-            "contentType" => JSCalendarProperty::ContentType,
-            "coordinates" => JSCalendarProperty::Coordinates,
-            "count" => JSCalendarProperty::Count,
-            "created" => JSCalendarProperty::Created,
-            "day" => JSCalendarProperty::Day,
-            "delegatedFrom" => JSCalendarProperty::DelegatedFrom,
-            "delegatedTo" => JSCalendarProperty::DelegatedTo,
-            "description" => JSCalendarProperty::Description,
-            "descriptionContentType" => JSCalendarProperty::DescriptionContentType,
-            "display" => JSCalendarProperty::Display,
-            "due" => JSCalendarProperty::Due,
-            "duration" => JSCalendarProperty::Duration,
-            "email" => JSCalendarProperty::Email,
-            "entries" => JSCalendarProperty::Entries,
-            "estimatedDuration" => JSCalendarProperty::EstimatedDuration,
-            "excluded" => JSCalendarProperty::Excluded,
-            "expectReply" => JSCalendarProperty::ExpectReply,
-            "features" => JSCalendarProperty::Features,
-            "firstDayOfWeek" => JSCalendarProperty::FirstDayOfWeek,
-            "freeBusyStatus" => JSCalendarProperty::FreeBusyStatus,
-            "frequency" => JSCalendarProperty::Frequency,
-            "hideAttendees" => JSCalendarProperty::HideAttendees,
-            "href" => JSCalendarProperty::Href,
-            "id" => JSCalendarProperty::Id,
-            "interval" => JSCalendarProperty::Interval,
-            "invitedBy" => JSCalendarProperty::InvitedBy,
-            "isDraft" => JSCalendarProperty::IsDraft,
-            "isOrigin" => JSCalendarProperty::IsOrigin,
-            "keywords" => JSCalendarProperty::Keywords,
-            "kind" => JSCalendarProperty::Kind,
-            "links" => JSCalendarProperty::Links,
-            "locale" => JSCalendarProperty::Locale,
-            "locations" => JSCalendarProperty::Locations,
-            "locationTypes" => JSCalendarProperty::LocationTypes,
-            "mayInviteOthers" => JSCalendarProperty::MayInviteOthers,
-            "mayInviteSelf" => JSCalendarProperty::MayInviteSelf,
-            "memberOf" => JSCalendarProperty::MemberOf,
-            "method" => JSCalendarProperty::Method,
-            "name" => JSCalendarProperty::Name,
-            "nthOfPeriod" => JSCalendarProperty::NthOfPeriod,
-            "offset" => JSCalendarProperty::Offset,
-            "participants" => JSCalendarProperty::Participants,
-            "participationComment" => JSCalendarProperty::ParticipationComment,
-            "participationStatus" => JSCalendarProperty::ParticipationStatus,
-            "percentComplete" => JSCalendarProperty::PercentComplete,
-            "priority" => JSCalendarProperty::Priority,
-            "privacy" => JSCalendarProperty::Privacy,
-            "prodId" => JSCalendarProperty::ProdId,
-            "progress" => JSCalendarProperty::Progress,
-            "recurrenceId" => JSCalendarProperty::RecurrenceId,
-            "recurrenceIdTimeZone" => JSCalendarProperty::RecurrenceIdTimeZone,
-            "recurrenceOverrides" => JSCalendarProperty::RecurrenceOverrides,
-            "rel" => JSCalendarProperty::Rel,
-            "relatedTo" => JSCalendarProperty::RelatedTo,
-            "relation" => JSCalendarProperty::Relation,
-            "relativeTo" => JSCalendarProperty::RelativeTo,
-            "replyTo" => JSCalendarProperty::ReplyTo,
-            "requestStatus" => JSCalendarProperty::RequestStatus,
-            "roles" => JSCalendarProperty::Roles,
-            "rscale" => JSCalendarProperty::Rscale,
-            "sentBy" => JSCalendarProperty::SentBy,
-            "scheduleAgent" => JSCalendarProperty::ScheduleAgent,
-            "scheduleForceSend" => JSCalendarProperty::ScheduleForceSend,
-            "scheduleSequence" => JSCalendarProperty::ScheduleSequence,
-            "scheduleStatus" => JSCalendarProperty::ScheduleStatus,
-            "scheduleUpdated" => JSCalendarProperty::ScheduleUpdated,
-            "sendTo" => JSCalendarProperty::SendTo,
-            "sequence" => JSCalendarProperty::Sequence,
-            "showWithoutTime" => JSCalendarProperty::ShowWithoutTime,
-            "size" => JSCalendarProperty::Size,
-            "skip" => JSCalendarProperty::Skip,
-            "source" => JSCalendarProperty::Source,
-            "start" => JSCalendarProperty::Start,
-            "status" => JSCalendarProperty::Status,
-            "timeZone" => JSCalendarProperty::TimeZone,
-            "title" => JSCalendarProperty::Title,
-            "trigger" => JSCalendarProperty::Trigger,
-            "uid" => JSCalendarProperty::Uid,
-            "until" => JSCalendarProperty::Until,
-            "updated" => JSCalendarProperty::Updated,
-            "uri" => JSCalendarProperty::Uri,
-            "useDefaultAlerts" => JSCalendarProperty::UseDefaultAlerts,
-            "utcEnd" => JSCalendarProperty::UtcEnd,
-            "utcStart" => JSCalendarProperty::UtcStart,
-            "version" => JSCalendarProperty::Version,
-            "virtualLocations" => JSCalendarProperty::VirtualLocations,
-            "when" => JSCalendarProperty::When,
-            "endTimeZone" => JSCalendarProperty::EndTimeZone,
-            "mainLocationId" => JSCalendarProperty::MainLocationId,
-            "organizerCalendarAddress" => JSCalendarProperty::OrganizerCalendarAddress,
-            "recurrenceRule" => JSCalendarProperty::RecurrenceRule,
-            "properties" => JSCalendarProperty::Properties,
-            "components" => JSCalendarProperty::Components,
-            "valueType" => JSCalendarProperty::ValueType,
-            "convertedProperties" => JSCalendarProperty::ConvertedProperties,
-            "parameters" => JSCalendarProperty::Parameters,
-            "iCalendar" => JSCalendarProperty::ICalendar,
-            "blobId" => JSCalendarProperty::BlobId,
+        hashify::fnc_map!(s.as_bytes(),
+            "@type" => Some(JSCalendarProperty::Type),
+            "acknowledged" => Some(JSCalendarProperty::Acknowledged),
+            "action" => Some(JSCalendarProperty::Action),
+            "alerts" => Some(JSCalendarProperty::Alerts),
+            "baseEventId" => Some(JSCalendarProperty::BaseEventId),
+            "byDay" => Some(JSCalendarProperty::ByDay),
+            "byHour" => Some(JSCalendarProperty::ByHour),
+            "byMinute" => Some(JSCalendarProperty::ByMinute),
+            "byMonth" => Some(JSCalendarProperty::ByMonth),
+            "byMonthDay" => Some(JSCalendarProperty::ByMonthDay),
+            "bySecond" => Some(JSCalendarProperty::BySecond),
+            "bySetPosition" => Some(JSCalendarProperty::BySetPosition),
+            "byWeekNo" => Some(JSCalendarProperty::ByWeekNo),
+            "byYearDay" => Some(JSCalendarProperty::ByYearDay),
+            "calendarAddress" => Some(JSCalendarProperty::CalendarAddress),
+            "calendarIds" => Some(JSCalendarProperty::CalendarIds),
+            "categories" => Some(JSCalendarProperty::Categories),
+            "color" => Some(JSCalendarProperty::Color),
+            "contentType" => Some(JSCalendarProperty::ContentType),
+            "coordinates" => Some(JSCalendarProperty::Coordinates),
+            "count" => Some(JSCalendarProperty::Count),
+            "created" => Some(JSCalendarProperty::Created),
+            "day" => Some(JSCalendarProperty::Day),
+            "delegatedFrom" => Some(JSCalendarProperty::DelegatedFrom),
+            "delegatedTo" => Some(JSCalendarProperty::DelegatedTo),
+            "description" => Some(JSCalendarProperty::Description),
+            "descriptionContentType" => Some(JSCalendarProperty::DescriptionContentType),
+            "display" => Some(JSCalendarProperty::Display),
+            "due" => Some(JSCalendarProperty::Due),
+            "duration" => Some(JSCalendarProperty::Duration),
+            "email" => Some(JSCalendarProperty::Email),
+            "entries" => Some(JSCalendarProperty::Entries),
+            "estimatedDuration" => Some(JSCalendarProperty::EstimatedDuration),
+            "excluded" => Some(JSCalendarProperty::Excluded),
+            "expectReply" => Some(JSCalendarProperty::ExpectReply),
+            "features" => Some(JSCalendarProperty::Features),
+            "firstDayOfWeek" => Some(JSCalendarProperty::FirstDayOfWeek),
+            "freeBusyStatus" => Some(JSCalendarProperty::FreeBusyStatus),
+            "frequency" => Some(JSCalendarProperty::Frequency),
+            "hideAttendees" => Some(JSCalendarProperty::HideAttendees),
+            "href" => Some(JSCalendarProperty::Href),
+            "id" => Some(JSCalendarProperty::Id),
+            "interval" => Some(JSCalendarProperty::Interval),
+            "invitedBy" => Some(JSCalendarProperty::InvitedBy),
+            "isDraft" => Some(JSCalendarProperty::IsDraft),
+            "isOrigin" => Some(JSCalendarProperty::IsOrigin),
+            "keywords" => Some(JSCalendarProperty::Keywords),
+            "kind" => Some(JSCalendarProperty::Kind),
+            "links" => Some(JSCalendarProperty::Links),
+            "locale" => Some(JSCalendarProperty::Locale),
+            "locations" => Some(JSCalendarProperty::Locations),
+            "locationTypes" => Some(JSCalendarProperty::LocationTypes),
+            "mayInviteOthers" => Some(JSCalendarProperty::MayInviteOthers),
+            "mayInviteSelf" => Some(JSCalendarProperty::MayInviteSelf),
+            "memberOf" => Some(JSCalendarProperty::MemberOf),
+            "method" => Some(JSCalendarProperty::Method),
+            "name" => Some(JSCalendarProperty::Name),
+            "nthOfPeriod" => Some(JSCalendarProperty::NthOfPeriod),
+            "offset" => Some(JSCalendarProperty::Offset),
+            "participants" => Some(JSCalendarProperty::Participants),
+            "participationComment" => Some(JSCalendarProperty::ParticipationComment),
+            "participationStatus" => Some(JSCalendarProperty::ParticipationStatus),
+            "percentComplete" => Some(JSCalendarProperty::PercentComplete),
+            "priority" => Some(JSCalendarProperty::Priority),
+            "privacy" => Some(JSCalendarProperty::Privacy),
+            "prodId" => Some(JSCalendarProperty::ProdId),
+            "progress" => Some(JSCalendarProperty::Progress),
+            "recurrenceId" => Some(JSCalendarProperty::RecurrenceId),
+            "recurrenceIdTimeZone" => Some(JSCalendarProperty::RecurrenceIdTimeZone),
+            "recurrenceOverrides" => Some(JSCalendarProperty::RecurrenceOverrides),
+            "rel" => Some(JSCalendarProperty::Rel),
+            "relatedTo" => Some(JSCalendarProperty::RelatedTo),
+            "relation" => Some(JSCalendarProperty::Relation),
+            "relativeTo" => Some(JSCalendarProperty::RelativeTo),
+            "replyTo" => Some(JSCalendarProperty::ReplyTo),
+            "requestStatus" => Some(JSCalendarProperty::RequestStatus),
+            "roles" => Some(JSCalendarProperty::Roles),
+            "rscale" => Some(JSCalendarProperty::Rscale),
+            "sentBy" => Some(JSCalendarProperty::SentBy),
+            "scheduleAgent" => Some(JSCalendarProperty::ScheduleAgent),
+            "scheduleForceSend" => Some(JSCalendarProperty::ScheduleForceSend),
+            "scheduleSequence" => Some(JSCalendarProperty::ScheduleSequence),
+            "scheduleStatus" => Some(JSCalendarProperty::ScheduleStatus),
+            "scheduleUpdated" => Some(JSCalendarProperty::ScheduleUpdated),
+            "sendTo" => Some(JSCalendarProperty::SendTo),
+            "sequence" => Some(JSCalendarProperty::Sequence),
+            "showWithoutTime" => Some(JSCalendarProperty::ShowWithoutTime),
+            "size" => Some(JSCalendarProperty::Size),
+            "skip" => Some(JSCalendarProperty::Skip),
+            "source" => Some(JSCalendarProperty::Source),
+            "start" => Some(JSCalendarProperty::Start),
+            "status" => Some(JSCalendarProperty::Status),
+            "timeZone" => Some(JSCalendarProperty::TimeZone),
+            "title" => Some(JSCalendarProperty::Title),
+            "trigger" => Some(JSCalendarProperty::Trigger),
+            "uid" => Some(JSCalendarProperty::Uid),
+            "until" => Some(JSCalendarProperty::Until),
+            "updated" => Some(JSCalendarProperty::Updated),
+            "uri" => Some(JSCalendarProperty::Uri),
+            "useDefaultAlerts" => Some(JSCalendarProperty::UseDefaultAlerts),
+            "utcEnd" => Some(JSCalendarProperty::UtcEnd),
+            "utcStart" => Some(JSCalendarProperty::UtcStart),
+            "version" => Some(JSCalendarProperty::Version),
+            "virtualLocations" => Some(JSCalendarProperty::VirtualLocations),
+            "when" => Some(JSCalendarProperty::When),
+            "endTimeZone" => Some(JSCalendarProperty::EndTimeZone),
+            "mainLocationId" => Some(JSCalendarProperty::MainLocationId),
+            "organizerCalendarAddress" => Some(JSCalendarProperty::OrganizerCalendarAddress),
+            "recurrenceRule" => Some(JSCalendarProperty::RecurrenceRule),
+            "properties" => Some(JSCalendarProperty::Properties),
+            "components" => Some(JSCalendarProperty::Components),
+            "valueType" => Some(JSCalendarProperty::ValueType),
+            "convertedProperties" => Some(JSCalendarProperty::ConvertedProperties),
+            "parameters" => Some(JSCalendarProperty::Parameters),
+            "iCalendar" => Some(JSCalendarProperty::ICalendar),
+            "blobId" => Some(JSCalendarProperty::BlobId),
+            _ => None,
         )
         .ok_or(())
     }
@@ -312,7 +313,7 @@ impl<I: JSCalendarId> JSCalendarProperty<I> {
 impl FromStr for JSCalendarType {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarType,
             "Event" => JSCalendarType::Event,
             "Task" => JSCalendarType::Task,
             "Group" => JSCalendarType::Group,
@@ -342,6 +343,7 @@ impl FromStr for JSCalendarType {
             "AbsoluteTrigger" => JSCalendarType::AbsoluteTrigger,
             "OffsetTrigger" => JSCalendarType::OffsetTrigger,
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -385,10 +387,11 @@ impl FromStr for JSCalendarAlertAction {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarAlertAction,
             "display" => JSCalendarAlertAction::Display,
             "email" => JSCalendarAlertAction::Email
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -406,12 +409,13 @@ impl FromStr for JSCalendarLinkDisplay {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarLinkDisplay,
             "badge" => JSCalendarLinkDisplay::Badge,
             "graphic" => JSCalendarLinkDisplay::Graphic,
             "fullsize" => JSCalendarLinkDisplay::Fullsize,
             "thumbnail" => JSCalendarLinkDisplay::Thumbnail
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -431,7 +435,7 @@ impl FromStr for JSCalendarVirtualLocationFeature {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarVirtualLocationFeature,
             "audio" => JSCalendarVirtualLocationFeature::Audio,
             "chat" => JSCalendarVirtualLocationFeature::Chat,
             "feed" => JSCalendarVirtualLocationFeature::Feed,
@@ -440,6 +444,7 @@ impl FromStr for JSCalendarVirtualLocationFeature {
             "screen" => JSCalendarVirtualLocationFeature::Screen,
             "video" => JSCalendarVirtualLocationFeature::Video
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -462,10 +467,11 @@ impl FromStr for JSCalendarFreeBusyStatus {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarFreeBusyStatus,
             "free" => JSCalendarFreeBusyStatus::Free,
             "busy" => JSCalendarFreeBusyStatus::Busy
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -483,12 +489,13 @@ impl FromStr for JSCalendarParticipantKind {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarParticipantKind,
             "individual" => JSCalendarParticipantKind::Individual,
             "group" => JSCalendarParticipantKind::Group,
             "resource" => JSCalendarParticipantKind::Resource,
             "location" => JSCalendarParticipantKind::Location
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -508,13 +515,14 @@ impl FromStr for JSCalendarParticipationStatus {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarParticipationStatus,
             "needs-action" => JSCalendarParticipationStatus::NeedsAction,
             "accepted" => JSCalendarParticipationStatus::Accepted,
             "declined" => JSCalendarParticipationStatus::Declined,
             "tentative" => JSCalendarParticipationStatus::Tentative,
             "delegated" => JSCalendarParticipationStatus::Delegated
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -535,11 +543,12 @@ impl FromStr for JSCalendarPrivacy {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarPrivacy,
             "public" => JSCalendarPrivacy::Public,
             "private" => JSCalendarPrivacy::Private,
             "secret" => JSCalendarPrivacy::Secret
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -558,13 +567,14 @@ impl FromStr for JSCalendarProgress {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarProgress,
             "needs-action" => JSCalendarProgress::NeedsAction,
             "in-process" => JSCalendarProgress::InProcess,
             "completed" => JSCalendarProgress::Completed,
             "failed" => JSCalendarProgress::Failed,
             "cancelled" => JSCalendarProgress::Cancelled,
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -585,13 +595,14 @@ impl FromStr for JSCalendarRelation {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarRelation,
             "first" => JSCalendarRelation::First,
             "next" => JSCalendarRelation::Next,
             "child" => JSCalendarRelation::Child,
             "parent" => JSCalendarRelation::Parent,
             "snooze" => JSCalendarRelation::Snooze,
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -612,10 +623,11 @@ impl FromStr for JSCalendarRelativeTo {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarRelativeTo,
             "start" => JSCalendarRelativeTo::Start,
             "end" => JSCalendarRelativeTo::End
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -633,7 +645,7 @@ impl FromStr for JSCalendarParticipantRole {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarParticipantRole,
             "owner" => JSCalendarParticipantRole::Owner,
             "optional" => JSCalendarParticipantRole::Optional,
             "informational" => JSCalendarParticipantRole::Informational,
@@ -641,6 +653,7 @@ impl FromStr for JSCalendarParticipantRole {
             "required" => JSCalendarParticipantRole::Required,
             "attendee" => JSCalendarParticipantRole::Attendee,
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -662,11 +675,12 @@ impl FromStr for JSCalendarScheduleAgent {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarScheduleAgent,
             "server" => JSCalendarScheduleAgent::Server,
             "client" => JSCalendarScheduleAgent::Client,
             "none" => JSCalendarScheduleAgent::None
         )
+        .copied()
         .ok_or(())
     }
 }
@@ -685,11 +699,12 @@ impl FromStr for JSCalendarEventStatus {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::tiny_map!(s.as_bytes(),
+        hashify::map!(s.as_bytes(), JSCalendarEventStatus,
             "confirmed" => JSCalendarEventStatus::Confirmed,
             "cancelled" => JSCalendarEventStatus::Cancelled,
             "tentative" => JSCalendarEventStatus::Tentative
         )
+        .copied()
         .ok_or(())
     }
 }
