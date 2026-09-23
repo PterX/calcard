@@ -26,14 +26,6 @@ use std::{borrow::Cow, fmt::Debug, fmt::Display, hash::Hash, str::FromStr};
 
 pub(crate) const MAX_ICAL_COMPONENT_DEPTH: usize = 32;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum RecurrenceOverrides {
-    #[default]
-    Full,
-    Patch,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[repr(transparent)]
 pub struct JSCalendar<'x, I: JSCalendarId, B: JSCalendarId>(
@@ -499,8 +491,8 @@ mod tests {
     use crate::{
         icalendar::{ICalendar, ICalendarComponent, ICalendarProperty},
         jscalendar::{
-            JSCalendar, JSCalendarProperty, JSCalendarValue, RecurrenceOverrides,
-            export::ExportOptions, import::ImportOptions,
+            JSCalendar, JSCalendarProperty, JSCalendarValue, export::ExportOptions,
+            import::ImportOptions,
         },
     };
     use jmap_tools::Value;
@@ -512,7 +504,6 @@ mod tests {
         expect: String,
         roundtrip: String,
         line_num: usize,
-        recurrence_overrides: RecurrenceOverrides,
     }
 
     #[test]
@@ -572,20 +563,6 @@ mod tests {
                             cur_command = "test";
                             test.comment = comment.to_string();
                             test.line_num = line_num + 1;
-                        }
-                        ("option", "test") => {
-                            match comment {
-                                "patch_recurrence_overrides" => {
-                                    test.recurrence_overrides = RecurrenceOverrides::Patch;
-                                }
-                                _ => panic!(
-                                    "Unknown option '{}' in file '{}' at line {}",
-                                    comment,
-                                    path.display(),
-                                    line_num + 1
-                                ),
-                            }
-                            cur_value = &mut test.test;
                         }
                         ("convert", "test") => {
                             cur_command = "convert";
@@ -649,7 +626,7 @@ mod tests {
 
                 let first_convert = sanitize_icalendar(
                     source
-                        .into_icalendar_with(self.export_options())
+                        .into_icalendar_with(ExportOptions::new())
                         .unwrap_or_else(|_| {
                             panic!(
                                 "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
@@ -670,7 +647,7 @@ mod tests {
                 }
                 let roundtrip_convert = sanitize_jscalendar(
                     first_convert
-                        .into_jscalendar_with(self.import_options())
+                        .into_jscalendar_with(ImportOptions::new())
                         .expect("converts"),
                 );
                 if roundtrip_convert != roundtrip {
@@ -707,7 +684,7 @@ mod tests {
 
                 let first_convert = sanitize_jscalendar(
                     source
-                        .into_jscalendar_with(self.import_options())
+                        .into_jscalendar_with(ImportOptions::new())
                         .expect("converts"),
                 );
                 if first_convert != expect {
@@ -723,7 +700,7 @@ mod tests {
                 }
                 let roundtrip_convert = sanitize_icalendar(
                     first_convert
-                        .into_icalendar_with(self.export_options())
+                        .into_icalendar_with(ExportOptions::new())
                         .unwrap_or_else(|_| {
                             panic!(
                                 "Failed to convert JSCalendar to iCalendar: test {} on line {}: {}",
@@ -743,16 +720,6 @@ mod tests {
                     }
                 }
             }
-        }
-    }
-
-    impl Test {
-        fn import_options(&self) -> ImportOptions {
-            ImportOptions::new().recurrence_overrides(self.recurrence_overrides)
-        }
-
-        fn export_options(&self) -> ExportOptions {
-            ExportOptions::new().recurrence_overrides(self.recurrence_overrides)
         }
     }
 

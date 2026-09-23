@@ -11,21 +11,23 @@ use crate::{
         timezone::{Tz, ZonedDateTime},
     },
     icalendar::{
-        ICalendar, ICalendarEntry, ICalendarParameterName, ICalendarParameterValue,
-        ICalendarProperty, ICalendarValue, ICalendarValueType, Uri,
+        ICalendar, ICalendarComponentType, ICalendarDuration, ICalendarEntry,
+        ICalendarParameterName, ICalendarParameterValue, ICalendarProperty, ICalendarValue,
+        ICalendarValueType, Uri,
     },
     jscalendar::{
         JSCalendarDateTime, JSCalendarId, JSCalendarPrivacy, JSCalendarProperty, JSCalendarType,
         JSCalendarValue,
         ext::{JSCalendarKeyExt, JSCalendarValueExt},
         import::{
-            EntryState, ICalendarConvertedProperty, ICalendarParams, InstanceTimeZone, LinkId,
-            LinkIds, State, params::ExtractParams,
+            EntryState, ICalendarConvertedProperty, ICalendarParams, LinkId, LinkIds, State,
+            params::ExtractParams,
         },
-        overrides::OverrideDiff,
+        overrides::{Inherited, OverrideDiff},
         uuid5,
     },
 };
+use ahash::AHashMap;
 use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Property, Value};
 use std::{borrow::Cow, collections::hash_map::Entry};
 
@@ -340,9 +342,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
              in JSCalendar.
             */
 
-            if (!self.is_recurrence_instance || self.time_zone == InstanceTimeZone::Keep)
-                && let Some(tz) = self.tz_start.and_then(|tz| tz.name())
-            {
+            if let Some(tz) = self.tz_start.and_then(|tz| tz.name()) {
                 self.entries
                     .insert(Key::Property(JSCalendarProperty::TimeZone), Value::Str(tz));
             }
@@ -425,12 +425,49 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             };
             if let Value::Object(overrides) = &mut overrides {
                 let diff = OverrideDiff::new(base);
+                let duration_key = Key::Property(JSCalendarProperty::Duration);
+                let mut slots = overrides
+                    .as_vec()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(position, (key, value))| match key {
+                        Key::Property(JSCalendarProperty::DateTime(recurrence_id)) => Some((
+                            *recurrence_id,
+                            (
+                                position,
+                                value
+                                    .as_object()
+                                    .and_then(|period| period.get(&duration_key))
+                                    .cloned(),
+                            ),
+                        )),
+                        _ => None,
+                    })
+                    .collect::<AHashMap<_, _>>();
                 for (recurrence_id, recurrence) in self.recurrence_overrides {
+                    let inherited = recurrence.inherited();
                     let instance = recurrence.into_object().into_object().unwrap_or_default();
-                    overrides.insert(
-                        Key::Property(JSCalendarProperty::DateTime(recurrence_id)),
-                        Value::Object(diff.diff(recurrence_id, instance)),
-                    );
+                    let mut patch = diff.diff(recurrence_id, instance, inherited);
+                    match slots.entry(recurrence_id) {
+                        Entry::Occupied(slot) => {
+                            let (position, period_duration) = slot.get();
+                            if inherited == Inherited::StartAndEnd
+                                && let Some(duration) = period_duration
+                            {
+                                patch.insert(duration_key.clone(), duration.clone());
+                            }
+                            if let Some((_, value)) = overrides.as_mut_vec().get_mut(*position) {
+                                *value = Value::Object(patch);
+                            }
+                        }
+                        Entry::Vacant(slot) => {
+                            slot.insert((overrides.as_vec().len(), None));
+                            overrides.insert_unchecked(
+                                Key::Property(JSCalendarProperty::DateTime(recurrence_id)),
+                                Value::Object(patch),
+                            );
+                        }
+                    }
                 }
             }
             base.insert_unchecked(overrides_key, overrides);
@@ -447,21 +484,83 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
         self.map_component = true;
     }
 
-    pub(super) fn set_is_recurrence_instance(&mut self, time_zone: InstanceTimeZone) {
+    pub(super) fn set_is_recurrence_instance(&mut self) {
         self.is_recurrence_instance = true;
-        self.time_zone = time_zone;
     }
 
-    pub(super) fn remove_start_at(&mut self, recurrence_id: JSCalendarDateTime, tz: Option<Tz>) {
-        let start_key = Key::Property(JSCalendarProperty::Start);
-        if self.tz_start == tz
-            && matches!(
-                self.entries.get(&start_key),
-                Some(Value::Element(JSCalendarValue::DateTime(start)))
-                    if start.timestamp == recurrence_id.timestamp
-            )
+    fn inherited(&self) -> Inherited {
+        if self
+            .entries
+            .contains_key(&Key::Property(JSCalendarProperty::Start))
         {
-            self.entries.remove(&start_key);
+            Inherited::Nothing
+        } else if self.has_end {
+            Inherited::Start
+        } else {
+            Inherited::StartAndEnd
+        }
+    }
+
+    fn has_start_or_due(&self) -> bool {
+        self.entries
+            .contains_key(&Key::Property(JSCalendarProperty::Start))
+            || self
+                .entries
+                .contains_key(&Key::Property(JSCalendarProperty::Due))
+    }
+
+    pub(super) fn inherit_time_zone(&mut self, tz: Option<Tz>) {
+        if self
+            .entries
+            .contains_key(&Key::Property(JSCalendarProperty::Start))
+            || (tz.is_none() && self.due.is_some())
+        {
+            return;
+        }
+        if let Some(due) = self.due {
+            self.entries.insert(
+                Key::Property(JSCalendarProperty::Due),
+                Value::Element(JSCalendarValue::DateTime(JSCalendarDateTime::local_in(
+                    due, tz,
+                ))),
+            );
+        }
+        self.tz_start = tz;
+    }
+
+    pub(super) fn start_at_recurrence_id(&mut self) {
+        if let Some(recurrence_id) = self.recurrence_id
+            && !self.has_start_or_due()
+        {
+            self.entries.insert(
+                Key::Property(JSCalendarProperty::Start),
+                Value::Element(JSCalendarValue::DateTime(JSCalendarDateTime::new(
+                    recurrence_id.naive_timestamp(),
+                    true,
+                ))),
+            );
+            if self.recurrence_id_is_date {
+                self.default_to_one_day();
+            }
+        }
+    }
+
+    pub(super) fn default_to_one_day(&mut self) {
+        if self.has_end || self.component_type != ICalendarComponentType::VEvent {
+            return;
+        }
+        self.entries.insert(
+            Key::Property(JSCalendarProperty::Duration),
+            Value::Element(JSCalendarValue::Duration(ICalendarDuration::from_days(1))),
+        );
+        if self.include_ical_components {
+            self.ical_converted_properties.insert(
+                JSCalendarProperty::Duration::<I>.to_string().into_owned(),
+                ICalendarConvertedProperty {
+                    name: Some(ICalendarProperty::Dtstart),
+                    ..Default::default()
+                },
+            );
         }
     }
 

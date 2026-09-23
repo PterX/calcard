@@ -17,7 +17,7 @@ use crate::{
     icalendar::ICalendarParameterName,
 };
 use ahash::{AHashMap, AHashSet};
-use jiff::{SignedDuration, civil, tz::Offset};
+use jiff::{SignedDuration, civil};
 use std::{
     collections::hash_map::Entry,
     fmt::{Display, Formatter},
@@ -70,7 +70,9 @@ impl ICalendar {
                 match comp.build_calendar_date(comp_id as u32, &tz_resolver) {
                     Ok(Some(mut event)) => {
                         if event.rid.is_some() {
-                            expand.events.append(&mut event.rdates);
+                            expand
+                                .events
+                                .extend(event.rdates.drain(..).map(|rdate| rdate.event));
                             overridden.insert(comp_id as u32, event);
                         } else if event.rrule.is_some()
                             || !event.rdates.is_empty()
@@ -94,7 +96,9 @@ impl ICalendar {
 
         // Expand recurrences
         let mut unproductive_budget = MAX_UNPRODUCTIVE_WORK;
-        for (mut comp_id, mut event) in recurrences {
+        for (series_id, event) in &mut recurrences {
+            let mut comp_id = *series_id;
+            let length = event.length();
             let exdates = event
                 .exdates
                 .iter()
@@ -104,13 +108,28 @@ impl ICalendar {
                     }))
                 })
                 .collect::<AHashSet<_>>();
+            let start_instance = event
+                .rrule
+                .is_none()
+                .then(|| event.event.take())
+                .flatten()
+                .map(|start| RecurrenceInstance {
+                    event: start,
+                    length,
+                });
             for instance in std::mem::take(&mut event.rdates)
                 .into_iter()
-                .chain(event.rrule.is_none().then(|| event.event.take()).flatten())
+                .chain(start_instance)
             {
-                match overridden.take(&event, &instance.start) {
-                    Some((_, overridden_event)) => expand.events.extend(overridden_event.event),
-                    None if !exdates.contains(&instance.start) => expand.events.push(instance),
+                match overridden.take(event, &instance.event.start) {
+                    Some((_, overridden_event)) => expand.events.extend(
+                        overridden_event
+                            .replacing(instance.event.start, instance.length)
+                            .map(|(replacement, _)| replacement),
+                    ),
+                    None if !exdates.contains(&instance.event.start) => {
+                        expand.events.push(instance.event)
+                    }
                     None => {}
                 }
             }
@@ -139,14 +158,16 @@ impl ICalendar {
                 if event.rdate_starts.contains(&date) {
                     continue;
                 }
-                match overridden.take(&event, &date) {
+                match overridden.take(event, &date) {
                     Some((new_comp_id, overridden_event)) => {
-                        if let Some(new_event) = overridden_event.event {
+                        if let Some((new_event, new_duration)) =
+                            overridden_event.replacing(date, length)
+                        {
                             if overridden_event.rid_this_and_future {
                                 comp_id = new_comp_id;
                                 override_offset =
                                     Some(DefaultDuration::shift(date, new_event.start));
-                                override_duration = Some(overridden_event.default_duration);
+                                override_duration = Some(new_duration);
                             }
                             expand.events.push(new_event);
                         }
@@ -182,7 +203,7 @@ impl ICalendar {
         }
 
         // Add missing overridden events (this should not occur unless the iCalendar is malformed)
-        expand.events.extend(overridden.into_events());
+        expand.events.extend(overridden.into_events(&recurrences));
 
         expand
     }
@@ -227,26 +248,110 @@ impl DefaultDuration {
 
 struct CalendarEventBuilder<'x> {
     event: Option<CalendarEvent>,
+    component_type: &'x ICalendarComponentType,
     start_tz: Tz,
     default_duration: DefaultDuration,
+    inherits_start: bool,
+    instance_end: InstanceEnd,
     dt_start_zoned: ZonedDateTime,
     is_date: bool,
     rrule: Option<&'x ICalendarRecurrenceRule>,
     uid: Option<&'x str>,
     sequence: i64,
-    rdates: Vec<CalendarEvent>,
+    rdates: Vec<RecurrenceInstance>,
     rdate_starts: AHashSet<ZonedDateTime>,
     exdates: Vec<(Option<&'x str>, DateTimeResult)>,
     rid: Option<ZonedDateTime>,
     rid_this_and_future: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RecurrenceInstance {
+    event: CalendarEvent,
+    length: InstanceLength,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InstanceLength {
+    duration: DefaultDuration,
+    is_date: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstanceEnd {
+    Inherited,
+    Relative,
+    Fixed,
+}
+
+impl InstanceEnd {
+    fn of(tz_id: Option<&str>, end: &DateTimeResult) -> Self {
+        if tz_id.is_some() || end.tz().is_some() {
+            InstanceEnd::Fixed
+        } else {
+            InstanceEnd::Relative
+        }
+    }
+}
+
+impl CalendarEventBuilder<'_> {
+    fn length(&self) -> InstanceLength {
+        InstanceLength {
+            duration: self.default_duration,
+            is_date: self.is_date,
+        }
+    }
+
+    fn anchor(&self, recurrence_id: ZonedDateTime) -> Option<ZonedDateTime> {
+        if recurrence_id.timezone().is_floating() {
+            self.start_tz.from_local(recurrence_id.naive_local())
+        } else {
+            Some(recurrence_id.with_timezone(self.start_tz))
+        }
+    }
+
+    fn replacing(
+        &self,
+        start: ZonedDateTime,
+        replaced: InstanceLength,
+    ) -> Option<(CalendarEvent, DefaultDuration)> {
+        let event = self.event?;
+        if !self.inherits_start || self.is_date != replaced.is_date {
+            return Some((event, self.default_duration));
+        }
+        let (end, duration) = match self.instance_end {
+            InstanceEnd::Fixed => (
+                event.end,
+                DefaultDuration::Exact(event.end.signed_duration_since(start)),
+            ),
+            InstanceEnd::Relative => (
+                self.default_duration.after(start).unwrap_or(event.end),
+                self.default_duration,
+            ),
+            InstanceEnd::Inherited => (
+                replaced.duration.after(start).unwrap_or(event.end),
+                replaced.duration,
+            ),
+        };
+        Some((
+            CalendarEvent {
+                start,
+                end,
+                ..event
+            },
+            duration,
+        ))
+    }
+}
+
 type OverriddenInstance<'x> = (u32, CalendarEventBuilder<'x>);
+
+type OverrideKey<'x, T> = (Option<&'x str>, &'x ICalendarComponentType, T);
 
 #[derive(Default)]
 struct OverriddenInstances<'x> {
-    zoned: AHashMap<(Option<&'x str>, ZonedDateTime), OverriddenInstance<'x>>,
-    floating: AHashMap<(Option<&'x str>, civil::DateTime), OverriddenInstance<'x>>,
+    zoned: AHashMap<OverrideKey<'x, ZonedDateTime>, OverriddenInstance<'x>>,
+    floating: AHashMap<OverrideKey<'x, civil::DateTime>, OverriddenInstance<'x>>,
 }
 
 impl<'x> OverriddenInstances<'x> {
@@ -255,12 +360,16 @@ impl<'x> OverriddenInstances<'x> {
             Some(rid) if rid.timezone().is_floating() => {
                 Self::insert_latest(
                     &mut self.floating,
-                    (instance.uid, rid.naive_local()),
+                    (instance.uid, instance.component_type, rid.naive_local()),
                     (comp_id, instance),
                 );
             }
             Some(rid) => {
-                Self::insert_latest(&mut self.zoned, (instance.uid, rid), (comp_id, instance));
+                Self::insert_latest(
+                    &mut self.zoned,
+                    (instance.uid, instance.component_type, rid),
+                    (comp_id, instance),
+                );
             }
             None => {}
         }
@@ -287,18 +396,50 @@ impl<'x> OverriddenInstances<'x> {
         series: &CalendarEventBuilder<'x>,
         start: &ZonedDateTime,
     ) -> Option<OverriddenInstance<'x>> {
-        self.zoned.remove(&(series.uid, *start)).or_else(|| {
-            (!self.floating.is_empty())
-                .then(|| self.floating.remove(&(series.uid, start.naive_local())))
-                .flatten()
-        })
+        (!self.zoned.is_empty())
+            .then(|| {
+                self.zoned
+                    .remove(&(series.uid, series.component_type, *start))
+            })
+            .flatten()
+            .or_else(|| {
+                (!self.floating.is_empty())
+                    .then(|| {
+                        self.floating.remove(&(
+                            series.uid,
+                            series.component_type,
+                            start.naive_local(),
+                        ))
+                    })
+                    .flatten()
+            })
     }
 
-    fn into_events(self) -> impl Iterator<Item = CalendarEvent> {
+    fn into_events<'y>(
+        self,
+        recurrences: &'y [(u32, CalendarEventBuilder<'x>)],
+    ) -> impl Iterator<Item = CalendarEvent> + use<'x, 'y> {
+        let series = if self.zoned.is_empty() && self.floating.is_empty() {
+            AHashMap::new()
+        } else {
+            recurrences
+                .iter()
+                .rev()
+                .map(|(_, series)| ((series.uid, series.component_type), series))
+                .collect::<AHashMap<_, _>>()
+        };
         self.zoned
             .into_values()
             .chain(self.floating.into_values())
-            .filter_map(|(_, instance)| instance.event)
+            .filter_map(move |(_, instance)| {
+                series
+                    .get(&(instance.uid, instance.component_type))
+                    .and_then(|series| {
+                        instance.replacing(series.anchor(instance.rid?)?, series.length())
+                    })
+                    .map(|(replacement, _)| replacement)
+                    .or(instance.event)
+            })
     }
 }
 
@@ -322,6 +463,7 @@ impl ICalendarComponent {
         let mut todo_dates = vec![];
         let mut rid: Option<DateTimeResult> = None;
         let mut rid_tzid = None;
+        let mut rid_has_time = false;
         let mut rid_this_and_future = false;
         let mut duration = None;
         let mut rrule = None;
@@ -352,8 +494,8 @@ impl ICalendarComponent {
                 ) if self.component_type == ICalendarComponentType::VTodo => {
                     todo_dates.push((&entry.name, dt.to_date_time(), entry.tz_id()));
                 }
-                (ICalendarProperty::RecurrenceId, Some(ICalendarValue::PartialDateTime(dt))) => {
-                    if let Some(dt) = dt.to_date_time() {
+                (ICalendarProperty::RecurrenceId, Some(ICalendarValue::PartialDateTime(value))) => {
+                    if let Some(dt) = value.to_date_time() {
                         for param in &entry.params {
                             match &param.name {
                                 ICalendarParameterName::Tzid => {
@@ -366,6 +508,7 @@ impl ICalendarComponent {
                             }
                         }
 
+                        rid_has_time = value.has_time();
                         rid = Some(dt);
                     }
                 }
@@ -428,11 +571,13 @@ impl ICalendarComponent {
             }
         }
 
+        let has_start = dt_start.is_some();
         let dt_start = match dt_start {
             Some(dt_start) => dt_start,
             None => match &rid {
                 Some(rid) => {
                     dt_start_tzid = rid_tzid;
+                    dt_start_has_time = rid_has_time;
                     rid.clone()
                 }
                 None => match self.component_type {
@@ -501,6 +646,7 @@ impl ICalendarComponent {
         let dt_start_tz = dt_start
             .to_date_time_with_tz(start_tz)
             .ok_or(CalendarErrorType::InvalidDtStart)?;
+        let mut instance_end = InstanceEnd::Relative;
         let default_duration = if let Some(dt_end) = dt_end {
             let end = dt_end
                 .to_date_time_with_tz(tz_resolver.resolve_or_default(dt_end_tzid.or(dt_start_tzid)))
@@ -513,6 +659,7 @@ impl ICalendarComponent {
                     comp_id,
                 });
             }
+            instance_end = InstanceEnd::of(dt_end_tzid, &dt_end);
             DefaultDuration::between(dt_start_tz, end, dt_start_has_time)
         } else if let Some(duration) = duration {
             let duration = duration
@@ -551,6 +698,7 @@ impl ICalendarComponent {
                     comp_id,
                 });
             }
+            instance_end = InstanceEnd::of(due_tzid, &due);
             DefaultDuration::between(dt_start_tz, end, dt_start_has_time)
         } else {
             /*
@@ -563,30 +711,13 @@ impl ICalendarComponent {
                time of day specified by the "DTSTART" property.
             */
 
-            let duration = if dt_start_has_time {
-                // If the start has time, the event ends at the end of the day
-                dt_start
-                    .date_time
-                    .with()
-                    .hour(23)
-                    .minute(59)
-                    .second(59)
-                    .build()
-                    .ok()
-                    .map(|end| {
-                        DefaultDuration::Exact(SignedDuration::from_secs(
-                            Offset::UTC.to_timestamp(end).map_or(0, |t| t.as_second())
-                                - Offset::UTC
-                                    .to_timestamp(dt_start.date_time)
-                                    .map_or(0, |t| t.as_second()),
-                        ))
-                    })
-                    .unwrap_or(DefaultDuration::Nominal(NominalDuration::DAY))
-            } else {
-                // A DATE-valued start lasts one calendar day, which is a
-                // nominal length rather than 24 hours.
-                DefaultDuration::Nominal(NominalDuration::DAY)
-            };
+            instance_end = InstanceEnd::Inherited;
+            let duration =
+                if dt_start_has_time || self.component_type == ICalendarComponentType::VTodo {
+                    DefaultDuration::Exact(SignedDuration::ZERO)
+                } else {
+                    DefaultDuration::Nominal(NominalDuration::DAY)
+                };
             if rrule.is_none() || is_instance {
                 event = Some(CalendarEvent {
                     start: dt_start_tz,
@@ -605,14 +736,22 @@ impl ICalendarComponent {
         });
 
         // Add rdates
+        let is_date = !dt_start_has_time;
+        let series_length = InstanceLength {
+            duration: default_duration,
+            is_date,
+        };
         let mut rdate_events = rdates
             .into_iter()
             .filter_map(|(tz_id, rdate)| {
                 let start = rdate.to_date_time_with_tz(value_tz(tz_id))?;
-                Some(CalendarEvent {
-                    start,
-                    end: default_duration.after(start)?,
-                    comp_id,
+                Some(RecurrenceInstance {
+                    event: CalendarEvent {
+                        start,
+                        end: default_duration.after(start)?,
+                        comp_id,
+                    },
+                    length: series_length,
                 })
             })
             .chain(
@@ -621,22 +760,36 @@ impl ICalendarComponent {
                     .filter_map(|(tz_id, start, end)| {
                         let tz = value_tz(tz_id);
                         let start = start.to_date_time_with_tz(tz)?;
-                        Some(CalendarEvent {
-                            start,
-                            end: match end {
-                                PeriodEnd::Time(end) => end.to_date_time_with_tz(tz)?,
-                                PeriodEnd::Duration(duration) => {
-                                    DefaultDuration::Nominal(duration).after(start)?
-                                }
+                        let (end, duration) = match end {
+                            PeriodEnd::Time(end) => {
+                                let end = end.to_date_time_with_tz(tz)?;
+                                (
+                                    end,
+                                    DefaultDuration::Exact(end.signed_duration_since(start)),
+                                )
+                            }
+                            PeriodEnd::Duration(duration) => {
+                                let duration = DefaultDuration::Nominal(duration);
+                                (duration.after(start)?, duration)
+                            }
+                        };
+                        Some(RecurrenceInstance {
+                            event: CalendarEvent {
+                                start,
+                                end,
+                                comp_id,
                             },
-                            comp_id,
+                            length: InstanceLength {
+                                duration,
+                                is_date: false,
+                            },
                         })
                     }),
             )
             .collect::<Vec<_>>();
         let mut rdate_starts = AHashSet::new();
         if !rdate_events.is_empty() {
-            rdate_events.retain(|rdate| rdate_starts.insert(rdate.start));
+            rdate_events.retain(|rdate| rdate_starts.insert(rdate.event.start));
             if event
                 .as_ref()
                 .is_some_and(|event| rdate_starts.contains(&event.start))
@@ -647,9 +800,12 @@ impl ICalendarComponent {
 
         Ok(Some(CalendarEventBuilder {
             event,
+            component_type: &self.component_type,
             default_duration,
+            inherits_start: is_instance && !has_start,
+            instance_end,
             dt_start_zoned: dt_start_tz,
-            is_date: !dt_start_has_time,
+            is_date,
             uid,
             sequence,
             rrule: rrule.map(|rule| &**rule),
@@ -1106,6 +1262,330 @@ mod tests {
                 "2025-03-30T02:30:00+01:00/2025-03-30T04:30:00+02:00#2",
                 "2025-03-31T02:30:00+02:00/2025-03-31T03:30:00+02:00#2",
             ]
+        );
+    }
+
+    #[test]
+    fn rfc5545_3_6_1_date_time_start_without_end_is_zero_length() {
+        assert_eq!(
+            expanded(&["DTSTART;TZID=America/New_York:20060102T120000\r\n"]),
+            ["2006-01-02T12:00:00-05:00/2006-01-02T12:00:00-05:00#1"],
+            "RFC 5545 Section 3.6.1: the event ends on the same calendar date and time of day as DTSTART"
+        );
+        assert_eq!(
+            expanded(&["DTSTART:20060102T120000Z\r\nRRULE:FREQ=DAILY;COUNT=2\r\n"]),
+            [
+                "2006-01-02T12:00:00+00:00/2006-01-02T12:00:00+00:00#1",
+                "2006-01-03T12:00:00+00:00/2006-01-03T12:00:00+00:00#1",
+            ]
+        );
+        assert_eq!(
+            expanded(&["DTSTART;VALUE=DATE:20060102\r\nRRULE:FREQ=DAILY;COUNT=2\r\n"]),
+            [
+                "2006-01-02T00:00:00+00:00/2006-01-03T00:00:00+00:00#1",
+                "2006-01-03T00:00:00+00:00/2006-01-04T00:00:00+00:00#1",
+            ],
+            "RFC 5545 Section 3.6.1: a DATE DTSTART without DTEND or DURATION lasts one day"
+        );
+
+        let ical = ICalendar::parse(concat!(
+            "BEGIN:VCALENDAR\r\n",
+            "BEGIN:VTODO\r\nUID:todo\r\nDTSTART:20060102T120000Z\r\nEND:VTODO\r\n",
+            "BEGIN:VTODO\r\nUID:due\r\nDUE:20060103T120000Z\r\nEND:VTODO\r\n",
+            "BEGIN:VJOURNAL\r\nUID:journal\r\nDTSTART:20060104T120000Z\r\nEND:VJOURNAL\r\n",
+            "BEGIN:VTODO\r\nUID:date-todo\r\nDTSTART;VALUE=DATE:20060105\r\nEND:VTODO\r\n",
+            "BEGIN:VJOURNAL\r\nUID:date-journal\r\nDTSTART;VALUE=DATE:20060106\r\nEND:VJOURNAL\r\n",
+            "END:VCALENDAR\r\n"
+        ))
+        .unwrap();
+        let mut instances = ical
+            .expand_dates(Tz::UTC, 10)
+            .events
+            .into_iter()
+            .map(|event| format!("{}/{}#{}", event.start, event.end, event.comp_id))
+            .collect::<Vec<_>>();
+        instances.sort();
+        assert_eq!(
+            instances,
+            [
+                "2006-01-02T12:00:00+00:00/2006-01-02T12:00:00+00:00#1",
+                "2006-01-03T12:00:00+00:00/2006-01-03T12:00:00+00:00#2",
+                "2006-01-04T12:00:00+00:00/2006-01-04T12:00:00+00:00#3",
+                "2006-01-05T00:00:00+00:00/2006-01-05T00:00:00+00:00#4",
+                "2006-01-06T00:00:00+00:00/2006-01-07T00:00:00+00:00#5",
+            ],
+            "RFC 4791 Section 9.9: a VTODO with only DTSTART or DUE and a VJOURNAL with a DATE-TIME DTSTART are points in time, a VJOURNAL with a DATE DTSTART lasts one day"
+        );
+    }
+
+    #[test]
+    fn rfc5545_3_8_4_4_an_override_without_dtstart_keeps_the_replaced_instance() {
+        assert_eq!(
+            expanded(&[
+                "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=3\r\n",
+                "RECURRENCE-ID;TZID=America/New_York:20060103T120000\r\nSUMMARY:Only title\r\n",
+            ]),
+            [
+                "2006-01-02T12:00:00-05:00/2006-01-02T13:00:00-05:00#1",
+                "2006-01-03T12:00:00-05:00/2006-01-03T13:00:00-05:00#2",
+                "2006-01-04T12:00:00-05:00/2006-01-04T13:00:00-05:00#1",
+            ],
+            "the start and its value type come from RECURRENCE-ID, the length from the instance it replaces"
+        );
+        assert_eq!(
+            expanded(&[
+                "DTSTART:20060102T120000Z\r\nDTEND:20060102T133000Z\r\nRRULE:FREQ=DAILY;COUNT=2\r\n",
+                "RECURRENCE-ID:20060103T120000Z\r\nSUMMARY:Renamed\r\n",
+            ]),
+            [
+                "2006-01-02T12:00:00+00:00/2006-01-02T13:30:00+00:00#1",
+                "2006-01-03T12:00:00+00:00/2006-01-03T13:30:00+00:00#2",
+            ]
+        );
+        assert_eq!(
+            expanded(&[
+                "DTSTART;VALUE=DATE:20060102\r\nDTEND;VALUE=DATE:20060104\r\nRRULE:FREQ=WEEKLY;COUNT=2\r\n",
+                "RECURRENCE-ID;VALUE=DATE:20060109\r\nSUMMARY:Renamed\r\n",
+            ]),
+            [
+                "2006-01-02T00:00:00+00:00/2006-01-04T00:00:00+00:00#1",
+                "2006-01-09T00:00:00+00:00/2006-01-11T00:00:00+00:00#2",
+            ]
+        );
+        assert_eq!(
+            expanded(&[
+                "DTSTART:20060102T120000Z\r\nDURATION:PT1H\r\nRDATE;VALUE=PERIOD:20060105T090000Z/PT3H\r\n",
+                "RECURRENCE-ID:20060105T090000Z\r\nSUMMARY:Renamed\r\n",
+            ]),
+            [
+                "2006-01-02T12:00:00+00:00/2006-01-02T13:00:00+00:00#1",
+                "2006-01-05T09:00:00+00:00/2006-01-05T12:00:00+00:00#2",
+            ],
+            "RFC 5545 Section 3.8.5.2: the replaced instance lasts as long as its PERIOD"
+        );
+        assert_eq!(
+            expanded(&[
+                "DTSTART:20250106T120000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=3\r\n",
+                "RECURRENCE-ID;RANGE=THISANDFUTURE:20250107T120000Z\r\nSUMMARY:Renamed\r\n",
+            ]),
+            [
+                "2025-01-06T12:00:00+00:00/2025-01-06T13:00:00+00:00#1",
+                "2025-01-07T12:00:00+00:00/2025-01-07T13:00:00+00:00#2",
+                "2025-01-08T12:00:00+00:00/2025-01-08T13:00:00+00:00#2",
+            ],
+            "RFC 5545 Section 3.8.4.4: the subsequent instances keep the same duration"
+        );
+    }
+
+    #[test]
+    fn rfc5545_3_8_4_4_an_override_without_dtstart_starts_in_the_series_time_zone() {
+        for recurrence_id in [
+            "RECURRENCE-ID:20060103T170000Z",
+            "RECURRENCE-ID;TZID=Europe/Berlin:20060103T180000",
+            "RECURRENCE-ID:20060103T120000",
+        ] {
+            assert_eq!(
+                expanded(&[
+                    "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=2\r\n",
+                    &format!("{recurrence_id}\r\nSUMMARY:Renamed\r\n"),
+                ]),
+                [
+                    "2006-01-02T12:00:00-05:00/2006-01-02T13:00:00-05:00#1",
+                    "2006-01-03T12:00:00-05:00/2006-01-03T13:00:00-05:00#2",
+                ],
+                "the occurrence starts as the instance it replaces: {recurrence_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn rfc5545_3_8_4_4_separate_overrides_are_not_impacted_by_this_and_future() {
+        assert_eq!(
+            expanded(&[
+                "DTSTART:20250106T120000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=4\r\n",
+                "RECURRENCE-ID;RANGE=THISANDFUTURE:20250107T120000Z\r\nDTSTART:20250107T140000Z\r\nDURATION:PT3H\r\n",
+                "RECURRENCE-ID:20250108T120000Z\r\nSUMMARY:Separate\r\n",
+            ]),
+            [
+                "2025-01-06T12:00:00+00:00/2025-01-06T13:00:00+00:00#1",
+                "2025-01-07T14:00:00+00:00/2025-01-07T17:00:00+00:00#2",
+                "2025-01-08T12:00:00+00:00/2025-01-08T13:00:00+00:00#3",
+                "2025-01-09T14:00:00+00:00/2025-01-09T17:00:00+00:00#2",
+            ],
+            "RFC 5545 Section 3.8.4.4: subsequent instances defined in separate components are not impacted by the given recurrence instance"
+        );
+    }
+
+    #[test]
+    fn rfc5545_3_6_1_an_override_with_dtstart_but_no_end_is_zero_length() {
+        assert_eq!(
+            expanded(&[
+                "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=2\r\n",
+                "RECURRENCE-ID;TZID=America/New_York:20060103T120000\r\nDTSTART;TZID=America/New_York:20060103T150000\r\n",
+            ]),
+            [
+                "2006-01-02T12:00:00-05:00/2006-01-02T13:00:00-05:00#1",
+                "2006-01-03T15:00:00-05:00/2006-01-03T15:00:00-05:00#2",
+            ],
+            "RFC 5545 Section 3.6.1 applies to every VEVENT, and an override does not inherit from its series"
+        );
+    }
+
+    #[test]
+    fn an_override_past_the_expansion_limit_keeps_the_series_length() {
+        let ical = calendar([
+            "UID:limit\r\nDTSTART:20250106T090000Z\r\nDURATION:PT2H\r\nRRULE:FREQ=DAILY;COUNT=10\r\n",
+            "UID:limit\r\nRECURRENCE-ID:20250110T090000Z\r\nSUMMARY:Late\r\n",
+        ]);
+        let expanded = ical.expand_dates(Tz::UTC, 2);
+        assert_eq!(expanded.events.len(), 3);
+        assert_eq!(
+            expanded
+                .events
+                .iter()
+                .filter(|event| event.comp_id == 2)
+                .map(|event| format!("{}/{}", event.start, event.end))
+                .collect::<Vec<_>>(),
+            ["2025-01-10T09:00:00+00:00/2025-01-10T11:00:00+00:00"]
+        );
+    }
+
+    fn override_instances(ical: &ICalendar, limit: usize) -> Vec<String> {
+        let mut instances = ical
+            .expand_dates(Tz::UTC, limit)
+            .events
+            .into_iter()
+            .filter(|event| event.comp_id == 2)
+            .map(|event| format!("{}/{}", event.start, event.end))
+            .collect::<Vec<_>>();
+        instances.sort();
+        instances
+    }
+
+    #[test]
+    fn an_override_past_the_expansion_limit_starts_like_the_instance_it_replaces() {
+        for (series, recurrence_id) in [
+            (
+                "UID:limit\r\nDTSTART;TZID=America/New_York:20250106T090000\r\nDURATION:PT2H\r\nRRULE:FREQ=DAILY;COUNT=10\r\n",
+                "UID:limit\r\nRECURRENCE-ID:20250110T090000\r\n",
+            ),
+            (
+                "UID:limit\r\nDTSTART;TZID=America/New_York:20250106T090000\r\nDURATION:PT2H\r\nRRULE:FREQ=DAILY;COUNT=10\r\n",
+                "UID:limit\r\nRECURRENCE-ID:20250110T140000Z\r\n",
+            ),
+            (
+                "UID:limit\r\nDTSTART;TZID=America/New_York:20250328T200000\r\nDURATION:P1D\r\nRRULE:FREQ=DAILY;COUNT=5\r\n",
+                "UID:limit\r\nRECURRENCE-ID;TZID=Europe/Berlin:20250330T010000\r\n",
+            ),
+            (
+                "DTSTART:20250106T090000Z\r\nDURATION:PT2H\r\nRRULE:FREQ=DAILY;COUNT=10\r\n",
+                "RECURRENCE-ID:20250110T090000Z\r\n",
+            ),
+        ] {
+            let ical = calendar([series, &format!("{recurrence_id}SUMMARY:Late\r\n")]);
+            let matched = override_instances(&ical, 100);
+            assert_eq!(matched.len(), 1, "{recurrence_id}");
+            assert_eq!(
+                override_instances(&ical, 1),
+                matched,
+                "the expansion limit does not change the occurrence: {recurrence_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn rfc5545_3_8_4_4_an_override_without_dtstart_keeps_an_end_that_names_an_instant() {
+        for (dtend, end) in [
+            (
+                "DTEND;TZID=America/New_York:20060103T140000",
+                "2006-01-03T14:00:00-05:00",
+            ),
+            ("DTEND:20060103T190000Z", "2006-01-03T19:00:00+00:00"),
+            ("DTEND:20060103T140000", "2006-01-03T14:00:00-05:00"),
+        ] {
+            assert_eq!(
+                expanded(&[
+                    "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=3\r\n",
+                    &format!("RECURRENCE-ID:20060103T120000\r\n{dtend}\r\n"),
+                ]),
+                [
+                    "2006-01-02T12:00:00-05:00/2006-01-02T13:00:00-05:00#1".to_string(),
+                    format!("2006-01-03T12:00:00-05:00/{end}#2"),
+                    "2006-01-04T12:00:00-05:00/2006-01-04T13:00:00-05:00#1".to_string(),
+                ],
+                "{dtend}"
+            );
+        }
+        assert_eq!(
+            expanded(&[
+                "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=3\r\n",
+                "RECURRENCE-ID;RANGE=THISANDFUTURE:20060103T120000\r\nDTEND;TZID=America/New_York:20060103T140000\r\n",
+            ]),
+            [
+                "2006-01-02T12:00:00-05:00/2006-01-02T13:00:00-05:00#1",
+                "2006-01-03T12:00:00-05:00/2006-01-03T14:00:00-05:00#2",
+                "2006-01-04T12:00:00-05:00/2006-01-04T14:00:00-05:00#2",
+            ],
+            "RFC 5545 Section 3.8.4.4: the subsequent instances take the length of the given one"
+        );
+
+        let ical = ICalendar::parse(concat!(
+            "BEGIN:VCALENDAR\r\n",
+            "BEGIN:VTODO\r\nUID:todo\r\nDTSTART;TZID=America/New_York:20060102T120000\r\n",
+            "DUE;TZID=America/New_York:20060102T130000\r\nRRULE:FREQ=DAILY;COUNT=2\r\nEND:VTODO\r\n",
+            "BEGIN:VTODO\r\nUID:todo\r\nRECURRENCE-ID:20060103T120000\r\nDUE:20060103T190000Z\r\nEND:VTODO\r\n",
+            "END:VCALENDAR\r\n"
+        ))
+        .unwrap();
+        assert_eq!(
+            override_instances(&ical, 10),
+            ["2006-01-03T12:00:00-05:00/2006-01-03T19:00:00+00:00"]
+        );
+    }
+
+    #[test]
+    fn overrides_only_replace_instances_of_the_same_component_type() {
+        let ical = ICalendar::parse(concat!(
+            "BEGIN:VCALENDAR\r\n",
+            "BEGIN:VTODO\r\nUID:x\r\nDTSTART:20250106T090000Z\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEND:VTODO\r\n",
+            "BEGIN:VEVENT\r\nUID:x\r\nDTSTART:20250106T090000Z\r\nDURATION:PT2H\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT\r\n",
+            "BEGIN:VEVENT\r\nUID:x\r\nRECURRENCE-ID:20250107T090000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\n",
+            "END:VCALENDAR\r\n"
+        ))
+        .unwrap();
+        let mut instances = ical
+            .expand_dates(Tz::UTC, 10)
+            .events
+            .into_iter()
+            .map(|event| format!("{}/{}#{}", event.start, event.end, event.comp_id))
+            .collect::<Vec<_>>();
+        instances.sort();
+        assert_eq!(
+            instances,
+            [
+                "2025-01-06T09:00:00+00:00/2025-01-06T09:00:00+00:00#1",
+                "2025-01-06T09:00:00+00:00/2025-01-06T11:00:00+00:00#2",
+                "2025-01-07T09:00:00+00:00/2025-01-07T09:00:00+00:00#1",
+                "2025-01-07T09:00:00+00:00/2025-01-07T11:00:00+00:00#3",
+                "2025-01-08T09:00:00+00:00/2025-01-08T09:00:00+00:00#1",
+                "2025-01-08T09:00:00+00:00/2025-01-08T11:00:00+00:00#2",
+            ],
+            "RFC 5545 Section 3.8.4.4: RECURRENCE-ID identifies an instance of a VEVENT, VTODO or VJOURNAL with the same UID"
+        );
+    }
+
+    #[test]
+    fn an_override_of_another_value_type_keeps_its_own_dates() {
+        assert_eq!(
+            expanded(&[
+                "DTSTART:20060102T000000\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=2\r\n",
+                "RECURRENCE-ID;VALUE=DATE:20060103\r\nSUMMARY:Renamed\r\n",
+            ]),
+            [
+                "2006-01-02T00:00:00+00:00/2006-01-02T01:00:00+00:00#1",
+                "2006-01-03T00:00:00+00:00/2006-01-04T00:00:00+00:00#2",
+            ],
+            "RFC 5545 Section 3.8.4.4: RECURRENCE-ID MUST have the same value type as DTSTART"
         );
     }
 

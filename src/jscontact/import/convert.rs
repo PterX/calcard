@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-#[allow(deprecated)]
-use crate::jscontact::import::ConversionOptions;
 use crate::{
     common::{
         blob::{BlobIdGenerator, BlobIds, NoBlobIds},
@@ -31,19 +29,6 @@ impl VCard {
     {
         self.convert_jscontact::<I, B, NoBlobIds>(ImportOptions::default())
             .0
-    }
-
-    #[deprecated(since = "0.4.0", note = "use into_jscontact_with")]
-    #[allow(deprecated)]
-    pub fn into_jscontact_with_options<I, B>(
-        self,
-        options: ConversionOptions,
-    ) -> JSContact<'static, I, B>
-    where
-        I: JSContactId,
-        B: JSContactId,
-    {
-        self.convert_jscontact::<I, B, NoBlobIds>(options.into()).0
     }
 
     pub fn into_jscontact_with<I, B, G>(

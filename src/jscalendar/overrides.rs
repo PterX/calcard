@@ -13,8 +13,8 @@ use crate::{
     },
 };
 use ahash::AHashMap;
-use jmap_tools::{JsonPointerHandler, Key, Map, Value};
-use std::borrow::Cow;
+use jmap_tools::{JsonPointerHandler, JsonPointerItem, Key, Map, Value};
+use std::{borrow::Cow, str::FromStr};
 
 type JSCalendarMap<'x, I, B> = Map<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>;
 type JSCalendarObject<'x, I, B> = Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>;
@@ -247,6 +247,54 @@ fn is_series_ical_property<I: JSCalendarId, B: JSCalendarId>(
         })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Inherited {
+    Nothing,
+    Start,
+    StartAndEnd,
+}
+
+impl Inherited {
+    fn covers<I: JSCalendarId>(self, property: &JSCalendarProperty<I>) -> bool {
+        match (self, property) {
+            (Inherited::Nothing, _) => false,
+            (
+                _,
+                JSCalendarProperty::Start
+                | JSCalendarProperty::TimeZone
+                | JSCalendarProperty::ShowWithoutTime,
+            ) => true,
+            (
+                Inherited::StartAndEnd,
+                JSCalendarProperty::Duration
+                | JSCalendarProperty::Due
+                | JSCalendarProperty::EndTimeZone,
+            ) => true,
+            _ => false,
+        }
+    }
+
+    fn covers_key<I: JSCalendarId>(self, key: &Key<'_, JSCalendarProperty<I>>) -> bool {
+        match key {
+            Key::Property(JSCalendarProperty::Pointer(pointer)) => {
+                let mut items = pointer
+                    .iter()
+                    .filter(|item| !matches!(item, JsonPointerItem::Root));
+                matches!(
+                    (items.next(), items.next()),
+                    (Some(JsonPointerItem::Key(Key::Property(property))), None)
+                        if self.covers(property)
+                )
+            }
+            Key::Property(property) => self.covers(property),
+            Key::Borrowed(_) | Key::Owned(_) => {
+                JSCalendarProperty::<I>::from_str(key.to_string().as_ref())
+                    .is_ok_and(|property| self.covers(&property))
+            }
+        }
+    }
+}
+
 pub struct OverrideDiff<'a, I: JSCalendarId, B: JSCalendarId> {
     base: &'a JSCalendarMap<'static, I, B>,
     base_ical: Option<JSCalendarMap<'static, I, B>>,
@@ -269,6 +317,7 @@ impl<'a, I: JSCalendarId, B: JSCalendarId> OverrideDiff<'a, I, B> {
         &self,
         recurrence_id: JSCalendarDateTime,
         mut instance: JSCalendarMap<'static, I, B>,
+        inherited: Inherited,
     ) -> JSCalendarMap<'static, I, B> {
         let (start, due) = self.dates.instance(recurrence_id);
         let mut patch = Map::from(Vec::new());
@@ -280,12 +329,18 @@ impl<'a, I: JSCalendarId, B: JSCalendarId> OverrideDiff<'a, I, B> {
                     key,
                     Key::Property(JSCalendarProperty::Start | JSCalendarProperty::ICalendar)
                 )
+                && !inherited.covers_key(key)
                 && !instance.contains_key(key)
             {
                 patch.insert_unchecked(key.to_owned(), Value::Null);
             }
         }
 
+        if inherited != Inherited::Nothing
+            && let Some(base_ical) = &self.base_ical
+        {
+            inherit_date_conversions(&mut instance, base_ical, inherited);
+        }
         let has_ical = match instance.get_mut(&ical_key) {
             Some(Value::Object(obj)) => retain_instance_ical(obj),
             _ => false,
@@ -347,6 +402,47 @@ impl<'a, I: JSCalendarId, B: JSCalendarId> OverrideDiff<'a, I, B> {
         }
 
         patch
+    }
+}
+
+fn inherit_date_conversions<I: JSCalendarId, B: JSCalendarId>(
+    instance: &mut JSCalendarMap<'static, I, B>,
+    base_ical: &JSCalendarMap<'static, I, B>,
+    inherited: Inherited,
+) {
+    let converted_key = Key::Property(JSCalendarProperty::ConvertedProperties);
+    let Some(Value::Object(base_converted)) = base_ical.get(&converted_key) else {
+        return;
+    };
+    let mut conversions = base_converted
+        .iter()
+        .filter(|(key, _)| inherited.covers_key(key))
+        .peekable();
+    if conversions.peek().is_none() {
+        return;
+    }
+
+    let Value::Object(ical) = instance.insert_or_get_mut(
+        Key::Property(JSCalendarProperty::ICalendar),
+        Value::Object(Map::from(Vec::new())),
+    ) else {
+        return;
+    };
+    let name_key = Key::Property(JSCalendarProperty::Name);
+    if !ical.contains_key(&name_key)
+        && let Some(name) = base_ical.get(&name_key)
+    {
+        ical.insert_unchecked(name_key, name.clone());
+    }
+    let Value::Object(converted) =
+        ical.insert_or_get_mut(converted_key, Value::Object(Map::from(Vec::new())))
+    else {
+        return;
+    };
+    for (key, value) in conversions {
+        if !converted.contains_key(key) {
+            converted.insert_unchecked(key.clone(), value.clone());
+        }
     }
 }
 

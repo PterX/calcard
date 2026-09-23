@@ -23,12 +23,6 @@ pub mod entry;
 pub mod params;
 pub mod props;
 
-#[deprecated(since = "0.4.0", note = "use ImportOptions")]
-#[derive(Debug, Clone, Copy)]
-pub struct ConversionOptions {
-    pub include_vcard_parameters: bool,
-}
-
 #[allow(clippy::type_complexity)]
 struct State<I, B>
 where
@@ -158,23 +152,6 @@ where
     }
 }
 
-#[allow(deprecated)]
-impl Default for ConversionOptions {
-    fn default() -> Self {
-        Self {
-            include_vcard_parameters: true,
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl ConversionOptions {
-    pub fn include_vcard_parameters(mut self, include: bool) -> Self {
-        self.include_vcard_parameters = include;
-        self
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct ImportOptions<G = NoBlobIds> {
     include_vcard_parameters: bool,
@@ -185,16 +162,6 @@ impl Default for ImportOptions {
     fn default() -> Self {
         Self {
             include_vcard_parameters: true,
-            blobs: BlobOptions::default(),
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl<G> From<ConversionOptions> for ImportOptions<G> {
-    fn from(options: ConversionOptions) -> Self {
-        Self {
-            include_vcard_parameters: options.include_vcard_parameters,
             blobs: BlobOptions::default(),
         }
     }

@@ -16,21 +16,12 @@ use crate::{
     icalendar::{
         ICalendarComponentType, ICalendarEntry, ICalendarParameterName, ICalendarProperty,
     },
-    jscalendar::{
-        JSCalendarDateTime, JSCalendarId, JSCalendarProperty, JSCalendarValue, RecurrenceOverrides,
-    },
+    jscalendar::{JSCalendarDateTime, JSCalendarId, JSCalendarProperty, JSCalendarValue},
 };
 
 pub mod convert;
 pub mod params;
 pub mod props;
-
-#[deprecated(since = "0.4.0", note = "use ImportOptions")]
-#[derive(Debug, Clone, Copy)]
-pub struct ConversionOptions {
-    pub include_ical_components: bool,
-    pub return_first: bool,
-}
 
 #[derive(Default)]
 #[allow(clippy::type_complexity)]
@@ -52,12 +43,14 @@ struct State<I: JSCalendarId, B: JSCalendarId> {
     jsid: Option<String>,
     uid: Option<String>,
     recurrence_id: Option<ZonedDateTime>,
+    recurrence_id_is_date: bool,
+    due: Option<ZonedDateTime>,
     tz_start: Option<Tz>,
     tz_end: Option<Tz>,
     has_dates: bool,
+    has_end: bool,
     map_component: bool,
     is_recurrence_instance: bool,
-    time_zone: InstanceTimeZone,
     include_ical_components: bool,
 }
 
@@ -85,13 +78,6 @@ struct LinkId {
     next_suffix: u32,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(super) enum InstanceTimeZone {
-    #[default]
-    Inherit,
-    Keep,
-}
-
 #[derive(Debug, Clone)]
 struct EntryState {
     entry: ICalendarEntry,
@@ -99,41 +85,16 @@ struct EntryState {
     map_name: bool,
 }
 
-#[allow(deprecated)]
-impl Default for ConversionOptions {
-    fn default() -> Self {
-        Self {
-            include_ical_components: true,
-            return_first: false,
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl ConversionOptions {
-    pub fn include_ical_components(mut self, include: bool) -> Self {
-        self.include_ical_components = include;
-        self
-    }
-
-    pub fn return_first(mut self, return_first: bool) -> Self {
-        self.return_first = return_first;
-        self
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct ImportOptions<G = NoBlobIds> {
     include_ical_components: bool,
     return_first: bool,
-    recurrence_overrides: RecurrenceOverrides,
     blobs: BlobOptions<G>,
 }
 
 pub(super) struct ImportContext<'a, B> {
     include_ical_components: bool,
     return_first: bool,
-    recurrence_overrides: RecurrenceOverrides,
     blob_ids: Option<BlobIds<'a, B>>,
 }
 
@@ -142,19 +103,6 @@ impl Default for ImportOptions {
         Self {
             include_ical_components: true,
             return_first: false,
-            recurrence_overrides: RecurrenceOverrides::Full,
-            blobs: BlobOptions::default(),
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl<G> From<ConversionOptions> for ImportOptions<G> {
-    fn from(options: ConversionOptions) -> Self {
-        Self {
-            include_ical_components: options.include_ical_components,
-            return_first: options.return_first,
-            recurrence_overrides: RecurrenceOverrides::Patch,
             blobs: BlobOptions::default(),
         }
     }
@@ -177,11 +125,6 @@ impl<G> ImportOptions<G> {
         self
     }
 
-    pub fn recurrence_overrides(mut self, recurrence_overrides: RecurrenceOverrides) -> Self {
-        self.recurrence_overrides = recurrence_overrides;
-        self
-    }
-
     pub fn with_blob_ids<B, F>(self, blob_ids: F) -> ImportOptions<BlobIdFn<F>>
     where
         F: FnMut(&[u8]) -> Option<B>,
@@ -193,7 +136,6 @@ impl<G> ImportOptions<G> {
         ImportOptions {
             include_ical_components: self.include_ical_components,
             return_first: self.return_first,
-            recurrence_overrides: self.recurrence_overrides,
             blobs: self.blobs.with_handler(blob_id_generator),
         }
     }
@@ -205,7 +147,6 @@ impl<G> ImportOptions<G> {
         ImportContext {
             include_ical_components: self.include_ical_components,
             return_first: self.return_first,
-            recurrence_overrides: self.recurrence_overrides,
             blob_ids: self.blobs.blob_ids(),
         }
     }

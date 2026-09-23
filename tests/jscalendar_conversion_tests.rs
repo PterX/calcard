@@ -5,14 +5,13 @@
  */
 
 use calcard::{
-    common::{blob::NoBlobIds, export::ExportError},
+    common::{blob::NoBlobIds, export::ExportError, timezone::Tz},
     icalendar::{
         ICalendar, ICalendarParameterName, ICalendarParameterValue, ICalendarProperty,
         ICalendarValue, Uri,
     },
     jscalendar::{
-        JSCalendar, JSCalendarProperty, RecurrenceOverrides, export::ExportOptions,
-        import::ImportOptions, uuid5,
+        JSCalendar, JSCalendarProperty, export::ExportOptions, import::ImportOptions, uuid5,
     },
 };
 use jmap_tools::{JsonPointer, JsonPointerHandler, Key, Value};
@@ -341,7 +340,7 @@ fn r11_6_link_property_and_value_type_parameters() {
     ] {
         assert!(
             rendered.iter().any(|line| line == expected),
-            "jscalendarbis-20 Section 1.5.11 (rel default enclosure); RFC 9253 Sections 6.1 and 8.2; RFC 7986 Sections 5.10 and 5.11; icalendar-jscalendar-extensions-07 Section 4.1: missing {expected}\n{rendered:#?}"
+            "jscalendarbis-20 Section 1.5.11 (rel default enclosure); RFC 9253 Sections 6.1 and 8.2; RFC 7986 Sections 5.10 and 5.11; icalendar-jscalendar-extensions-08 Section 4.1: missing {expected}\n{rendered:#?}"
         );
     }
     let link_lines = rendered
@@ -882,7 +881,7 @@ fn r11_6_show_without_time_is_only_written_as_true() {
                 .find(|line| line.contains("SHOW-WITHOUT-TIME"))
                 .map(String::as_str),
             expected,
-            "icalendar-jscalendar-extensions-07 Section 4.2: the value MUST be TRUE and VALUE=BOOLEAN is required\n{rendered:#?}"
+            "icalendar-jscalendar-extensions-08 Section 4.2: the value MUST be TRUE and VALUE=BOOLEAN is required\n{rendered:#?}"
         );
     }
 
@@ -959,7 +958,7 @@ fn r13_out_of_range_numbers_are_not_cast() {
     for property in ["PERCENT-COMPLETE", "PRIORITY", "SEQUENCE", "SIZE="] {
         assert!(
             !rendered.contains(property),
-            "jscalendarbis-20 Sections 3.1.7, 3.4.3 and 4.2.4: invalid values are not converted by sign flips or truncation\n{rendered}"
+            "jscalendarbis-20 Sections 3.1.7, 3.4.1 and 4.2.4: invalid values are not converted by sign flips or truncation\n{rendered}"
         );
     }
 
@@ -1102,29 +1101,25 @@ fn out_of_range_numbers_export_as_jsprop() {
 }
 
 #[test]
-fn r13_patch_mode_rejects_patches_that_do_not_apply() {
+fn r13_patches_that_do_not_apply_are_rejected() {
     let source = event_json(
         r#""title": "Daily", "recurrenceRule": {"frequency": "daily"},
            "recurrenceOverrides": {"2025-01-07T09:00:00": {"participants/missing/participationStatus": "declined"}}"#,
     );
-    for recurrence_overrides in [RecurrenceOverrides::Full, RecurrenceOverrides::Patch] {
-        let rendered = unfolded(
-            &JSCalendar::<String, String>::parse(&source)
-                .expect("valid JSCalendar")
-                .into_icalendar_with(
-                    ExportOptions::new().recurrence_overrides(recurrence_overrides),
-                )
-                .expect("the rest of the calendar survives"),
-        );
-        assert!(
-            !rendered.contains("RECURRENCE-ID") && !rendered.contains("ATTENDEE"),
-            "jscalendarbis-20 Section 1.5.9: implementations MUST reject a PatchObject if any of its patches are invalid ({recurrence_overrides:?})\n{rendered}"
-        );
-        assert!(
-            rendered.contains("RRULE:FREQ=DAILY") && rendered.contains("SUMMARY:Daily"),
-            "{rendered}"
-        );
-    }
+    let rendered = unfolded(
+        &JSCalendar::<String, String>::parse(&source)
+            .expect("valid JSCalendar")
+            .into_icalendar()
+            .expect("the rest of the calendar survives"),
+    );
+    assert!(
+        !rendered.contains("RECURRENCE-ID") && !rendered.contains("ATTENDEE"),
+        "jscalendarbis-20 Section 1.5.9: implementations MUST reject a PatchObject if any of its patches are invalid\n{rendered}"
+    );
+    assert!(
+        rendered.contains("RRULE:FREQ=DAILY") && rendered.contains("SUMMARY:Daily"),
+        "{rendered}"
+    );
 }
 
 #[test]
@@ -1312,4 +1307,135 @@ fn the_embedded_size_budget_is_charged_per_distinct_binary() {
             .into_icalendar_with(ExportOptions::new().max_embedded_size(10)),
         Err(ExportError::EmbeddedSizeExceeded { max: 10 })
     );
+}
+
+const ALL_DAY: &str = concat!(
+    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:all-day\r\n",
+    "DTSTART;VALUE=DATE:20250106\r\nSUMMARY:Holiday\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+);
+
+fn end_lines(ical: &ICalendar) -> Vec<String> {
+    lines(ical)
+        .into_iter()
+        .filter(|line| line.starts_with("DTEND") || line.starts_with("DURATION"))
+        .collect()
+}
+
+fn instance_lengths(ical: &ICalendar) -> Vec<i64> {
+    ical.expand_dates(Tz::UTC, 10)
+        .events
+        .iter()
+        .map(|event| {
+            let (start, end) = event.timestamps();
+            end - start
+        })
+        .collect()
+}
+
+#[test]
+fn rfc5545_3_6_1_a_date_event_without_an_end_converts_to_one_day() {
+    let jscal = import(ALL_DAY);
+    let converted = entry(&jscal);
+    assert_eq!(
+        converted["duration"], "P1D",
+        "RFC 5545 Section 3.6.1: the event's duration is taken to be one day, and draft-ietf-calext-jscalendarbis-20 Section 4.1.2 defaults to PT0S\n{converted}"
+    );
+    assert_eq!(
+        converted["iCalendar"]["convertedProperties"]["duration"],
+        serde_json::json!({"name": "dtstart"}),
+        "{DRAFT} Section 5.1.1: the duration converted from the DTSTART property\n{converted}"
+    );
+
+    let exported = jscal.into_icalendar().expect("exports");
+    assert!(
+        lines(&exported).contains(&"DTSTART;VALUE=DATE:20250106".to_string())
+            && end_lines(&exported).is_empty(),
+        "an implied duration exports without DTEND or DURATION\n{exported}"
+    );
+    assert_eq!(
+        instance_lengths(&exported),
+        instance_lengths(&ICalendar::parse(ALL_DAY).expect("valid iCalendar"))
+    );
+    assert_eq!(instance_lengths(&exported), [86400]);
+}
+
+#[test]
+fn an_implied_duration_is_omitted_only_while_it_still_means_one_day() {
+    let hint = r#""iCalendar": {"name": "vevent", "convertedProperties": {"duration": {"name": "dtstart"}}}"#;
+    for (members, expected) in [
+        (
+            r#""start": "2025-01-06T00:00:00", "showWithoutTime": true, "duration": "P1D""#,
+            vec![],
+        ),
+        (
+            r#""start": "2025-01-06T00:00:00", "showWithoutTime": true, "duration": "P2D""#,
+            vec!["DURATION:P2D"],
+        ),
+        (
+            r#""start": "2025-01-06T00:00:00", "timeZone": "Europe/Berlin", "showWithoutTime": true, "duration": "P1D""#,
+            vec!["DURATION:P1D"],
+        ),
+        (
+            r#""start": "2025-01-06T10:00:00", "duration": "P1D""#,
+            vec!["DURATION:P1D"],
+        ),
+    ] {
+        let exported = export(&format!(
+            r#"{{"@type": "Group", "entries": [{{"@type": "Event", "uid": "hint", {members}, {hint}}}]}}"#
+        ));
+        assert_eq!(
+            end_lines(&exported),
+            expected,
+            "RFC 5545 Section 3.6.1: only a DATE DTSTART implies one day\n{exported}"
+        );
+    }
+
+    let explicit = export(
+        r#"{"@type": "Group", "entries": [{"@type": "Event", "uid": "explicit", "start": "2025-01-06T00:00:00", "showWithoutTime": true, "duration": "P1D"}]}"#,
+    );
+    assert_eq!(
+        end_lines(&explicit),
+        ["DURATION:P1D"],
+        "{DRAFT} Section 3.2: a duration that was not converted from DTSTART converts to DURATION\n{explicit}"
+    );
+}
+
+#[test]
+fn an_implied_duration_without_conversion_hints_exports_as_duration() {
+    let jscal = ICalendar::parse(ALL_DAY)
+        .expect("valid iCalendar")
+        .into_jscalendar_with::<String, String, NoBlobIds>(
+            ImportOptions::new().include_ical_components(false),
+        )
+        .expect("converts");
+    let converted = entry(&jscal);
+    assert_eq!(converted["duration"], "P1D", "{converted}");
+    assert!(converted.get("iCalendar").is_none(), "{converted}");
+
+    let exported = jscal.into_icalendar().expect("exports");
+    assert_eq!(
+        end_lines(&exported),
+        ["DURATION:P1D"],
+        "RFC 5545 Section 3.8.2.5: DURATION:P1D states the one day explicitly\n{exported}"
+    );
+    assert_eq!(instance_lengths(&exported), [86400]);
+}
+
+#[test]
+fn rfc5545_3_6_1_only_date_events_without_an_end_last_one_day() {
+    for ical in [
+        ical_event(""),
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:task\r\nDTSTART;VALUE=DATE:20250106\r\nEND:VTODO\r\nEND:VCALENDAR\r\n".to_string(),
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:dated\r\nDTSTART;VALUE=DATE:20250106\r\nDTEND;VALUE=DATE:20250109\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n".to_string(),
+    ] {
+        let converted = entry(&import(&ical));
+        assert_ne!(
+            converted["duration"], "P1D",
+            "RFC 5545 Section 3.6.1: a DATE-TIME start ends when it starts, and the one-day rule is specific to VEVENT\n{ical}"
+        );
+        assert!(
+            converted["iCalendar"]["convertedProperties"]["duration"]["name"] != "dtstart",
+            "{converted}"
+        );
+    }
 }

@@ -10,7 +10,7 @@ use crate::{
         IanaParse, PartialDateTime,
         blob::BlobResolver,
         export::{ExportError, RejectedPatch},
-        timezone::{Tz, ZonedDateTime},
+        timezone::{NominalDuration, Tz, ZonedDateTime},
     },
     icalendar::*,
     jscalendar::{
@@ -20,9 +20,9 @@ use crate::{
         *,
     },
 };
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashSet;
 use jiff::{civil, tz::Offset};
-use jmap_tools::{JsonPointer, JsonPointerHandler, JsonPointerItem, Key, Map, Value};
+use jmap_tools::{JsonPointer, Key, Map, Value};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,11 +138,10 @@ impl ICalendar {
             .get(&Key::Property(JSCalendarProperty::RecurrenceOverrides))
         {
             Some(Value::Object(overrides))
-                if options.recurrence_overrides == RecurrenceOverrides::Full
-                    && matches!(
-                        state.default_component_type,
-                        ICalendarComponentType::VEvent | ICalendarComponentType::VTodo
-                    ) =>
+                if matches!(
+                    state.default_component_type,
+                    ICalendarComponentType::VEvent | ICalendarComponentType::VTodo
+                ) =>
             {
                 let instances = overrides
                     .values()
@@ -260,9 +259,8 @@ impl ICalendar {
             }
         }
 
-        // Apply override patch objects
         if let Some(overrides) = &mut overrides {
-            for (recurrence_id, value) in overrides.as_mut_vec().iter_mut() {
+            for (_, value) in overrides.iter_mut() {
                 let Value::Object(obj) = value else {
                     continue;
                 };
@@ -280,66 +278,6 @@ impl ICalendar {
                     }
                     key => !key.is_forbidden_override_key(),
                 });
-                if obj.is_empty() || override_template.is_some() {
-                    continue;
-                }
-
-                let mut patched_obj = None;
-                let mut rejected_pointer = None;
-
-                for (key, value) in obj.as_mut_vec() {
-                    if let Key::Property(JSCalendarProperty::Pointer(ptr)) = key
-                        && !patched_obj
-                            .get_or_insert_with(|| Value::Object(state.entries.clone()))
-                            .patch_jptr(ptr.iter(), std::mem::take(value))
-                    {
-                        rejected_pointer = Some(ptr.to_string());
-                        break;
-                    }
-                }
-
-                if let Some(pointer) = rejected_pointer {
-                    options.reject_patch(recurrence_id.to_string().into_owned(), pointer);
-                    obj.as_mut_vec().clear();
-                    continue;
-                }
-
-                if let Some(patched_obj) = patched_obj {
-                    let mut patched_props: AHashMap<
-                        Key<'static, JSCalendarProperty<I>>,
-                        Vec<Key<'static, JSCalendarProperty<I>>>,
-                    > = AHashMap::new();
-
-                    for (key, value) in std::mem::take(obj.as_mut_vec()) {
-                        if let Key::Property(JSCalendarProperty::Pointer(ptr)) = key {
-                            let mut ptr = ptr.into_iter();
-                            if let (
-                                Some(JsonPointerItem::Key(key)),
-                                Some(JsonPointerItem::Key(subkey)),
-                            ) = (ptr.next(), ptr.next())
-                            {
-                                patched_props.entry(key).or_default().push(subkey);
-                            }
-                        } else {
-                            obj.insert_unchecked(key, value);
-                        }
-                    }
-
-                    for (key, patched_value) in patched_obj.into_expanded_object() {
-                        if let Some(keys) = patched_props.get(&key) {
-                            let Value::Object(obj) =
-                                obj.insert_or_get_mut(key, Value::Object(Map::default()))
-                            else {
-                                continue;
-                            };
-                            for (key, value) in patched_value.into_expanded_object() {
-                                if keys.contains(&key) {
-                                    obj.insert_unchecked(key, value);
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -354,11 +292,10 @@ impl ICalendar {
         */
 
         let series_is_date = state.is_date;
-        let is_full_override = state.recurrence_id.is_some()
-            && options.recurrence_overrides == RecurrenceOverrides::Full;
-        state.is_date = (series_is_date && !is_full_override)
+        let is_override = state.recurrence_id.is_some();
+        state.is_date = (series_is_date && !is_override)
             || (is_show_without_time && !has_time_zone && !has_time_component);
-        if is_full_override
+        if is_override
             && (state.is_date != series_is_date
                 || state.tz.is_none()
                     != state
@@ -1941,12 +1878,23 @@ impl ICalendar {
                     Value::Element(JSCalendarValue::Duration(duration)),
                     ICalendarComponentType::VEvent | ICalendarComponentType::VTodo,
                 ) => {
-                    let entry = ICalendarEntry::new(if state.tz_end.is_none() {
+                    let end_property = if state.tz_end.is_none() {
                         ICalendarProperty::Duration
                     } else {
                         ICalendarProperty::Dtend
-                    })
-                    .import_converted(&[JSCalendarProperty::Duration], &mut root_conversions);
+                    };
+                    let mut entry = ICalendarEntry::new(end_property.clone())
+                        .import_converted(&[JSCalendarProperty::Duration], &mut root_conversions);
+                    if entry.name == ICalendarProperty::Dtstart {
+                        if component.component_type == ICalendarComponentType::VEvent
+                            && state.is_date
+                            && state.start.is_some()
+                            && duration.to_nominal() == Some(NominalDuration::DAY)
+                        {
+                            continue;
+                        }
+                        entry = ICalendarEntry::new(end_property);
+                    }
                     if entry.name == ICalendarProperty::Dtend {
                         if let Some(end) = state.start.and_then(|start| end_after(start, &duration))
                         {
@@ -2270,33 +2218,31 @@ impl ICalendar {
                     .collect::<AHashSet<_>>()
             });
 
-            let non_instances = start
-                .filter(|_| options.recurrence_overrides == RecurrenceOverrides::Full)
-                .map(|start| {
-                    component.non_recurrence_instances(
-                        start,
-                        state.tz.unwrap_or_default(),
-                        state.is_date,
-                        overrides
-                            .as_vec()
-                            .iter()
-                            .filter_map(|(key, patch)| match (key, patch) {
-                                (
-                                    Key::Property(JSCalendarProperty::DateTime(dt)),
-                                    Value::Object(patch),
-                                ) if !patch.contains_key_value(
-                                    &Key::Property(JSCalendarProperty::Excluded),
-                                    &Value::Bool(true),
-                                ) =>
-                                {
-                                    Some(dt.timestamp)
-                                }
-                                _ => None,
-                            }),
-                        options.max_expansions,
-                        &mut options.unproductive_budget,
-                    )
-                });
+            let non_instances = start.map(|start| {
+                component.non_recurrence_instances(
+                    start,
+                    state.tz.unwrap_or_default(),
+                    state.is_date,
+                    overrides
+                        .as_vec()
+                        .iter()
+                        .filter_map(|(key, patch)| match (key, patch) {
+                            (
+                                Key::Property(JSCalendarProperty::DateTime(dt)),
+                                Value::Object(patch),
+                            ) if !patch.contains_key_value(
+                                &Key::Property(JSCalendarProperty::Excluded),
+                                &Value::Bool(true),
+                            ) =>
+                            {
+                                Some(dt.timestamp)
+                            }
+                            _ => None,
+                        }),
+                    options.max_expansions,
+                    &mut options.unproductive_budget,
+                )
+            });
 
             for (key, value) in overrides.into_vec() {
                 if options.has_failed() {
@@ -2347,97 +2293,50 @@ impl ICalendar {
                         &Key::Property(JSCalendarProperty::Excluded),
                         &Value::Bool(true),
                     ) {
-                        if let Some(template) = &mut override_template {
-                            let instance = template.instance(jsdt);
-                            let mut instance = match template.apply_patch(instance, obj) {
-                                Ok(instance) => instance,
-                                Err(pointer) => {
-                                    options.reject_patch(jsdt.to_rfc3339(), pointer);
-                                    if non_instances
-                                        .as_ref()
-                                        .is_none_or(|keys| keys.contains(&jsdt.timestamp))
-                                    {
-                                        push_recurrence_date(
-                                            &mut rdates,
-                                            &mut component,
-                                            &mut root_conversions,
-                                            jsdt,
-                                            dt,
-                                            has_converted_prop,
-                                        );
-                                    }
-                                    continue;
+                        let Some(template) = &mut override_template else {
+                            continue;
+                        };
+                        let instance = template.instance(jsdt);
+                        let mut instance = match template.apply_patch(instance, obj) {
+                            Ok(instance) => instance,
+                            Err(pointer) => {
+                                options.reject_patch(jsdt.to_rfc3339(), pointer);
+                                if non_instances
+                                    .as_ref()
+                                    .is_none_or(|keys| keys.contains(&jsdt.timestamp))
+                                {
+                                    push_recurrence_date(
+                                        &mut rdates,
+                                        &mut component,
+                                        &mut root_conversions,
+                                        jsdt,
+                                        dt,
+                                        has_converted_prop,
+                                    );
                                 }
-                            };
-                            if non_instances
-                                .as_ref()
-                                .is_some_and(|keys| keys.contains(&jsdt.timestamp))
-                            {
-                                rdates.push(dt);
+                                continue;
                             }
-                            if let Some(privacy) = privacy {
-                                instance.insert(
-                                    Key::Property(JSCalendarProperty::Privacy),
-                                    Value::Element(JSCalendarValue::Privacy(privacy)),
-                                );
-                            }
-                            obj = instance;
-                        } else {
-                            if start.is_some()
-                                && !obj.contains_key(&Key::Property(JSCalendarProperty::Start))
-                            {
-                                obj.insert_unchecked(
-                                    Key::Property(JSCalendarProperty::Start),
-                                    Value::Element(JSCalendarValue::DateTime(
-                                        JSCalendarDateTime::new(jsdt.timestamp, true),
-                                    )),
-                                );
-                            }
-                            if let Some(privacy) = privacy {
-                                obj.insert_unchecked(
-                                    Key::Property(JSCalendarProperty::Privacy),
-                                    Value::Element(JSCalendarValue::Privacy(privacy)),
-                                );
-                            }
-                        }
-                        if override_template.is_none()
-                            && let Some(address) = &organizer_address
-                            && obj
-                                .get(&Key::Property(JSCalendarProperty::Participants))
-                                .and_then(Value::as_object)
-                                .is_some_and(|participants| {
-                                    participants.iter().any(|(_, participant)| {
-                                        matches!(
-                                            participant.as_object().and_then(|participant| {
-                                                participant.get(&Key::Property(
-                                                    JSCalendarProperty::CalendarAddress,
-                                                ))
-                                            }),
-                                            Some(Value::Str(participant_address))
-                                                if participant_address == address
-                                        )
-                                    })
-                                })
+                        };
+                        if non_instances
+                            .as_ref()
+                            .is_some_and(|keys| keys.contains(&jsdt.timestamp))
                         {
-                            obj.insert_unchecked(
-                                Key::Property(JSCalendarProperty::OrganizerCalendarAddress),
-                                Value::Str(address.clone()),
+                            rdates.push(dt);
+                        }
+                        if let Some(privacy) = privacy {
+                            instance.insert(
+                                Key::Property(JSCalendarProperty::Privacy),
+                                Value::Element(JSCalendarValue::Privacy(privacy)),
                             );
-                            if let Some(sent_by) = &organizer_sent_by {
-                                obj.insert_unchecked(
-                                    Key::Property(JSCalendarProperty::SentBy),
-                                    Value::Str(sent_by.clone()),
-                                );
-                            }
                         }
                         self.from_jscalendar(
                             State {
-                                tz: state.tz.filter(|_| override_template.is_none()),
-                                tz_end: state.tz_end.filter(|_| override_template.is_none()),
+                                tz: None,
+                                tz_end: None,
                                 tz_rid: state.tz_rid,
                                 start: None,
                                 recurrence_id: Some(dt),
-                                entries: obj,
+                                entries: instance,
                                 uid: uid.as_deref(),
                                 is_date: state.is_date,
                                 default_component_type: component.component_type.clone(),

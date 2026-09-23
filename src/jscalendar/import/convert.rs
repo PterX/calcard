@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-#[allow(deprecated)]
-use crate::jscalendar::import::ConversionOptions;
 use crate::{
     common::{
         blob::{BlobIdGenerator, NoBlobIds},
@@ -16,8 +14,8 @@ use crate::{
     icalendar::{timezone::TzResolver, *},
     jscalendar::{
         import::{
-            EntryState, ImportContext, ImportOptions, InstanceTimeZone, State,
-            params::ExtractParams, props::ICalendarBinary,
+            EntryState, ImportContext, ImportOptions, State, params::ExtractParams,
+            props::ICalendarBinary,
         },
         *,
     },
@@ -28,15 +26,6 @@ impl ICalendar {
     pub fn into_jscalendar<I: JSCalendarId, B: JSCalendarId>(self) -> JSCalendar<'static, I, B> {
         self.convert_jscalendar::<I, B, NoBlobIds>(ImportOptions::default())
             .0
-    }
-
-    #[deprecated(since = "0.4.0", note = "use into_jscalendar_with")]
-    #[allow(deprecated)]
-    pub fn into_jscalendar_with_opt<I: JSCalendarId, B: JSCalendarId>(
-        self,
-        options: ConversionOptions,
-    ) -> JSCalendar<'static, I, B> {
-        self.convert_jscalendar::<I, B, NoBlobIds>(options.into()).0
     }
 
     pub fn into_jscalendar_with<I: JSCalendarId, B: JSCalendarId, G: BlobIdGenerator<B>>(
@@ -223,32 +212,12 @@ impl ICalendar {
                         let _ = recurrence.uid.take();
 
                         privacy = privacy.max(recurrence.privacy());
-                        let is_full = options.recurrence_overrides == RecurrenceOverrides::Full;
-                        recurrence.set_is_recurrence_instance(
-                            if is_full
-                                || recurrence.tz_start.and_then(|tz| tz.name())
-                                    != component.tz_start.and_then(|tz| tz.name())
-                            {
-                                InstanceTimeZone::Keep
-                            } else {
-                                InstanceTimeZone::Inherit
-                            },
-                        );
+                        recurrence.inherit_time_zone(component.tz_start);
+                        recurrence.set_is_recurrence_instance();
                         recurrence.remove_forbidden_override_patches();
-
-                        if is_full {
-                            component
-                                .recurrence_overrides
-                                .push((recurrence_id, recurrence));
-                        } else {
-                            recurrence.remove_start_at(recurrence_id, component.tz_start);
-                            component
-                                .get_mut_object_or_insert(JSCalendarProperty::RecurrenceOverrides)
-                                .insert(
-                                    Key::Property(JSCalendarProperty::DateTime(recurrence_id)),
-                                    recurrence.into_object(),
-                                );
-                        }
+                        component
+                            .recurrence_overrides
+                            .push((recurrence_id, recurrence));
                     }
 
                     if let Some(privacy) = privacy {
@@ -274,11 +243,15 @@ impl ICalendar {
                     }
                 }
 
+                component.start_at_recurrence_id();
                 if options.return_first {
                     return component;
                 }
                 group_objects.push(component.into_object());
-                group_objects.extend(instances.into_iter().map(State::into_object));
+                group_objects.extend(instances.into_iter().map(|mut instance| {
+                    instance.start_at_recurrence_id();
+                    instance.into_object()
+                }));
             }
         }
 
@@ -355,10 +328,22 @@ impl ICalendar {
             _ => 3,
         });
         let mut start_date = None;
+        let mut start_is_date = false;
         let mut has_owner = false;
+        let is_todo = state.component_type == ICalendarComponentType::VTodo;
 
         for entry in entries {
             let mut entry = EntryState::new(entry);
+            state.has_end |= match (&entry.entry.name, entry.entry.values.first()) {
+                (ICalendarProperty::Dtend, Some(ICalendarValue::PartialDateTime(value))) => {
+                    value.has_date()
+                }
+                (ICalendarProperty::Due, Some(ICalendarValue::PartialDateTime(value))) => {
+                    is_todo && value.has_date()
+                }
+                (ICalendarProperty::Duration, Some(ICalendarValue::Duration(_))) => true,
+                _ => false,
+            };
             let mut values = std::mem::take(&mut entry.entry.values).into_iter();
             let mut value = values.next();
             let is_link = matches!(
@@ -1214,6 +1199,7 @@ impl ICalendar {
                             .to_string()
                             .as_ref()]);
                         start_date = Some(dt);
+                        start_is_date = !value.has_time();
 
                         if state.tz_start.is_none() {
                             state.tz_start = dt.timezone().to_resolved();
@@ -1230,15 +1216,16 @@ impl ICalendar {
                     ICalendarProperty::Dtend,
                     Some(ICalendarValue::PartialDateTime(value)),
                     ICalendarComponentType::VEvent,
-                ) if value.has_date() && start_date.is_some() => {
+                ) if value.has_date() && start_date.or(state.recurrence_id).is_some() => {
                     let tzid = entry.entry.tz_id();
                     state.tz_end = tzid.and_then(|v| tz_resolver.resolve(v)).or(state.tz_start);
-                    if let Some((delta, dt)) = value
+                    if let Some((delta, dt, start)) = value
                         .to_date_time()
                         .and_then(|dt| dt.to_date_time_with_tz(state.tz_end.unwrap_or_default()))
                         .and_then(|dt| {
-                            let delta = dt.signed_duration_since(start_date.unwrap()).as_secs();
-                            (delta > 0).then_some((delta, dt))
+                            let start = start_date.or(state.recurrence_id)?;
+                            let delta = dt.signed_duration_since(start).as_secs();
+                            (delta > 0).then_some((delta, dt, start))
                         })
                     {
                         state.has_dates = true;
@@ -1252,7 +1239,7 @@ impl ICalendar {
                         */
 
                         let days = if !value.has_time() {
-                            i64::from(dt.days_since(start_date.unwrap()))
+                            i64::from(dt.days_since(start))
                         } else {
                             0
                         };
@@ -1337,6 +1324,7 @@ impl ICalendar {
                                 true,
                             ))),
                         );
+                        state.due = value.has_time().then_some(dt);
 
                         if !value.has_time() {
                             state.entries.insert(
@@ -1414,6 +1402,13 @@ impl ICalendar {
                     {
                         state.has_dates = true;
                         state.recurrence_id = Some(dt);
+                        state.recurrence_id_is_date = !value.has_time();
+                        if start_date.is_none() && !value.has_time() {
+                            state.entries.insert(
+                                Key::Property(JSCalendarProperty::ShowWithoutTime),
+                                Value::Bool(true),
+                            );
+                        }
 
                         // Remove IANA TZ references
                         if tzid.is_some() && rid_tz.and_then(|tz| tz.name()).as_deref() == tzid {
@@ -2174,6 +2169,10 @@ impl ICalendar {
             }
 
             state.add_conversion_props(entry);
+        }
+
+        if start_is_date {
+            state.default_to_one_day();
         }
 
         if state.tz_start.is_none()

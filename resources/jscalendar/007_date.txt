@@ -119,8 +119,12 @@ DTSTART;VALUE=DATE:20240921
 > convert
 "start": "2024-09-21T00:00:00",
 "showWithoutTime": true,
+"duration": "P1D",
       "iCalendar": {
         "convertedProperties": {
+          "duration": {
+            "name": "dtstart"
+          },
           "start": {
             "parameters": {
               "value": "DATE"
@@ -405,6 +409,7 @@ END:VCALENDAR
     },
     {
       "@type": "Event",
+      "start": "2019-03-09T02:00:00",
       "recurrenceId": "2019-03-09T02:00:00",
       "recurrenceIdTimeZone": "Europe/Moscow",
       "timeZone": "Europe/Moscow"
@@ -430,6 +435,7 @@ RDATE;TZID=Mexico/General:20190309T020000
 DTSTAMP:19920901T130000Z
 END:VEVENT
 BEGIN:VEVENT
+DTSTART;TZID=Europe/Moscow:20190309T020000
 RECURRENCE-ID;TZID=Europe/Moscow:20190309T020000
 END:VEVENT
 END:VCALENDAR

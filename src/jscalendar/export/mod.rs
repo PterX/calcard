@@ -13,7 +13,7 @@ use crate::{
     },
     datecalc::MAX_UNPRODUCTIVE_WORK,
     icalendar::{ICalendar, ICalendarComponentType},
-    jscalendar::{JSCalendarId, JSCalendarProperty, JSCalendarValue, RecurrenceOverrides},
+    jscalendar::{JSCalendarId, JSCalendarProperty, JSCalendarValue},
 };
 use jmap_tools::{Key, Map, Value};
 use std::hash::Hash;
@@ -48,13 +48,11 @@ struct ConvertedComponent<'x, I: JSCalendarId, B: JSCalendarId> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ExportOptions<R = NoBlobIds> {
-    recurrence_overrides: RecurrenceOverrides,
     max_expansions: usize,
     blobs: BlobOptions<R>,
 }
 
 pub(super) struct ExportContext<'a, B> {
-    recurrence_overrides: RecurrenceOverrides,
     max_expansions: usize,
     unproductive_budget: usize,
     blobs: Option<ResolvedBlobs<'a, B>>,
@@ -68,7 +66,6 @@ const DEFAULT_MAX_EXPANSIONS: usize = 3000;
 impl Default for ExportOptions {
     fn default() -> Self {
         Self {
-            recurrence_overrides: RecurrenceOverrides::Full,
             max_expansions: DEFAULT_MAX_EXPANSIONS,
             blobs: BlobOptions::default(),
         }
@@ -82,11 +79,6 @@ impl ExportOptions {
 }
 
 impl<R> ExportOptions<R> {
-    pub fn recurrence_overrides(mut self, recurrence_overrides: RecurrenceOverrides) -> Self {
-        self.recurrence_overrides = recurrence_overrides;
-        self
-    }
-
     pub fn max_expansions(mut self, max_expansions: usize) -> Self {
         self.max_expansions = max_expansions;
         self
@@ -101,7 +93,6 @@ impl<R> ExportOptions<R> {
 
     pub fn with_resolver<T>(self, blob_resolver: T) -> ExportOptions<T> {
         ExportOptions {
-            recurrence_overrides: self.recurrence_overrides,
             max_expansions: self.max_expansions,
             blobs: self.blobs.with_handler(blob_resolver),
         }
@@ -117,7 +108,6 @@ impl<R> ExportOptions<R> {
         R: BlobResolver<B>,
     {
         ExportContext {
-            recurrence_overrides: self.recurrence_overrides,
             max_expansions: self.max_expansions,
             unproductive_budget: MAX_UNPRODUCTIVE_WORK,
             budget: self.blobs.budget(),

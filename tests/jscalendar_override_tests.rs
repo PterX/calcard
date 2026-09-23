@@ -9,8 +9,11 @@ use calcard::{
     icalendar::{ICalendar, ICalendarComponent, ICalendarParameterName, ICalendarProperty},
     jscalendar::{
         JSCalendar, JSCalendarDateTime, JSCalendarParticipantRole, JSCalendarProperty,
-        JSCalendarValue, RecurrenceOverrides, export::ExportOptions, ext::JSCalendarPatch,
-        import::ImportOptions, overrides::OverrideDiff,
+        JSCalendarValue,
+        export::ExportOptions,
+        ext::JSCalendarPatch,
+        import::ImportOptions,
+        overrides::{Inherited, OverrideDiff},
     },
 };
 use jmap_tools::{JsonPointer, JsonPointerHandler, Key, Value};
@@ -407,27 +410,23 @@ fn rejected_override_patches_are_reported() {
         r#"{"2025-01-08T09:00:00": {"participants/bob/participationStatus": "declined"},
             "2025-01-09T09:00:00": {"title": "Kept"}}"#,
     );
-    for recurrence_overrides in [RecurrenceOverrides::Full, RecurrenceOverrides::Patch] {
-        let (ical, rejected) = JSCalendar::<String, String>::parse(&json)
-            .unwrap()
-            .into_icalendar_with_report(
-                ExportOptions::new().recurrence_overrides(recurrence_overrides),
-            )
-            .expect("the calendar survives an unapplicable patch");
+    let (ical, rejected) = JSCalendar::<String, String>::parse(&json)
+        .unwrap()
+        .into_icalendar_with_report(ExportOptions::new())
+        .expect("the calendar survives an unapplicable patch");
 
-        assert_eq!(
-            rejected
-                .iter()
-                .map(|patch| (patch.recurrence_id.as_str(), patch.pointer.as_str()))
-                .collect::<Vec<_>>(),
-            [(
-                "2025-01-08T09:00:00",
-                "participants/bob/participationStatus"
-            )],
-            "draft-ietf-calext-jscalendarbis-20 Section 1.5.9: the rejected PatchObject is reported ({recurrence_overrides:?})"
-        );
-        assert!(ical.to_string().contains("SUMMARY:Kept"), "{ical}");
-    }
+    assert_eq!(
+        rejected
+            .iter()
+            .map(|patch| (patch.recurrence_id.as_str(), patch.pointer.as_str()))
+            .collect::<Vec<_>>(),
+        [(
+            "2025-01-08T09:00:00",
+            "participants/bob/participationStatus"
+        )],
+        "draft-ietf-calext-jscalendarbis-20 Section 1.5.9: the rejected PatchObject is reported"
+    );
+    assert!(ical.to_string().contains("SUMMARY:Kept"), "{ical}");
 
     let (_, rejected) = JSCalendar::<String, String>::parse(&event(
         PARTICIPANTS,
@@ -446,43 +445,20 @@ fn patch_with_missing_parent_is_rejected() {
         r#"{"2025-01-08T09:00:00": {"participants/bob/participationStatus": "declined"},
             "2025-01-08T20:00:00": {"participants/bob/participationStatus": "declined"}}"#,
     );
-    for recurrence_overrides in [RecurrenceOverrides::Full, RecurrenceOverrides::Patch] {
-        let ical = JSCalendar::<String, String>::parse(&json)
-            .unwrap()
-            .into_icalendar_with(ExportOptions::new().recurrence_overrides(recurrence_overrides))
-            .expect("the calendar survives an unapplicable patch");
-        assert!(
-            override_components(&ical).is_empty(),
-            "draft-ietf-calext-jscalendarbis-20 Section 1.5.9: the PatchObject is rejected in its entirety ({recurrence_overrides:?})\n{ical}"
-        );
-        let rendered = ical.to_string();
-        assert!(rendered.contains("SUMMARY:Sync"), "{rendered}");
-        assert!(
-            rendered.contains("RDATE;TZID=Europe/Berlin:") && rendered.contains("20250108T200000"),
-            "draft-ietf-calext-jscalendar-icalendar-28: the occurrence degrades to an RDATE\n{rendered}"
-        );
-    }
-}
-
-#[test]
-fn patch_mode_overrides_include_start() {
-    let json = event("", r#"{"2025-01-08T09:00:00": {"title": "Moved"}}"#);
     let ical = JSCalendar::<String, String>::parse(&json)
         .unwrap()
-        .into_icalendar_with(ExportOptions::new().recurrence_overrides(RecurrenceOverrides::Patch))
-        .unwrap();
-    let components = override_components(&ical);
-    let [component] = components.as_slice() else {
-        panic!("{ical}");
-    };
+        .into_icalendar()
+        .expect("the calendar survives an unapplicable patch");
     assert!(
-        component
-            .property(&ICalendarProperty::Dtstart)
-            .is_some_and(|entry| entry.parameter(&ICalendarParameterName::Tzid).is_some()),
-        "{ical}"
+        override_components(&ical).is_empty(),
+        "draft-ietf-calext-jscalendarbis-20 Section 1.5.9: the PatchObject is rejected in its entirety\n{ical}"
     );
-    assert!(component.property(&ICalendarProperty::Summary).is_some());
-    assert!(component.property(&ICalendarProperty::Duration).is_none());
+    let rendered = ical.to_string();
+    assert!(rendered.contains("SUMMARY:Sync"), "{rendered}");
+    assert!(
+        rendered.contains("RDATE;TZID=Europe/Berlin:") && rendered.contains("20250108T200000"),
+        "draft-ietf-calext-jscalendar-icalendar-28: the occurrence degrades to an RDATE\n{rendered}"
+    );
 }
 
 #[test]
@@ -500,36 +476,6 @@ fn excluded_false_alone_is_an_empty_patch() {
     );
     assert!(!rendered.contains("20250108T090000"), "{rendered}");
     assert!(!rendered.contains("excluded"), "{rendered}");
-}
-
-#[test]
-fn time_zone_mismatched_override_patch_mode() {
-    let jscal = ICalendar::parse(concat!(
-        "BEGIN:VCALENDAR\r\n",
-        "BEGIN:VEVENT\r\nUID:tz-2\r\nDTSTART;TZID=Europe/Berlin:20250106T090000\r\n",
-        "DURATION:PT1H\r\nRRULE:FREQ=DAILY\r\nSUMMARY:Daily\r\nEND:VEVENT\r\n",
-        "BEGIN:VEVENT\r\nUID:tz-2\r\nRECURRENCE-ID:20250108T080000Z\r\n",
-        "DTSTART:20250108T090000Z\r\nDURATION:PT1H\r\nSUMMARY:Daily\r\nEND:VEVENT\r\n",
-        "END:VCALENDAR\r\n"
-    ))
-    .unwrap()
-    .into_jscalendar_with::<String, String, _>(
-        ImportOptions::new().recurrence_overrides(RecurrenceOverrides::Patch),
-    )
-    .expect("converts");
-    let patch = &overrides(&jscal)["2025-01-08T09:00:00"];
-    assert_eq!(patch["timeZone"], "Etc/UTC", "{patch}");
-    assert_eq!(patch["start"], "2025-01-08T09:00:00", "{patch}");
-
-    let exported = jscal
-        .into_icalendar_with(ExportOptions::new().recurrence_overrides(RecurrenceOverrides::Patch))
-        .unwrap()
-        .to_string();
-    assert!(exported.contains("DTSTART:20250108T090000Z"), "{exported}");
-    assert!(
-        exported.contains("RECURRENCE-ID;TZID=Europe/Berlin:20250108T090000"),
-        "{exported}"
-    );
 }
 
 const HIDDEN_ATTENDEES: &str = r#"{
@@ -1270,6 +1216,7 @@ fn participant_calendar_address_change_replaces_the_member() {
                 true,
             ),
             instance,
+            Inherited::Nothing,
         ),
     ));
     assert_eq!(
@@ -1540,23 +1487,15 @@ fn exdate_does_not_hide_an_override() {
         "END:VEVENT\r\n",
         "END:VCALENDAR\r\n"
     );
-    for mode in [RecurrenceOverrides::Full, RecurrenceOverrides::Patch] {
-        let jscal = ICalendar::parse(ical)
-            .unwrap()
-            .into_jscalendar_with::<String, String, _>(
-                ImportOptions::new().recurrence_overrides(mode),
-            )
-            .expect("converts");
-        assert_eq!(
-            overrides(&jscal)["2025-01-08T09:00:00"]["start"],
-            "2025-01-08T10:00:00",
-            "{mode:?}"
-        );
-        assert_eq!(
-            normalize(&jscal)["entries"].as_array().map(Vec::len),
-            Some(1)
-        );
-    }
+    let jscal = import(ical);
+    assert_eq!(
+        overrides(&jscal)["2025-01-08T09:00:00"]["start"],
+        "2025-01-08T10:00:00"
+    );
+    assert_eq!(
+        normalize(&jscal)["entries"].as_array().map(Vec::len),
+        Some(1)
+    );
 
     let mut ical =
         ICalendar::parse(std::fs::read_to_string("resources/ical/197.ics").unwrap()).unwrap();
@@ -1646,7 +1585,11 @@ fn member_map_order_does_not_change_the_patch() {
     );
     assert!(
         OverrideDiff::new(&base)
-            .diff(JSCalendarDateTime::new(0, true), instance)
+            .diff(
+                JSCalendarDateTime::new(0, true),
+                instance,
+                Inherited::Nothing
+            )
             .is_empty()
     );
 }
@@ -1778,4 +1721,535 @@ fn jscalendarbis_1_5_9_override_patch_parent_must_exist() {
             "draft-ietf-calext-jscalendarbis-20 Section 1.5.9 rule 2: every reference token before the last must already exist\n{patch}\n{exported}"
         );
     }
+}
+
+const TITLE_ONLY_OVERRIDE: &str = r#"{"@type": "Group", "entries": [{
+    "@type": "Event", "uid": "title-only", "title": "Base",
+    "start": "2006-01-02T12:00:00", "timeZone": "America/New_York", "duration": "PT1H",
+    "recurrenceRule": {"frequency": "daily", "count": 5},
+    "recurrenceOverrides": {"2006-01-04T12:00:00": {"title": "Only title"}}
+}]}"#;
+
+fn instance_lengths(ical: &ICalendar) -> Vec<i64> {
+    let mut events = ical.expand_dates(Tz::UTC, 100).events;
+    events.sort_by_key(|event| event.start);
+    events
+        .iter()
+        .map(|event| {
+            let (start, end) = event.timestamps();
+            end - start
+        })
+        .collect()
+}
+
+fn sparse_override(series: &str, occurrence: &str) -> String {
+    format!(
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VEVENT\r\nUID:sparse\r\n{series}RRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:Base\r\nEND:VEVENT\r\n\
+         BEGIN:VEVENT\r\nUID:sparse\r\n{occurrence}SUMMARY:Renamed\r\nEND:VEVENT\r\n\
+         END:VCALENDAR\r\n"
+    )
+}
+
+#[test]
+fn overrides_are_exported_as_complete_components() {
+    let ical = assert_json_roundtrip(TITLE_ONLY_OVERRIDE);
+    let components = override_components(&ical);
+    let [component] = components.as_slice() else {
+        panic!("{ical}");
+    };
+    assert!(
+        component
+            .property(&ICalendarProperty::Dtstart)
+            .is_some_and(|entry| entry.parameter(&ICalendarParameterName::Tzid).is_some()),
+        "RFC 5545 Section 3.6.1: DTSTART is REQUIRED when METHOD is absent\n{ical}"
+    );
+    assert!(
+        component.property(&ICalendarProperty::Duration).is_some(),
+        "RFC 5545 has no inheritance, so the occurrence states the series duration\n{ical}"
+    );
+    assert_eq!(instance_lengths(&ical), [3600; 5], "{ical}");
+}
+
+#[test]
+fn a_round_tripped_override_follows_later_edits_of_the_series() {
+    let mut json = serde_json::from_str::<JsonValue>(
+        &export(TITLE_ONLY_OVERRIDE)
+            .into_jscalendar::<String, String>()
+            .to_string_pretty(),
+    )
+    .unwrap();
+    json["entries"][0]["duration"] = JsonValue::from("PT2H");
+    let ical = export(&json.to_string());
+    assert_eq!(
+        instance_lengths(&ical),
+        [7200; 5],
+        "draft-ietf-calext-jscalendarbis-20 Section 3.3.4: an occurrence inherits what its patch does not set\n{ical}"
+    );
+}
+
+#[test]
+fn an_override_without_dtstart_imports_as_a_minimal_patch() {
+    for (series, occurrence, recurrence_id) in [
+        (
+            "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\n",
+            "RECURRENCE-ID;TZID=America/New_York:20060103T120000\r\n",
+            "2006-01-03T12:00:00",
+        ),
+        (
+            "DTSTART:20060102T120000Z\r\nDTEND:20060102T133000Z\r\n",
+            "RECURRENCE-ID:20060103T120000Z\r\n",
+            "2006-01-03T12:00:00",
+        ),
+        (
+            "DTSTART;VALUE=DATE:20060102\r\nDTEND;VALUE=DATE:20060104\r\n",
+            "RECURRENCE-ID;VALUE=DATE:20060103\r\n",
+            "2006-01-03T00:00:00",
+        ),
+    ] {
+        let ical = sparse_override(series, occurrence);
+        assert_eq!(
+            overrides(&assert_ical_roundtrip(&ical)),
+            serde_json::json!({recurrence_id: {"title": "Renamed"}}),
+            "the occurrence starts at its RECURRENCE-ID and lasts as long as the instance it replaces\n{ical}"
+        );
+    }
+
+    let task = concat!(
+        "BEGIN:VCALENDAR\r\n",
+        "BEGIN:VTODO\r\nUID:task\r\nDTSTART:20060102T090000Z\r\nDUE:20060102T170000Z\r\n",
+        "RRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:Base\r\nEND:VTODO\r\n",
+        "BEGIN:VTODO\r\nUID:task\r\nRECURRENCE-ID:20060103T090000Z\r\nSUMMARY:Renamed\r\nEND:VTODO\r\n",
+        "END:VCALENDAR\r\n"
+    );
+    assert_eq!(
+        overrides(&assert_ical_roundtrip(task)),
+        serde_json::json!({"2006-01-03T09:00:00": {"title": "Renamed"}}),
+        "{task}"
+    );
+}
+
+#[test]
+fn an_override_with_dtstart_but_no_end_is_zero_length() {
+    let ical = sparse_override(
+        "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\n",
+        "RECURRENCE-ID;TZID=America/New_York:20060103T120000\r\nDTSTART;TZID=America/New_York:20060103T120000\r\n",
+    );
+    let jscal = assert_ical_roundtrip(&ical);
+    assert_eq!(
+        patches_without_ical(&jscal),
+        serde_json::json!({"2006-01-03T12:00:00": {"duration": null, "title": "Renamed"}}),
+        "RFC 5545 Section 3.6.1: a VEVENT with a DATE-TIME DTSTART and no DTEND ends when it starts\n{ical}"
+    );
+    assert_eq!(
+        instance_lengths(&export(&jscal.to_string_pretty())),
+        [3600, 0, 3600]
+    );
+}
+
+fn instants(ical: &ICalendar) -> Vec<(i64, i64)> {
+    let mut instants = ical
+        .expand_dates(Tz::UTC, 100)
+        .events
+        .iter()
+        .map(|event| event.timestamps())
+        .collect::<Vec<_>>();
+    instants.sort();
+    instants
+}
+
+#[test]
+fn a_superseded_override_does_not_lend_its_duration() {
+    let ical = concat!(
+        "BEGIN:VCALENDAR\r\n",
+        "BEGIN:VEVENT\r\nUID:dup\r\nDTSTART:20060102T120000Z\r\nDURATION:PT1H\r\n",
+        "RRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:Base\r\nEND:VEVENT\r\n",
+        "BEGIN:VEVENT\r\nUID:dup\r\nRECURRENCE-ID:20060103T120000Z\r\nSEQUENCE:1\r\n",
+        "DTSTART:20060103T120000Z\r\nDURATION:PT2H\r\nSUMMARY:Older\r\nEND:VEVENT\r\n",
+        "BEGIN:VEVENT\r\nUID:dup\r\nRECURRENCE-ID:20060103T120000Z\r\nSEQUENCE:2\r\n",
+        "SUMMARY:Newer\r\nEND:VEVENT\r\n",
+        "END:VCALENDAR\r\n"
+    );
+    let jscal = import(ical);
+    let patches = patches_without_ical(&jscal);
+    assert_eq!(
+        patches["2006-01-03T12:00:00"]["title"], "Newer",
+        "RFC 5545 Section 3.8.7.4: the highest SEQUENCE is the latest revision\n{patches}"
+    );
+    assert!(
+        patches["2006-01-03T12:00:00"].get("duration").is_none(),
+        "the occurrence inherits the length of the series, not that of a superseded revision\n{patches}"
+    );
+    assert_eq!(
+        instants(&export(&jscal.to_string_pretty())),
+        instants(&ICalendar::parse(ical).unwrap())
+    );
+}
+
+#[test]
+fn an_override_without_dtstart_moves_its_due_into_the_series_time_zone() {
+    let ical = concat!(
+        "BEGIN:VCALENDAR\r\n",
+        "BEGIN:VTODO\r\nUID:task\r\nDTSTART;TZID=America/New_York:20060102T120000\r\n",
+        "DUE;TZID=America/New_York:20060102T170000\r\n",
+        "RRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:Base\r\nEND:VTODO\r\n",
+        "BEGIN:VTODO\r\nUID:task\r\nRECURRENCE-ID;TZID=America/New_York:20060103T120000\r\n",
+        "DUE:20060103T230000Z\r\nSUMMARY:Renamed\r\nEND:VTODO\r\n",
+        "END:VCALENDAR\r\n"
+    );
+    let jscal = import(ical);
+    assert_eq!(
+        patches_without_ical(&jscal),
+        serde_json::json!({"2006-01-03T12:00:00": {"due": "2006-01-03T18:00:00", "title": "Renamed"}}),
+        "draft-ietf-calext-jscalendarbis-20 Section 4.2.1: due is a LocalDateTime in the inherited timeZone\n{ical}"
+    );
+    assert_eq!(
+        instants(&export(&jscal.to_string_pretty())),
+        instants(&ICalendar::parse(ical).unwrap())
+    );
+}
+
+#[test]
+fn an_override_with_dtend_but_no_dtstart_keeps_its_length() {
+    let ical = sparse_override(
+        "DTSTART:20060102T120000Z\r\nDURATION:PT1H\r\n",
+        "RECURRENCE-ID:20060103T120000Z\r\nDTEND:20060103T150000Z\r\n",
+    );
+    let jscal = assert_ical_roundtrip(&ical);
+    assert_eq!(
+        patches_without_ical(&jscal),
+        serde_json::json!({"2006-01-03T12:00:00": {"duration": "PT3H", "title": "Renamed"}}),
+        "RFC 5545 Section 3.8.2.2: DTEND ends the occurrence that starts at its recurrence id\n{ical}"
+    );
+    assert_eq!(
+        instants(&export(&jscal.to_string_pretty())),
+        instants(&ICalendar::parse(&ical).unwrap())
+    );
+}
+
+#[test]
+fn a_standalone_date_instance_without_an_end_lasts_one_day() {
+    let ical = concat!(
+        "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\n",
+        "BEGIN:VEVENT\r\nUID:standalone\r\nRECURRENCE-ID;VALUE=DATE:20060103\r\n",
+        "SUMMARY:Holiday\r\nEND:VEVENT\r\n",
+        "END:VCALENDAR\r\n"
+    );
+    let jscal = assert_ical_roundtrip(ical);
+    let entry = normalize(&jscal)["entries"][0].clone();
+    assert_eq!(
+        (
+            &entry["start"],
+            &entry["showWithoutTime"],
+            &entry["duration"]
+        ),
+        (
+            &JsonValue::from("2006-01-03T00:00:00"),
+            &JsonValue::from(true),
+            &JsonValue::from("P1D")
+        ),
+        "RFC 5545 Section 3.6.1: a VEVENT on a DATE without DTEND or DURATION lasts one day\n{entry}"
+    );
+    assert_eq!(
+        instants(&export(&jscal.to_string_pretty())),
+        instants(&ICalendar::parse(ical).unwrap())
+    );
+}
+
+fn instances(ical: &ICalendar) -> Vec<String> {
+    let mut events = ical
+        .expand_dates(Tz::UTC, 100)
+        .events
+        .iter()
+        .map(|event| format!("{}/{}", event.start, event.end))
+        .collect::<Vec<_>>();
+    events.sort();
+    events
+}
+
+#[test]
+fn an_override_without_dtstart_keeps_the_time_zone_of_the_series() {
+    for recurrence_id in [
+        "RECURRENCE-ID:20060103T170000Z\r\n",
+        "RECURRENCE-ID:20060103T120000\r\n",
+    ] {
+        let ical = sparse_override(
+            "DTSTART;TZID=America/New_York:20060102T120000\r\nDURATION:PT1H\r\n",
+            recurrence_id,
+        );
+        let jscal = assert_ical_roundtrip(&ical);
+        assert_eq!(
+            overrides(&jscal),
+            serde_json::json!({"2006-01-03T12:00:00": {"title": "Renamed"}}),
+            "draft-ietf-calext-jscalendarbis-20 Section 3.3.4: the occurrence inherits everything but its start, which is shifted to the recurrence id\n{ical}"
+        );
+        assert_eq!(
+            instances(&export(&jscal.to_string_pretty())),
+            [
+                "2006-01-02T12:00:00-05:00/2006-01-02T13:00:00-05:00",
+                "2006-01-03T12:00:00-05:00/2006-01-03T13:00:00-05:00",
+                "2006-01-04T12:00:00-05:00/2006-01-04T13:00:00-05:00",
+            ],
+            "{ical}"
+        );
+    }
+}
+
+#[test]
+fn an_override_without_dtstart_keeps_the_period_of_its_rdate() {
+    let ical = sparse_override(
+        "DTSTART:20060102T120000Z\r\nDURATION:PT1H\r\nRDATE;VALUE=PERIOD:20060105T090000Z/PT3H\r\n",
+        "RECURRENCE-ID:20060105T090000Z\r\n",
+    );
+    assert_eq!(
+        instances(&ICalendar::parse(&ical).unwrap()),
+        [
+            "2006-01-02T12:00:00+00:00/2006-01-02T13:00:00+00:00",
+            "2006-01-03T12:00:00+00:00/2006-01-03T13:00:00+00:00",
+            "2006-01-04T12:00:00+00:00/2006-01-04T13:00:00+00:00",
+            "2006-01-05T09:00:00+00:00/2006-01-05T12:00:00+00:00",
+        ]
+    );
+    let jscal = import(&ical);
+    assert_eq!(
+        patches_without_ical(&jscal),
+        serde_json::json!({"2006-01-05T09:00:00": {"duration": "PT3H", "title": "Renamed"}}),
+        "draft-ietf-calext-jscalendar-icalendar-28 Section 2.3.33: the duration of a PERIOD converts to the PatchObject's duration\n{ical}"
+    );
+    assert_eq!(
+        instances(&export(&jscal.to_string_pretty())),
+        instances(&ICalendar::parse(&ical).unwrap()),
+        "RFC 5545 Section 5: the instance lasts as long as its RDATE PERIOD"
+    );
+}
+
+#[test]
+fn an_override_without_dtstart_inherits_how_the_series_is_shown() {
+    for (series, occurrence, recurrence_id) in [
+        (
+            "DTSTART;TZID=Europe/Berlin:20241017T130000\r\nDTEND;TZID=Asia/Bangkok:20241018T040000\r\n",
+            "RECURRENCE-ID;TZID=Europe/Berlin:20241018T130000\r\n",
+            "2024-10-18T13:00:00",
+        ),
+        (
+            "DTSTART;TZID=Europe/Berlin:20241017T000000\r\nDURATION:PT24H\r\nSHOW-WITHOUT-TIME;VALUE=BOOLEAN:TRUE\r\n",
+            "RECURRENCE-ID;TZID=Europe/Berlin:20241018T000000\r\n",
+            "2024-10-18T00:00:00",
+        ),
+    ] {
+        let ical = sparse_override(series, occurrence);
+        assert_eq!(
+            overrides(&assert_ical_roundtrip(&ical)),
+            serde_json::json!({recurrence_id: {"title": "Renamed"}}),
+            "draft-ietf-calext-jscalendarbis-20 Section 4.1.3: endTimeZone, and the showWithoutTime of the start, are inherited\n{ical}"
+        );
+    }
+}
+
+#[test]
+fn a_due_in_an_event_is_not_the_end_of_the_occurrence() {
+    let ical = sparse_override(
+        "DTSTART:20060102T120000Z\r\nDURATION:PT1H\r\n",
+        "RECURRENCE-ID:20060103T120000Z\r\nDUE:20060103T150000Z\r\n",
+    );
+    let jscal = import(&ical);
+    assert_eq!(
+        patches_without_ical(&jscal),
+        serde_json::json!({"2006-01-03T12:00:00": {"title": "Renamed"}}),
+        "RFC 5545 Section 3.6.1: DUE is not a VEVENT property, so the occurrence has no end of its own\n{ical}"
+    );
+    assert_eq!(
+        instances(&export(&jscal.to_string_pretty())),
+        [
+            "2006-01-02T12:00:00+00:00/2006-01-02T13:00:00+00:00",
+            "2006-01-03T12:00:00+00:00/2006-01-03T13:00:00+00:00",
+            "2006-01-04T12:00:00+00:00/2006-01-04T13:00:00+00:00",
+        ]
+    );
+}
+
+#[test]
+fn a_standalone_instance_without_dtstart_starts_at_its_recurrence_id() {
+    let jscal = import(concat!(
+        "BEGIN:VCALENDAR\r\nMETHOD:CANCEL\r\n",
+        "BEGIN:VEVENT\r\nUID:standalone\r\nRECURRENCE-ID;TZID=America/New_York:20060103T120000\r\n",
+        "SEQUENCE:2\r\nEND:VEVENT\r\n",
+        "END:VCALENDAR\r\n"
+    ));
+    let entry = normalize(&jscal)["entries"][0].clone();
+    assert_eq!(
+        (&entry["start"], &entry["timeZone"], &entry["recurrenceId"]),
+        (
+            &JsonValue::from("2006-01-03T12:00:00"),
+            &JsonValue::from("America/New_York"),
+            &JsonValue::from("2006-01-03T12:00:00")
+        ),
+        "draft-ietf-calext-jscalendarbis-20 Section 4.1.1: start is mandatory\n{entry}"
+    );
+    let exported = jscal.into_icalendar().unwrap().to_string();
+    assert!(
+        exported.contains("DTSTART;TZID=America/New_York:20060103T120000"),
+        "draft-ietf-calext-jscalendarbis-20 Section 4.1.1: the mandatory start converts to DTSTART\n{exported}"
+    );
+}
+
+#[test]
+fn inherited_conversions_match_parsed_converted_property_keys() {
+    let object = |json: &str| {
+        JSCalendar::<String, String>::parse(json)
+            .unwrap()
+            .0
+            .into_owned()
+            .into_object()
+            .unwrap()
+    };
+    let base = object(
+        r#"{"@type": "Event", "title": "Base", "start": "2006-01-02T00:00:00", "showWithoutTime": true, "duration": "P2D",
+            "iCalendar": {"name": "vevent", "convertedProperties": {
+                "start": {"parameters": {"value": "DATE"}},
+                "duration": {"name": "dtend", "parameters": {"value": "DATE"}}}}}"#,
+    );
+    let instance = object(r#"{"@type": "Event", "title": "Renamed", "showWithoutTime": true}"#);
+    let recurrence_id = JSCalendarDateTime::new(
+        jiff::civil::date(2006, 1, 9)
+            .at(0, 0, 0, 0)
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .unwrap()
+            .timestamp()
+            .as_second(),
+        true,
+    );
+    for (inherited, expected) in [
+        (
+            Inherited::StartAndEnd,
+            serde_json::json!({"title": "Renamed"}),
+        ),
+        (
+            Inherited::Start,
+            serde_json::json!({
+                "duration": null,
+                "iCalendar": {"name": "vevent", "convertedProperties": {"start": {"parameters": {"value": "DATE"}}}},
+                "title": "Renamed"
+            }),
+        ),
+    ] {
+        let patch = JSCalendar::<String, String>(Value::Object(OverrideDiff::new(&base).diff(
+            recurrence_id,
+            instance.clone(),
+            inherited,
+        )));
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(&patch.to_string_pretty()).unwrap(),
+            expected,
+            "{inherited:?}"
+        );
+    }
+}
+
+fn all_day_override(series: &str, occurrence: &str) -> String {
+    format!(
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VEVENT\r\nUID:all-day\r\n{series}RRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:Base\r\nEND:VEVENT\r\n\
+         BEGIN:VEVENT\r\nUID:all-day\r\n{occurrence}SUMMARY:Renamed\r\nEND:VEVENT\r\n\
+         END:VCALENDAR\r\n"
+    )
+}
+
+fn exported_override_ends(jscal: &JSCalendar<'_, String, String>) -> Vec<String> {
+    let exported = jscal.clone().into_icalendar().expect("exports");
+    override_components(&exported)
+        .into_iter()
+        .flat_map(|component| component.entries.iter())
+        .filter(|entry| {
+            matches!(
+                entry.name,
+                ICalendarProperty::Dtend | ICalendarProperty::Duration
+            )
+        })
+        .map(|entry| {
+            let mut line = String::new();
+            let _ = entry.write_to(&mut line);
+            line
+        })
+        .collect()
+}
+
+#[test]
+fn rfc5545_3_6_1_a_date_override_without_an_end_lasts_one_day() {
+    const OCCURRENCE: &str = "RECURRENCE-ID;VALUE=DATE:20250107\r\nDTSTART;VALUE=DATE:20250107\r\n";
+    let ical = all_day_override("DTSTART;VALUE=DATE:20250106\r\n", OCCURRENCE);
+    let jscal = assert_ical_roundtrip(&ical);
+    assert_eq!(
+        overrides(&jscal),
+        serde_json::json!({"2025-01-07T00:00:00": {"title": "Renamed"}}),
+        "RFC 5545 Section 3.6.1: the occurrence and the series both last one day\n{ical}"
+    );
+    assert_eq!(normalize(&jscal)["entries"][0]["duration"], "P1D");
+    assert_eq!(
+        exported_override_ends(&jscal),
+        Vec::<String>::new(),
+        "{ical}"
+    );
+    assert_eq!(
+        instance_lengths(&export(&jscal.to_string_pretty())),
+        [86400; 3]
+    );
+
+    let ical = all_day_override(
+        "DTSTART;VALUE=DATE:20250106\r\nDTEND;VALUE=DATE:20250108\r\n",
+        OCCURRENCE,
+    );
+    let jscal = assert_ical_roundtrip(&ical);
+    assert_eq!(
+        patches_without_ical(&jscal),
+        serde_json::json!({"2025-01-07T00:00:00": {"duration": "P1D", "title": "Renamed"}}),
+        "RFC 5545 Section 3.6.1: RFC 5545 has no inheritance, so the occurrence lasts one day where the series lasts two\n{ical}"
+    );
+    assert_eq!(
+        exported_override_ends(&jscal),
+        Vec::<String>::new(),
+        "the occurrence exports without an end, as it was imported\n{ical}"
+    );
+    let expected = [2 * 86400, 86400, 2 * 86400];
+    assert_eq!(
+        instance_lengths(&ICalendar::parse(&ical).expect("valid iCalendar")),
+        expected
+    );
+    assert_eq!(
+        instance_lengths(&export(&jscal.to_string_pretty())),
+        expected
+    );
+
+    let ical = all_day_override(
+        "DTSTART:20250106T090000Z\r\n",
+        "RECURRENCE-ID:20250107T090000Z\r\nDTSTART;VALUE=DATE:20250107\r\n",
+    );
+    let jscal = import(&ical);
+    assert_eq!(
+        patches_without_ical(&jscal)["2025-01-07T09:00:00"]["duration"],
+        "P1D",
+        "RFC 5545 Section 3.6.1: a DATE occurrence of a series of DATE-TIME points lasts one day\n{ical}"
+    );
+    assert_eq!(
+        instance_lengths(&export(&jscal.to_string_pretty())),
+        instance_lengths(&ICalendar::parse(&ical).expect("valid iCalendar"))
+    );
+}
+
+#[test]
+fn an_override_without_dtstart_inherits_the_day_of_a_date_series() {
+    let ical = all_day_override(
+        "DTSTART;VALUE=DATE:20250106\r\n",
+        "RECURRENCE-ID;VALUE=DATE:20250107\r\n",
+    );
+    let jscal = assert_ical_roundtrip(&ical);
+    assert_eq!(
+        overrides(&jscal),
+        serde_json::json!({"2025-01-07T00:00:00": {"title": "Renamed"}}),
+        "draft-ietf-calext-jscalendarbis-20 Section 3.3.4: the occurrence inherits the duration of the series\n{ical}"
+    );
+    assert_eq!(
+        instance_lengths(&export(&jscal.to_string_pretty())),
+        [86400; 3]
+    );
 }

@@ -325,7 +325,7 @@ pub enum ICalendarComponentType {
     Participant,   // [RFC9073, Section 7.1]
     VLocation,     // [RFC9073, Section 7.2] [RFC Errata 7381]
     VResource,     // [RFC9073, Section 7.3]
-    VStatus,       // draft-ietf-calext-ical-tasks-14
+    VStatus,       // draft-ietf-calext-ical-tasks-17
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -594,7 +594,7 @@ pub enum ICalendarParticipationRole {
     ReqParticipant, // [RFC5545, Section 3.2.16]
     OptParticipant, // [RFC5545, Section 3.2.16]
     NonParticipant, // [RFC5545, Section 3.2.16]
-    Owner,          // JSCalendar
+    Owner,          // draft-ietf-calext-icalendar-jscalendar-extensions
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
