@@ -11,6 +11,7 @@ use crate::{
         export::{EmbeddedBudget, ExportError, RejectedPatch},
         timezone::Tz,
     },
+    datecalc::MAX_UNPRODUCTIVE_WORK,
     icalendar::{ICalendar, ICalendarComponentType},
     jscalendar::{JSCalendarId, JSCalendarProperty, JSCalendarValue, RecurrenceOverrides},
 };
@@ -55,6 +56,7 @@ pub struct ExportOptions<R = NoBlobIds> {
 pub(super) struct ExportContext<'a, B> {
     recurrence_overrides: RecurrenceOverrides,
     max_expansions: usize,
+    unproductive_budget: usize,
     blobs: Option<ResolvedBlobs<'a, B>>,
     budget: EmbeddedBudget,
     error: Option<ExportError>,
@@ -117,6 +119,7 @@ impl<R> ExportOptions<R> {
         ExportContext {
             recurrence_overrides: self.recurrence_overrides,
             max_expansions: self.max_expansions,
+            unproductive_budget: MAX_UNPRODUCTIVE_WORK,
             budget: self.blobs.budget(),
             blobs: self.blobs.resolved_blobs(),
             error: None,

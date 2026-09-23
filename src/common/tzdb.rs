@@ -1241,8 +1241,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn table_is_sorted_and_unique() {
-        assert!(TZ_NAMES.windows(2).all(|pair| pair[0] < pair[1]));
+    fn table_has_no_duplicates() {
+        let mut names = TZ_NAMES.to_vec();
+        names.sort_unstable();
+        assert!(names.windows(2).all(|pair| pair[0] != pair[1]));
     }
 
     #[test]

@@ -16,5 +16,5 @@ pub mod recurrence;
 pub mod rrule;
 mod weekdate;
 
-pub use recurrence::{MAX_ITER_LOOP, RecurrenceIter};
+pub use recurrence::{MAX_ITER_LOOP, MAX_UNPRODUCTIVE_WORK, RecurrenceIter};
 pub use rrule::RRule;

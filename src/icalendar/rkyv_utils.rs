@@ -345,7 +345,6 @@ impl ArchivedPartialDateTime {
 }
 
 impl ArchivedICalendarDuration {
-    /// Returns this duration as an exact number of seconds.
     /// Returns this duration as a calendar span.
     pub fn to_nominal(&self) -> Option<NominalDuration> {
         let days =

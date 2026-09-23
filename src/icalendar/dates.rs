@@ -13,7 +13,7 @@ use crate::{
         DateTimeResult,
         timezone::{NominalDuration, Tz, ZonedDateTime},
     },
-    datecalc::{error::RRuleError, rrule::RRule},
+    datecalc::{MAX_UNPRODUCTIVE_WORK, error::RRuleError, rrule::RRule},
     icalendar::ICalendarParameterName,
 };
 use ahash::{AHashMap, AHashSet};
@@ -93,6 +93,7 @@ impl ICalendar {
         }
 
         // Expand recurrences
+        let mut unproductive_budget = MAX_UNPRODUCTIVE_WORK;
         for (mut comp_id, mut event) in recurrences {
             let exdates = event
                 .exdates
@@ -128,7 +129,7 @@ impl ICalendar {
             };
             let mut override_offset = None;
             let mut override_duration = None;
-            let mut instances = rrule.iter();
+            let mut instances = rrule.iter().with_unproductive_budget(unproductive_budget);
 
             while limit != 0 {
                 let Some(date) = instances.next() else {
@@ -171,6 +172,7 @@ impl ICalendar {
                 }
             }
 
+            unproductive_budget = instances.unproductive_budget();
             if instances.is_exhausted() {
                 expand.errors.push(CalendarError {
                     comp_id,
@@ -694,6 +696,7 @@ mod tests {
     use crate::{
         Entry, Parser,
         common::timezone::Tz,
+        datecalc::{MAX_ITER_LOOP, MAX_UNPRODUCTIVE_WORK},
         icalendar::{
             ICalendar,
             dates::{CalendarError, CalendarErrorType, CalendarEvent},
@@ -716,16 +719,19 @@ mod tests {
         )
     }
 
-    fn expanded_in(default_tz: impl Into<Tz>, events: &[String]) -> Vec<String> {
+    fn calendar<E: AsRef<str>>(events: impl IntoIterator<Item = E>) -> ICalendar {
         let mut ical = String::from("BEGIN:VCALENDAR\r\n");
         for event in events {
             ical.push_str("BEGIN:VEVENT\r\n");
-            ical.push_str(event);
+            ical.push_str(event.as_ref());
             ical.push_str("END:VEVENT\r\n");
         }
         ical.push_str("END:VCALENDAR\r\n");
-        let mut instances = ICalendar::parse(&ical)
-            .unwrap()
+        ICalendar::parse(&ical).unwrap()
+    }
+
+    fn expanded_in(default_tz: impl Into<Tz>, events: &[String]) -> Vec<String> {
+        let mut instances = calendar(events)
             .expand_dates(default_tz, 100)
             .events
             .into_iter()
@@ -1126,6 +1132,63 @@ mod tests {
                 error: CalendarErrorType::ExpansionLimitReached,
             }]
         );
+    }
+
+    #[test]
+    fn rules_that_match_nothing_share_one_budget() {
+        let impossible_rules = MAX_UNPRODUCTIVE_WORK / MAX_ITER_LOOP as usize + 1;
+        let impossible = (0..impossible_rules).map(|uid| {
+            format!(
+                "UID:{uid}\r\nDTSTART:20250106T090000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;BYMONTH=2;BYMONTHDAY=31\r\n"
+            )
+        });
+        let ical = calendar(impossible.chain([
+            "UID:series\r\nDTSTART:20250106T090000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY;COUNT=3\r\nRDATE:20250110T090000Z\r\n".into(),
+            "UID:single\r\nDTSTART:20250107T120000Z\r\nDURATION:PT1H\r\n".into(),
+        ]));
+        let series = impossible_rules as u32 + 1;
+
+        let expanded = ical.expand_dates(Tz::UTC, 3000);
+        let limited = (1..=series)
+            .map(|comp_id| CalendarError {
+                comp_id,
+                error: CalendarErrorType::ExpansionLimitReached,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(expanded.errors, limited);
+        let mut events = expanded
+            .events
+            .iter()
+            .map(|event| format!("{}#{}", event.start, event.comp_id))
+            .collect::<Vec<_>>();
+        events.sort();
+        assert_eq!(
+            events,
+            [
+                format!("2025-01-07T12:00:00+00:00#{}", series + 1),
+                format!("2025-01-10T09:00:00+00:00#{series}"),
+            ],
+            "the series after the spent budget keeps its RDATE, and events without a rule cost nothing"
+        );
+    }
+
+    #[test]
+    fn a_shared_budget_leaves_productive_calendars_alone() {
+        let weekly = (0..200).map(|uid| {
+            format!(
+                "UID:{uid}\r\nDTSTART:20250106T090000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=4\r\n"
+            )
+        });
+        let ical = calendar(
+            std::iter::once(
+                "UID:sparse\r\nDTSTART:20250106T000000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=SECONDLY;BYHOUR=0;BYMINUTE=0;BYSECOND=0;COUNT=2000\r\n".to_string(),
+            )
+            .chain(weekly),
+        );
+
+        let expanded = ical.expand_dates(Tz::UTC, 3000);
+        assert_eq!(expanded.errors, []);
+        assert_eq!(expanded.events.len(), 2000 + 200 * 4);
     }
 
     #[test]

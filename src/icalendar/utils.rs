@@ -551,7 +551,6 @@ impl ICalendarDuration {
         }
     }
 
-    /// Returns this duration as an exact number of seconds.
     /// Returns this duration as a calendar span.
     pub fn to_nominal(&self) -> Option<NominalDuration> {
         let days = i32::try_from(i64::from(self.weeks) * 7 + i64::from(self.days)).ok()?;

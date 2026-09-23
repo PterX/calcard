@@ -101,6 +101,20 @@ impl Tz {
         self.interpret_local(local).map(|(zoned, _)| zoned)
     }
 
+    pub fn from_local_later(&self, local: DateTime) -> Option<ZonedDateTime> {
+        match self
+            .time_zone()
+            .map(|tz| tz.to_ambiguous_timestamp(local).offset())
+        {
+            Some(AmbiguousOffset::Fold { after, .. }) => Some(ZonedDateTime {
+                local,
+                offset: after,
+                tz: *self,
+            }),
+            _ => self.from_local(local),
+        }
+    }
+
     pub(crate) fn interpret_local(&self, local: DateTime) -> Option<(ZonedDateTime, bool)> {
         let (offset, in_gap) = match self {
             Self::Floating => (Offset::UTC, false),
@@ -416,7 +430,6 @@ impl ZonedDateTime {
     }
 
     /// Returns this value moved by an exact duration.
-    /// shifts across a daylight saving transition.
     pub fn checked_add(&self, duration: SignedDuration) -> Option<Self> {
         let timestamp = self.to_timestamp().checked_add(duration).ok()?;
         Some(self.tz.from_timestamp(timestamp))
@@ -1155,6 +1168,42 @@ mod tests {
         assert_eq!(in_gap("2025-03-30T02:30:00"), Some(true));
         assert_eq!(in_gap("2025-03-30T03:30:00"), Some(false));
         assert_eq!(in_gap("2025-10-26T02:30:00"), Some(false));
+    }
+
+    #[test]
+    fn from_local_later_takes_the_second_pass_of_a_repeated_reading() {
+        let new_york = iana("America/New_York");
+        let offsets = |text: &str| {
+            let local = text.parse().unwrap();
+            (
+                new_york.from_local(local).map(|zoned| zoned.offset()),
+                new_york.from_local_later(local).map(|zoned| zoned.offset()),
+            )
+        };
+        assert_eq!(
+            offsets("2026-11-01T01:30:00"),
+            (Some(Offset::constant(-4)), Some(Offset::constant(-5)))
+        );
+        for unchanged in [
+            "2026-11-01T02:30:00",
+            "2026-03-08T02:30:00",
+            "2026-06-01T12:00:00",
+        ] {
+            let (earlier, later) = offsets(unchanged);
+            assert_eq!(earlier, later, "{unchanged}");
+        }
+
+        let local = "2026-11-01T01:30:00".parse().unwrap();
+        let later = new_york.from_local_later(local).unwrap();
+        assert_eq!(later.to_string(), "2026-11-01T01:30:00-05:00");
+        assert_eq!(
+            new_york.from_timestamp(later.to_timestamp()).to_string(),
+            later.to_string()
+        );
+
+        for tz in [Tz::Floating, Tz::Fixed(Offset::constant(2)), Tz::UTC] {
+            assert_eq!(tz.from_local_later(local), tz.from_local(local), "{tz:?}");
+        }
     }
 
     #[test]

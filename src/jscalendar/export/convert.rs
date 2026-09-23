@@ -2294,6 +2294,7 @@ impl ICalendar {
                                 _ => None,
                             }),
                         options.max_expansions,
+                        &mut options.unproductive_budget,
                     )
                 });
 
@@ -3398,6 +3399,7 @@ impl ICalendarComponent {
         is_date: bool,
         candidates: impl Iterator<Item = i64>,
         max_expansions: usize,
+        unproductive_budget: &mut usize,
     ) -> AHashSet<i64> {
         let start_timestamp = Offset::UTC
             .to_timestamp(start)
@@ -3425,12 +3427,14 @@ impl ICalendarComponent {
                 .max()
                 .copied()
         {
-            for date in rule.iter().take(max_expansions) {
+            let mut instances = rule.iter().with_unproductive_budget(*unproductive_budget);
+            for date in instances.by_ref().take(max_expansions) {
                 let date = date.naive_timestamp();
                 if date > last || (pending.remove(&date) && pending.is_empty()) {
                     break;
                 }
             }
+            *unproductive_budget = instances.unproductive_budget();
         }
 
         pending

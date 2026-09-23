@@ -46,6 +46,8 @@ pub const MAX_PERIOD_CANDIDATES: usize = 100_000;
 
 pub const MAX_EXPANSION_WORK: usize = 10_000_000;
 
+pub const MAX_UNPRODUCTIVE_WORK: usize = 1_000_000;
+
 /// The RFC 5545 recurrence rule implementation.
 #[derive(Clone, Debug)]
 pub struct RecurrenceRule {
@@ -100,6 +102,8 @@ impl RecurrenceRule {
             remaining: self.inner.count,
             budget: MAX_ITER_LOOP,
             work: MAX_EXPANSION_WORK,
+            unproductive: usize::MAX,
+            period_work: 0,
             exhausted: false,
             gap_instants: Vec::new(),
         }
@@ -862,6 +866,8 @@ pub struct RecurrenceIter<'r> {
     /// Attempts left before the expansion gives up; see [`MAX_ITER_LOOP`].
     budget: u32,
     work: usize,
+    unproductive: usize,
+    period_work: usize,
     /// Whether the budget ran out with the rule still unfinished.
     exhausted: bool,
     gap_instants: Vec<Timestamp>,
@@ -886,6 +892,15 @@ impl<'r> RecurrenceIter<'r> {
     /// one.
     pub fn is_exhausted(&self) -> bool {
         self.exhausted
+    }
+
+    pub fn with_unproductive_budget(mut self, units: usize) -> Self {
+        self.unproductive = units;
+        self
+    }
+
+    pub fn unproductive_budget(&self) -> usize {
+        self.unproductive.saturating_sub(self.set.spent)
     }
 
     fn period_start(&self, dt: DateTime) -> Option<DateTime> {
@@ -1065,16 +1080,23 @@ impl<'r> Iterator for RecurrenceIter<'r> {
                 // Producing an instance means the rule is making progress, so
                 // the budget starts over.
                 self.budget = MAX_ITER_LOOP;
+                self.unproductive += std::mem::take(&mut self.period_work);
                 self.remaining = self.remaining.map(|count| count - 1);
                 return Some(zdt);
             }
-            let Some(budget) = self.budget.checked_sub(1) else {
+            let discarded = self.set.take_spent();
+            self.work = self.work.saturating_sub(discarded);
+            self.unproductive = self.unproductive.saturating_sub(discarded);
+            let Some(budget) = self.budget.checked_sub(1).filter(|_| self.unproductive > 0) else {
                 self.exhausted = true;
                 return None;
             };
             self.budget = budget;
             self.expand();
-            self.work = self.work.saturating_sub(self.set.civil.len() + 1);
+            let spent = self.set.take_spent() + 1;
+            self.work = self.work.saturating_sub(spent);
+            self.period_work = spent.min(self.unproductive);
+            self.unproductive -= self.period_work;
             if self.set.overflowed || self.work == 0 {
                 self.set.clear();
                 self.cur = None;
@@ -1395,6 +1417,7 @@ struct RecurrenceSet {
     seconds: Axis,
     cursor: usize,
     len: usize,
+    spent: usize,
     overflowed: bool,
 }
 
@@ -1423,8 +1446,13 @@ impl RecurrenceSet {
             seconds: Axis::Fixed(0),
             cursor: 0,
             len: 0,
+            spent: 0,
             overflowed: false,
         }
+    }
+
+    fn take_spent(&mut self) -> usize {
+        std::mem::take(&mut self.spent)
     }
 
     fn is_empty(&self) -> bool {
@@ -1474,6 +1502,7 @@ impl RecurrenceSet {
     }
 
     fn select_positions(&mut self, rule: &RecurrenceRule) {
+        self.spent += rule.inner.by_set_pos.len();
         let len = self.len;
         let mut indices = rule
             .inner
@@ -1503,6 +1532,7 @@ impl RecurrenceSet {
     }
 
     fn insert(&mut self, dt: DateTime) {
+        self.spent += 1;
         self.civil.push(dt);
     }
 
@@ -1534,6 +1564,7 @@ impl RecurrenceSet {
                 return;
             }
         }
+        self.spent += self.civil.len() - len;
         self.civil.drain(..len);
     }
 
@@ -1565,6 +1596,7 @@ impl RecurrenceSet {
             // zoned datetime and this is the earliest that we convert a
             // datetime from our buffered set to a zoned datetime.
             if next < rule.inner.start {
+                self.spent += 1;
                 continue;
             }
             // For similar reasons, we handle our "until" constraint here too.
@@ -6103,6 +6135,50 @@ mod tests {
         2025-01-01T01:01:01-05:00[America/New_York]
         ",
         );
+    }
+
+    #[test]
+    fn unproductive_budget_is_spent_only_by_periods_without_instances() {
+        let rrule =
+            RecurrenceRule::builder(ICalendarFrequency::Daily, zoned("20250101T090000[UTC]"))
+                .build()
+                .unwrap();
+        let mut instances = rrule.iter().with_unproductive_budget(1);
+        assert_eq!(instances.by_ref().take(1000).count(), 1000);
+        assert_eq!(instances.unproductive_budget(), 1);
+        assert!(!instances.is_exhausted());
+
+        let rrule =
+            RecurrenceRule::builder(ICalendarFrequency::Daily, zoned("20250101T090000[UTC]"))
+                .by_month(2)
+                .by_month_day(31)
+                .build()
+                .unwrap();
+        let mut instances = rrule.iter().with_unproductive_budget(1000);
+        assert_eq!(instances.next(), None);
+        assert_eq!(instances.unproductive_budget(), 0);
+        assert!(instances.is_exhausted());
+
+        let mut instances = rrule.iter().with_unproductive_budget(0);
+        assert_eq!(instances.next(), None);
+        assert!(instances.is_exhausted());
+    }
+
+    #[test]
+    fn unproductive_budget_charges_candidates_before_the_start() {
+        let rrule =
+            RecurrenceRule::builder(ICalendarFrequency::Daily, zoned("20250106T235959[UTC]"))
+                .by_hour(0..=23)
+                .by_minute(0..=59)
+                .by_second(0..=59)
+                .build()
+                .unwrap();
+        let mut instances = rrule.iter().with_unproductive_budget(100_000);
+        insta::assert_snapshot!(
+            snapshot(instances.by_ref().take(1)),
+            @"2025-01-06T23:59:59+00:00[UTC]",
+        );
+        assert_eq!(instances.unproductive_budget(), 100_000 - 86_399);
     }
 
     /// A fixed starting point for rules whose start does not matter.
