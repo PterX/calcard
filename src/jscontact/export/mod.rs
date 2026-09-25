@@ -8,6 +8,7 @@ use crate::{
     common::{
         blob::{BlobOptions, BlobResolver, BlobResolverFn, NoBlobIds, ResolvedBlobs},
         export::{EmbeddedBudget, ExportError},
+        jsprop::ordered::OrderedMap,
     },
     jscontact::{JSContactId, JSContactProperty, JSContactValue},
     vcard::VCard,
@@ -33,6 +34,7 @@ where
         Value<'x, JSContactProperty<I>, JSContactValue<I, B>>,
     )>,
     pub(super) converted_props_count: usize,
+    pub(super) converted_heads: OrderedMap<JSContactProperty<I>, ()>,
     pub(super) language: Option<String>,
 }
 

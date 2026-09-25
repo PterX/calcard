@@ -111,7 +111,7 @@ impl ArchivedICalendarValue {
             ArchivedICalendarValue::RecurrenceRule(_) => {
                 std::mem::size_of::<ICalendarRecurrenceRule>()
             }
-            _ => std::mem::size_of::<ICalendarValue>(),
+            _ => VALUE_SIZE,
         }
     }
 
@@ -267,7 +267,7 @@ impl ArchivedICalendarParameterValue {
         match self {
             ArchivedICalendarParameterValue::Text(v) => v.len(),
             ArchivedICalendarParameterValue::Uri(v) => v.size(),
-            _ => std::mem::size_of::<ICalendarParameterValue>(),
+            _ => PARAMETER_VALUE_SIZE,
         }
     }
 }
@@ -468,5 +468,11 @@ impl ArchivedICalendarMonth {
 
     pub fn month(&self) -> u8 {
         self.0.unsigned_abs()
+    }
+}
+
+impl PartialEq<Box<ICalendarPeriod>> for ArchivedICalendarPeriod {
+    fn eq(&self, other: &Box<ICalendarPeriod>) -> bool {
+        self == other.as_ref()
     }
 }

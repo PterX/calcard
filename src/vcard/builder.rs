@@ -8,6 +8,7 @@ use crate::{
     common::parser::{Boolean, Timestamp},
     vcard::*,
 };
+use smallvec::SmallVec;
 
 impl VCardEntry {
     pub fn new(name: VCardProperty) -> Self {
@@ -15,7 +16,7 @@ impl VCardEntry {
             group: None,
             name,
             params: vec![],
-            values: vec![],
+            values: SmallVec::new(),
         }
     }
 
@@ -34,8 +35,8 @@ impl VCardEntry {
         self
     }
 
-    pub fn with_values(mut self, values: Vec<VCardValue>) -> Self {
-        self.values = values;
+    pub fn with_values(mut self, values: impl IntoIterator<Item = VCardValue>) -> Self {
+        self.values = values.into_iter().collect();
         self
     }
 

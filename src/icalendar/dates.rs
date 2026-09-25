@@ -533,7 +533,7 @@ impl ICalendarComponent {
                                     rdates.push((tz_id, dt));
                                 }
                             }
-                            ICalendarValue::Period(period) => match period {
+                            ICalendarValue::Period(period) => match period.as_ref() {
                                 ICalendarPeriod::Range { start, end } => {
                                     if let (Some(start), Some(end)) =
                                         (start.to_date_time(), end.to_date_time())

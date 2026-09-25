@@ -142,6 +142,23 @@ impl PartialDateTime {
 }
 
 #[cfg(feature = "rkyv")]
+impl From<&ArchivedPartialDateTime> for PartialDateTime {
+    fn from(date: &ArchivedPartialDateTime) -> Self {
+        PartialDateTime {
+            year: date.year.as_ref().map(|year| year.to_native()),
+            month: date.month.as_ref().copied(),
+            day: date.day.as_ref().copied(),
+            hour: date.hour.as_ref().copied(),
+            minute: date.minute.as_ref().copied(),
+            second: date.second.as_ref().copied(),
+            tz_hour: date.tz_hour.as_ref().copied(),
+            tz_minute: date.tz_minute.as_ref().copied(),
+            tz_minus: date.tz_minus,
+        }
+    }
+}
+
+#[cfg(feature = "rkyv")]
 impl ArchivedPartialDateTime {
     pub fn to_date_time(&self) -> Option<DateTimeResult> {
         let mut dt = DateTimeResult {

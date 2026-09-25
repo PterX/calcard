@@ -4,11 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::jscalendar::{
-    JSCAL_NAMESPACE, JSCalendarId, JSCalendarProperty, JSCalendarType, JSCalendarValue,
-};
+use crate::jscalendar::{JSCalendarId, JSCalendarProperty, JSCalendarType, JSCalendarValue, Uuid5};
 use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Value};
-use std::str::FromStr;
+use std::{
+    mem::{self, discriminant},
+    str::FromStr,
+};
 use uuid::fmt::Hyphenated;
 
 pub(crate) trait JSCalendarKeyExt<I: JSCalendarId> {
@@ -18,10 +19,35 @@ pub(crate) trait JSCalendarKeyExt<I: JSCalendarId> {
     fn is_uuid5_of(&self, value: &[u8]) -> bool;
     fn matches_pointer_item(&self, item: &JsonPointerItem<JSCalendarProperty<I>>) -> bool;
     fn pointer_index(&self) -> Option<u64>;
+    fn same_key(&self, other: &Key<'_, JSCalendarProperty<I>>) -> bool;
+    fn same_data_key(&self, other: &Key<'_, JSCalendarProperty<I>>) -> bool;
 }
 
 pub(crate) trait JSCalendarMapExt {
     fn is_type_or_untyped(&self, types: &[JSCalendarType]) -> bool;
+}
+
+pub(crate) trait JSCalendarObjectExt<'x, I: JSCalendarId, B: JSCalendarId> {
+    fn key_position(&self, key: &Key<'_, JSCalendarProperty<I>>) -> Option<usize>;
+    fn lookup(
+        &self,
+        key: &Key<'_, JSCalendarProperty<I>>,
+    ) -> Option<&Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>>;
+    fn lookup_mut(
+        &mut self,
+        key: &Key<'_, JSCalendarProperty<I>>,
+    ) -> Option<&mut Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>>;
+    fn upsert(
+        &mut self,
+        key: Key<'x, JSCalendarProperty<I>>,
+        value: Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) -> Option<Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>>;
+    fn upsert_or_get_mut(
+        &mut self,
+        key: Key<'x, JSCalendarProperty<I>>,
+        value: impl FnOnce() -> Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) -> &mut Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>;
+    fn contains_true(&self, key: &Key<'_, JSCalendarProperty<I>>) -> bool;
 }
 
 pub(crate) trait JSCalendarValueExt<I: JSCalendarId>: Sized {
@@ -83,16 +109,13 @@ impl<I: JSCalendarId> JSCalendarKeyExt<I> for Key<'_, JSCalendarProperty<I>> {
         let name = self.to_string();
         name.len() == Hyphenated::LENGTH && {
             let mut buffer = [0u8; Hyphenated::LENGTH];
-            uuid::Uuid::new_v5(&JSCAL_NAMESPACE, value)
-                .hyphenated()
-                .encode_lower(&mut buffer)
-                == name.as_ref()
+            value.uuid5_hyphenated(&mut buffer) == name.as_ref()
         }
     }
 
     fn matches_pointer_item(&self, item: &JsonPointerItem<JSCalendarProperty<I>>) -> bool {
         match item {
-            JsonPointerItem::Key(item) => item == self,
+            JsonPointerItem::Key(item) => item.same_key(self),
             JsonPointerItem::Number(number) => self.pointer_index() == Some(*number),
             JsonPointerItem::Root | JsonPointerItem::Wildcard | JsonPointerItem::Invalid(_) => {
                 false
@@ -108,13 +131,95 @@ impl<I: JSCalendarId> JSCalendarKeyExt<I> for Key<'_, JSCalendarProperty<I>> {
         .then(|| name.parse().ok())
         .flatten()
     }
+
+    #[inline(always)]
+    fn same_key(&self, other: &Key<'_, JSCalendarProperty<I>>) -> bool {
+        match (self, other) {
+            (Key::Property(a), Key::Property(b)) if !a.has_data() && !b.has_data() => {
+                discriminant(a) == discriminant(b)
+            }
+            _ => self.same_data_key(other),
+        }
+    }
+
+    #[inline(never)]
+    fn same_data_key(&self, other: &Key<'_, JSCalendarProperty<I>>) -> bool {
+        self == other
+    }
+}
+
+impl<'x, I: JSCalendarId, B: JSCalendarId> JSCalendarObjectExt<'x, I, B>
+    for Map<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>
+{
+    #[inline]
+    fn key_position(&self, key: &Key<'_, JSCalendarProperty<I>>) -> Option<usize> {
+        self.as_vec().iter().position(|(k, _)| k.same_key(key))
+    }
+
+    #[inline]
+    fn lookup(
+        &self,
+        key: &Key<'_, JSCalendarProperty<I>>,
+    ) -> Option<&Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>> {
+        self.as_vec()
+            .iter()
+            .find_map(|(k, v)| k.same_key(key).then_some(v))
+    }
+
+    #[inline]
+    fn lookup_mut(
+        &mut self,
+        key: &Key<'_, JSCalendarProperty<I>>,
+    ) -> Option<&mut Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>> {
+        self.as_mut_vec()
+            .iter_mut()
+            .find_map(|(k, v)| k.same_key(key).then_some(v))
+    }
+
+    #[inline]
+    fn upsert(
+        &mut self,
+        key: Key<'x, JSCalendarProperty<I>>,
+        value: Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) -> Option<Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>> {
+        match self.lookup_mut(&key) {
+            Some(current) => Some(mem::replace(current, value)),
+            None => {
+                self.insert_unchecked(key, value);
+                None
+            }
+        }
+    }
+
+    #[inline]
+    fn upsert_or_get_mut(
+        &mut self,
+        key: Key<'x, JSCalendarProperty<I>>,
+        value: impl FnOnce() -> Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) -> &mut Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>> {
+        let position = match self.key_position(&key) {
+            Some(position) => position,
+            None => {
+                self.insert_unchecked(key, value());
+                self.len() - 1
+            }
+        };
+        &mut self.as_mut_vec()[position].1
+    }
+
+    #[inline]
+    fn contains_true(&self, key: &Key<'_, JSCalendarProperty<I>>) -> bool {
+        self.as_vec()
+            .iter()
+            .any(|(k, v)| matches!(v, Value::Bool(true)) && k.same_key(key))
+    }
 }
 
 impl<I: JSCalendarId, B: JSCalendarId> JSCalendarMapExt
     for Map<'_, JSCalendarProperty<I>, JSCalendarValue<I, B>>
 {
     fn is_type_or_untyped(&self, types: &[JSCalendarType]) -> bool {
-        match self.get(&Key::Property(JSCalendarProperty::Type)) {
+        match self.lookup(&Key::Property(JSCalendarProperty::Type)) {
             None => true,
             Some(Value::Element(JSCalendarValue::Type(typ))) => types.contains(typ),
             Some(_) => false,
@@ -128,10 +233,10 @@ impl<I: JSCalendarId, B: JSCalendarId> JSCalendarPatch
     fn is_instance_patch(&self) -> bool {
         self.as_object().is_some_and(|patch| {
             let excluded = Key::Property(JSCalendarProperty::Excluded);
-            !patch.contains_key_value(&excluded, &Value::Bool(true))
+            !patch.contains_true(&excluded)
                 && patch
                     .keys()
-                    .any(|key| key != &excluded && !key.is_forbidden_override_key())
+                    .any(|key| !key.same_key(&excluded) && !key.is_forbidden_override_key())
         })
     }
 }

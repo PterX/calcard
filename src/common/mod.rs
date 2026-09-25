@@ -7,22 +7,30 @@
 use jiff::{civil, tz::Offset};
 use mail_parser::DateTime;
 
+#[cfg(feature = "rkyv")]
+pub mod archive;
 #[cfg(feature = "jmap")]
 pub mod blob;
+pub(crate) mod decode;
 #[cfg(feature = "jmap")]
 pub(crate) mod elements;
 pub mod embedded;
 #[cfg(feature = "jmap")]
 pub mod export;
+pub(crate) mod format;
 pub mod iana;
 #[cfg(feature = "jmap")]
 pub(crate) mod jsprop;
 pub mod parser;
+pub(crate) mod scan;
+pub(crate) mod stack;
 pub mod timezone;
 pub mod tokenizer;
 pub mod types;
 mod tzdb;
 pub mod writer;
+#[cfg(test)]
+pub(crate) mod xorshift;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IanaType<I, O> {
@@ -99,6 +107,13 @@ pub(crate) enum Encoding {
 pub struct Data {
     pub content_type: Option<String>,
     pub data: Vec<u8>,
+}
+
+#[cfg(feature = "rkyv")]
+impl PartialEq<Box<Data>> for ArchivedData {
+    fn eq(&self, other: &Box<Data>) -> bool {
+        self == other.as_ref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

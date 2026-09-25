@@ -5,7 +5,13 @@
  */
 
 use crate::{
-    common::{Data, IanaParse, IanaType, blob::BlobResolver, export::ExportError, timezone::Tz},
+    common::{
+        Data, IanaParse, IanaType,
+        blob::BlobResolver,
+        export::ExportError,
+        jsprop::{ordered::OrderedMap, text::ConvertedKeys},
+        timezone::Tz,
+    },
     jscontact::{
         JSContact, JSContactId, JSContactKind, JSContactProperty, JSContactValue,
         export::{
@@ -20,7 +26,8 @@ use crate::{
         VCardProperty, VCardType, VCardValue, VCardValueType, ValueType,
     },
 };
-use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Value};
+use jmap_tools::{JsonPointer, Key, Map, Value};
+use smallvec::smallvec;
 use std::{collections::HashMap, str::FromStr};
 
 impl<'x, I, B> JSContact<'x, I, B>
@@ -50,7 +57,22 @@ where
             .into_object()
             .ok_or(ExportError::NotGroup)?
             .into_vec();
-        let mut localized_properties: HashMap<String, Vec<_>> = HashMap::new();
+        state.vcard.entries.reserve(
+            properties
+                .iter()
+                .map(|(key, value)| match (key, value) {
+                    (Key::Property(JSContactProperty::VCard), Value::Object(obj)) => obj
+                        .iter()
+                        .filter_map(|(_, value)| value.as_array())
+                        .map(<[_]>::len)
+                        .sum(),
+                    (_, Value::Object(obj)) => obj.len(),
+                    _ => 1,
+                })
+                .sum::<usize>()
+                + 1,
+        );
+        let mut localized_properties: OrderedMap<String, Vec<_>> = OrderedMap::default();
 
         for (property, value) in &mut properties {
             match (property, value) {
@@ -96,45 +118,9 @@ where
                         match sub_property {
                             Key::Property(JSContactProperty::ConvertedProperties) => {
                                 for (key, value) in value.into_expanded_object() {
-                                    let ptr = match key {
-                                        Key::Property(JSContactProperty::Pointer(ptr)) => ptr,
-                                        _ => JsonPointer::parse(key.to_string().as_ref()),
-                                    };
-
-                                    let mut keys = Vec::with_capacity(2);
-                                    for item in ptr.into_iter() {
-                                        match item {
-                                            JsonPointerItem::Key(key) => {
-                                                let key = match &key {
-                                                    Key::Borrowed(v) if v.contains('/') => v,
-                                                    Key::Owned(v) if v.contains('/') => v.as_str(),
-                                                    _ => {
-                                                        keys.push(key);
-                                                        continue;
-                                                    }
-                                                };
-                                                for item in JsonPointer::parse(key).into_iter() {
-                                                    keys.push(match item {
-                                                        JsonPointerItem::Key(k) => k,
-                                                        JsonPointerItem::Number(n) => {
-                                                            Key::Owned(n.to_string())
-                                                        }
-                                                        JsonPointerItem::Root
-                                                        | JsonPointerItem::Wildcard
-                                                        | JsonPointerItem::Invalid(_) => continue,
-                                                    });
-                                                }
-                                            }
-                                            JsonPointerItem::Number(v) => {
-                                                keys.push(Key::Owned(v.to_string()));
-                                            }
-                                            JsonPointerItem::Root
-                                            | JsonPointerItem::Wildcard
-                                            | JsonPointerItem::Invalid(_) => (),
-                                        }
-                                    }
-
-                                    state.converted_props.push((keys, value));
+                                    state
+                                        .converted_props
+                                        .push((key.into_converted_keys(), value));
                                 }
                             }
                             Key::Property(JSContactProperty::Properties) => {
@@ -159,6 +145,16 @@ where
                     }
                 }
                 _ => {}
+            }
+        }
+
+        for (keys, _) in &state.converted_props {
+            for key in keys {
+                if let Key::Property(property) = key
+                    && !state.converted_heads.contains_key(property)
+                {
+                    state.converted_heads.push(property.clone(), ());
+                }
             }
         }
 
@@ -511,12 +507,9 @@ where
                         for (sub_property, value) in value.into_expanded_object() {
                             match sub_property {
                                 Key::Property(JSContactProperty::Components) => {
-                                    for (index, components) in value
-                                        .into_array()
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .enumerate()
-                                    {
+                                    let items = value.into_array().unwrap_or_default();
+                                    jscomps.reserve(items.len());
+                                    for (index, components) in items.into_iter().enumerate() {
                                         let mut comp_value = None;
                                         let mut comp_phonetic = None;
                                         let mut comp_pos = None;
@@ -759,22 +752,7 @@ where
                                 VCardEntry::new(VCardProperty::N)
                                     .with_params(params)
                                     .with_values(
-                                        parts
-                                            .into_iter()
-                                            .map(|v| {
-                                                if let Some(v) = v {
-                                                    if v.len() > 1 {
-                                                        VCardValue::Component(v)
-                                                    } else {
-                                                        VCardValue::Text(
-                                                            v.into_iter().next().unwrap(),
-                                                        )
-                                                    }
-                                                } else {
-                                                    VCardValue::Text(Default::default())
-                                                }
-                                            })
-                                            .collect(),
+                                        parts.into_iter().map(VCardValue::from_components),
                                     ),
                             );
                         }
@@ -808,7 +786,7 @@ where
                                                         .into_owned_string()
                                                         .map(VCardValue::Text)
                                                     {
-                                                        entry.values = vec![value];
+                                                        entry.values = smallvec![value];
                                                     }
                                                 }
                                                 Key::Property(JSContactProperty::Pref)
@@ -865,7 +843,7 @@ where
                                         if let Some(name) =
                                             value.into_owned_string().map(VCardValue::Text)
                                         {
-                                            entry.values = vec![name];
+                                            entry.values = smallvec![name];
                                         }
                                     }
                                     Key::Property(JSContactProperty::Pref)
@@ -1004,11 +982,15 @@ where
                                                 entry.values = match Data::try_parse(uri.as_bytes())
                                                 {
                                                     Some(data) if context.embed(&data.data) => {
-                                                        vec![VCardValue::Binary(data)]
+                                                        smallvec![VCardValue::Binary(Box::new(
+                                                            data
+                                                        ))]
                                                     }
                                                     Some(_) => continue,
                                                     None => {
-                                                        vec![VCardValue::Text(uri.into_owned())]
+                                                        smallvec![VCardValue::Text(
+                                                            uri.into_owned()
+                                                        )]
                                                     }
                                                 };
                                             }
@@ -1049,10 +1031,10 @@ where
                                 }
 
                                 if let Some(data) = data {
-                                    entry.values = vec![VCardValue::Binary(Data {
+                                    entry.values = smallvec![VCardValue::Binary(Box::new(Data {
                                         content_type: blob_media_type,
                                         data,
-                                    })];
+                                    }))];
                                 }
 
                                 state.insert_vcard(
@@ -1091,12 +1073,9 @@ where
                             for (sub_property, value) in value.into_expanded_object() {
                                 match sub_property {
                                     Key::Property(JSContactProperty::Components) => {
-                                        for (index, components) in value
-                                            .into_array()
-                                            .unwrap_or_default()
-                                            .into_iter()
-                                            .enumerate()
-                                        {
+                                        let items = value.into_array().unwrap_or_default();
+                                        jscomps.reserve(items.len());
+                                        for (index, components) in items.into_iter().enumerate() {
                                             let mut comp_value = None;
                                             let mut comp_phonetic = None;
                                             let mut comp_pos = None;
@@ -1304,7 +1283,7 @@ where
                             }
 
                             if num_parts > 0 || !params.is_empty() {
-                                params.push(VCardParameter::prop_id(name.to_string().to_string()));
+                                params.push(VCardParameter::prop_id(name.into_string()));
 
                                 if jscomps.len() > 1 {
                                     params.push(VCardParameter::jscomps(jscomps));
@@ -1342,22 +1321,7 @@ where
                                     VCardEntry::new(VCardProperty::Adr)
                                         .with_params(params)
                                         .with_values(
-                                            parts
-                                                .into_iter()
-                                                .map(|v| {
-                                                    if let Some(v) = v {
-                                                        if v.len() > 1 {
-                                                            VCardValue::Component(v)
-                                                        } else {
-                                                            VCardValue::Text(
-                                                                v.into_iter().next().unwrap(),
-                                                            )
-                                                        }
-                                                    } else {
-                                                        VCardValue::Text(Default::default())
-                                                    }
-                                                })
-                                                .collect(),
+                                            parts.into_iter().map(VCardValue::from_components),
                                         ),
                                 );
                             }
@@ -1374,7 +1338,7 @@ where
                                             value.into_owned_string().map(VCardValue::Text)
                                         {
                                             if entry.values.is_empty() {
-                                                entry.values = vec![value];
+                                                entry.values = smallvec![value];
                                             } else {
                                                 entry.values.insert(0, value);
                                             }
@@ -1499,7 +1463,7 @@ where
                                         if let Some(value) =
                                             value.into_owned_string().map(VCardValue::Text)
                                         {
-                                            entry.values = vec![value];
+                                            entry.values = smallvec![value];
                                         }
                                     }
                                     Key::Property(JSContactProperty::Pref)
@@ -1542,7 +1506,7 @@ where
                                     Key::Property(JSContactProperty::Address) => {
                                         if let Some(email) = value.into_string() {
                                             entry.values =
-                                                vec![VCardValue::Text(email.into_owned())];
+                                                smallvec![VCardValue::Text(email.into_owned())];
                                         }
                                     }
                                     Key::Property(JSContactProperty::Contexts) => {
@@ -1599,7 +1563,7 @@ where
                                     Key::Property(JSContactProperty::Uri) => {
                                         if let Some(service) = value.into_string() {
                                             entry.values =
-                                                vec![VCardValue::Text(service.into_owned())];
+                                                smallvec![VCardValue::Text(service.into_owned())];
                                         }
                                     }
                                     Key::Property(JSContactProperty::Service) => {
@@ -1671,7 +1635,7 @@ where
                                     Key::Property(JSContactProperty::Number) => {
                                         if let Some(email) = value.into_string() {
                                             entry.values =
-                                                vec![VCardValue::Text(email.into_owned())];
+                                                smallvec![VCardValue::Text(email.into_owned())];
                                         }
                                     }
                                     Key::Property(
@@ -1732,7 +1696,7 @@ where
                                     Key::Property(JSContactProperty::Language) => {
                                         if let Some(lang) = value.into_string() {
                                             entry.values =
-                                                vec![VCardValue::Text(lang.into_owned())];
+                                                smallvec![VCardValue::Text(lang.into_owned())];
                                         }
                                     }
                                     Key::Property(JSContactProperty::Pref)
@@ -1797,7 +1761,7 @@ where
                                             if let Some(value) =
                                                 value.into_owned_string().map(VCardValue::Text)
                                             {
-                                                entry.values = vec![value];
+                                                entry.values = smallvec![value];
                                             }
                                         }
                                         Key::Property(JSContactProperty::MediaType) => {
@@ -1880,8 +1844,8 @@ where
                                                 .then(|| Data::try_parse(uri.as_bytes()))
                                                 .flatten()
                                                 .filter(|data| context.embed(&data.data));
-                                            entry.values = vec![match data {
-                                                Some(data) => VCardValue::Binary(data),
+                                            entry.values = smallvec![match data {
+                                                Some(data) => VCardValue::Binary(Box::new(data)),
                                                 None => VCardValue::Text(uri),
                                             }];
                                         }
@@ -1957,7 +1921,7 @@ where
                                     Key::Property(JSContactProperty::Note) => {
                                         if let Some(text) = value.into_string() {
                                             entry.values =
-                                                vec![VCardValue::Text(text.into_owned())];
+                                                smallvec![VCardValue::Text(text.into_owned())];
                                         }
                                     }
                                     Key::Property(JSContactProperty::Created) => {
@@ -2039,7 +2003,7 @@ where
                                             if let Some(value) =
                                                 value.into_owned_string().map(VCardValue::Text)
                                             {
-                                                entry.values = vec![value];
+                                                entry.values = smallvec![value];
                                             }
                                         }
                                         Key::Property(JSContactProperty::Label) => {
@@ -2168,5 +2132,83 @@ where
 
     pub fn into_inner(self) -> Value<'x, JSContactProperty<I>, JSContactValue<I, B>> {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{common::jsprop::text::ConvertedKeys, jscontact::JSContactProperty};
+    use jmap_tools::{JsonPointer, Key};
+
+    type Prop = JSContactProperty<String>;
+
+    #[test]
+    fn converted_keys_split_like_json_pointer_parse() {
+        for (text, expected) in [
+            (
+                "phones/k1/number",
+                r#"[Property(Phones), Owned("k1"), Property(Number)]"#,
+            ),
+            ("/phones/k1", r#"[Property(Phones), Owned("k1")]"#),
+            (
+                "phones//k1",
+                r#"[Property(Phones), Borrowed(""), Owned("k1")]"#,
+            ),
+            (
+                "phones/k1/",
+                r#"[Property(Phones), Owned("k1"), Borrowed("")]"#,
+            ),
+            (
+                "localizations/en/name~1full",
+                r#"[Property(Localizations), Property(Pointer(JsonPointer([Key(Owned("en"))]))), Property(Name), Property(Full)]"#,
+            ),
+            (
+                "name/components/*/value",
+                "[Property(Name), Property(Components), Property(Value)]",
+            ),
+            (
+                "007/12/18446744073709551616",
+                r#"[Owned("007"), Owned("12"), Owned("18446744073709551616")]"#,
+            ),
+            ("", "[]"),
+            ("/", r#"[Borrowed("")]"#),
+            (
+                "\u{e9}/\u{65e5}\u{672c}",
+                "[Owned(\"\u{e9}\"), Owned(\"\u{65e5}\u{672c}\")]",
+            ),
+            (
+                "sortAs/surname",
+                "[Property(SortAs), Property(SortAsKind(Surname))]",
+            ),
+            ("name~0x/k1", r#"[Owned("name~x"), Owned("k1")]"#),
+            (
+                "addressBookIds/12",
+                r#"[Property(AddressBookIds), Property(IdValue("12"))]"#,
+            ),
+            (
+                "addressBookIds/*/x",
+                r#"[Property(AddressBookIds), Owned("x")]"#,
+            ),
+            (
+                "phones/12/features",
+                "[Property(Phones), Owned(\"12\"), Property(Features)]",
+            ),
+        ] {
+            for key in [
+                Key::Owned(text.to_string()),
+                Key::Borrowed(text),
+                Key::Property(Prop::Pointer(JsonPointer::parse(text))),
+            ] {
+                assert_eq!(
+                    format!("{:?}", key.clone().into_converted_keys()),
+                    expected,
+                    "{key:?}"
+                );
+            }
+        }
+        assert_eq!(
+            format!("{:?}", Key::Property(Prop::Name).into_converted_keys()),
+            "[Property(Name)]"
+        );
     }
 }

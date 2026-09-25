@@ -5,11 +5,11 @@
  */
 
 use crate::{
-    common::IanaType,
+    common::{IanaType, jsprop::text::IntoAsciiLowercase},
     jscontact::{
         Context, Feature, JSContactId, JSContactKind, JSContactLevel, JSContactPhoneticSystem,
         JSContactProperty, JSContactValue,
-        import::{ExtractedParams, VCardParams},
+        import::{ExtractedParams, Member, VCardParams},
     },
     vcard::{
         VCardLevel, VCardParameter, VCardParameterName, VCardParameterValue, VCardPhonetic,
@@ -17,7 +17,7 @@ use crate::{
     },
 };
 use jmap_tools::{Key, Map, Value};
-use std::str::FromStr;
+use std::{mem, str::FromStr};
 
 impl Feature {
     pub(crate) fn from_vcard_type(property: &VCardProperty, typ: &VCardType) -> Option<Self> {
@@ -78,6 +78,10 @@ impl<I: JSContactId> JSContactProperty<I> {
 }
 
 impl VCardParameter {
+    pub(super) fn take_value(&mut self) -> VCardParameterValue {
+        mem::replace(&mut self.value, VCardParameterValue::Null)
+    }
+
     pub(super) fn as_media_type(&self) -> Option<&str> {
         match (&self.name, &self.value) {
             (VCardParameterName::Mediatype, VCardParameterValue::Text(media_type))
@@ -107,28 +111,12 @@ impl ExtractedParams {
         std::mem::take(&mut self.types)
     }
 
-    #[allow(clippy::type_complexity)]
-    pub(super) fn into_iter<I: JSContactId, B: JSContactId>(
-        mut self,
+    pub(super) fn members<I: JSContactId, B: JSContactId>(
+        &mut self,
         property: &VCardProperty,
-    ) -> impl Iterator<
-        Item = (
-            Key<'static, JSContactProperty<I>>,
-            Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
-        ),
-    > {
-        let mut contexts: Option<
-            Vec<(
-                Key<'static, JSContactProperty<I>>,
-                Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
-            )>,
-        > = None;
-        let mut features: Option<
-            Vec<(
-                Key<'static, JSContactProperty<I>>,
-                Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
-            )>,
-        > = None;
+    ) -> ParamMembers<'_, I, B> {
+        let mut contexts: Option<Vec<Member<I, B>>> = None;
+        let mut features: Option<Vec<Member<I, B>>> = None;
 
         for typ in std::mem::take(&mut self.types) {
             let (bucket, key) = JSContactProperty::<I>::from_vcard_type(property, typ);
@@ -142,55 +130,127 @@ impl ExtractedParams {
             }
         }
 
-        let author = if self.author.is_some() || self.author_name.is_some() {
-            Value::Object(Map::from_iter(
-                [
-                    self.author_name.map(|name| {
-                        (
-                            Key::Property(JSContactProperty::Name),
-                            Value::Str(name.into()),
-                        )
-                    }),
-                    self.author.map(|author| {
-                        (
-                            Key::Property(JSContactProperty::Uri),
-                            Value::Str(author.into()),
-                        )
-                    }),
-                ]
-                .into_iter()
-                .flatten(),
-            ))
-            .into()
-        } else {
-            None
-        };
+        ParamMembers {
+            contexts,
+            features,
+            is_name: matches!(property, VCardProperty::N),
+            is_address: matches!(property, VCardProperty::Adr),
+            params: self,
+        }
+    }
+}
 
+pub(super) struct ParamMembers<'x, I: JSContactId, B: JSContactId> {
+    contexts: Option<Vec<Member<I, B>>>,
+    features: Option<Vec<Member<I, B>>>,
+    is_name: bool,
+    is_address: bool,
+    params: &'x mut ExtractedParams,
+}
+
+impl<I: JSContactId, B: JSContactId> ParamMembers<'_, I, B> {
+    pub(super) fn len(&self) -> usize {
+        let p = &*self.params;
         [
-            (
+            self.contexts.is_some(),
+            self.features.is_some(),
+            p.language.is_some(),
+            p.pref.is_some(),
+            p.author.is_some() || p.author_name.is_some(),
+            p.media_type.is_some(),
+            p.phonetic_system.is_some(),
+            p.phonetic_script.is_some(),
+            p.calscale.is_some(),
+            p.sort_as.is_some(),
+            p.geo.is_some(),
+            p.tz.is_some(),
+            p.index.is_some(),
+            p.level.is_some(),
+            p.country_code.is_some(),
+            p.created.is_some(),
+            p.label.is_some(),
+            p.service_type.is_some(),
+            p.username.is_some(),
+        ]
+        .into_iter()
+        .filter(|&present| present)
+        .count()
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub(super) fn append_to(self, members: &mut Vec<Member<I, B>>) {
+        self.for_each(|key, value| members.push((key, value)));
+    }
+
+    pub(super) fn for_each(
+        self,
+        mut emit: impl FnMut(
+            Key<'static, JSContactProperty<I>>,
+            Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
+        ),
+    ) {
+        let p = self.params;
+
+        if let Some(contexts) = self.contexts {
+            emit(
                 Key::Property(JSContactProperty::Contexts),
-                contexts.map(|v| Value::Object(Map::from(v))),
-            ),
-            (
+                Value::Object(Map::from(contexts)),
+            );
+        }
+        if let Some(features) = self.features {
+            emit(
                 Key::Property(JSContactProperty::Features),
-                features.map(|v| Value::Object(Map::from(v))),
-            ),
-            (
+                Value::Object(Map::from(features)),
+            );
+        }
+        if let Some(language) = p.language.take() {
+            emit(
                 Key::Property(JSContactProperty::Language),
-                self.language.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(language.into()),
+            );
+        }
+        if let Some(pref) = p.pref.take() {
+            emit(
                 Key::Property(JSContactProperty::Pref),
-                self.pref.map(|v| Value::Number((v as u64).into())),
-            ),
-            (Key::Property(JSContactProperty::Author), author),
-            (
+                Value::Number((pref as u64).into()),
+            );
+        }
+        if p.author.is_some() || p.author_name.is_some() {
+            emit(
+                Key::Property(JSContactProperty::Author),
+                Value::Object(Map::from_iter(
+                    [
+                        p.author_name.take().map(|name| {
+                            (
+                                Key::Property(JSContactProperty::Name),
+                                Value::Str(name.into()),
+                            )
+                        }),
+                        p.author.take().map(|author| {
+                            (
+                                Key::Property(JSContactProperty::Uri),
+                                Value::Str(author.into()),
+                            )
+                        }),
+                    ]
+                    .into_iter()
+                    .flatten(),
+                )),
+            );
+        }
+        if let Some(media_type) = p.media_type.take() {
+            emit(
                 Key::Property(JSContactProperty::MediaType),
-                self.media_type.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(media_type.into()),
+            );
+        }
+        if let Some(phonetic_system) = p.phonetic_system.take() {
+            emit(
                 Key::Property(JSContactProperty::PhoneticSystem),
-                self.phonetic_system.map(|v| match v {
+                match phonetic_system {
                     IanaType::Iana(value) => {
                         Value::Element(JSContactValue::PhoneticSystem(match value {
                             VCardPhonetic::Ipa => JSContactPhoneticSystem::Ipa,
@@ -200,113 +260,128 @@ impl ExtractedParams {
                         }))
                     }
                     IanaType::Other(value) => Value::Str(value.into()),
-                }),
-            ),
-            (
+                },
+            );
+        }
+        if let Some(phonetic_script) = p.phonetic_script.take() {
+            emit(
                 Key::Property(JSContactProperty::PhoneticScript),
-                self.phonetic_script.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(phonetic_script.into()),
+            );
+        }
+        if let Some(calscale) = p.calscale.take() {
+            emit(
                 Key::Property(JSContactProperty::CalendarScale),
-                self.calscale.map(|value| match value {
+                match calscale {
                     IanaType::Iana(value) => Value::Element(JSContactValue::CalendarScale(value)),
                     IanaType::Other(value) => Value::Str(value.into()),
-                }),
-            ),
-            (
+                },
+            );
+        }
+        if let Some(sort_as) = p.sort_as.take() {
+            emit(
                 Key::Property(JSContactProperty::SortAs),
-                self.sort_as.map(|sort_as| {
-                    if matches!(property, VCardProperty::N) {
-                        if let Some((surname, given)) =
-                            sort_as.split_once(',').and_then(|(surname, given)| {
-                                let surname = surname.trim();
-                                let given = given.trim();
+                if self.is_name {
+                    if let Some((surname, given)) =
+                        sort_as.split_once(',').and_then(|(surname, given)| {
+                            let surname = surname.trim();
+                            let given = given.trim();
 
-                                if surname.is_empty() || given.is_empty() {
-                                    None
-                                } else {
-                                    Some((surname.to_string(), given.to_string()))
-                                }
-                            })
-                        {
-                            Value::Object(Map::from_iter(vec![
-                                (
-                                    Key::Property(JSContactProperty::SortAsKind(
-                                        JSContactKind::Surname,
-                                    )),
-                                    Value::Str(surname.into()),
-                                ),
-                                (
-                                    Key::Property(JSContactProperty::SortAsKind(
-                                        JSContactKind::Given,
-                                    )),
-                                    Value::Str(given.into()),
-                                ),
-                            ]))
-                        } else {
-                            Value::Object(Map::from_iter(vec![(
+                            if surname.is_empty() || given.is_empty() {
+                                None
+                            } else {
+                                Some((surname.to_string(), given.to_string()))
+                            }
+                        })
+                    {
+                        Value::Object(Map::from_iter(vec![
+                            (
                                 Key::Property(JSContactProperty::SortAsKind(
                                     JSContactKind::Surname,
                                 )),
-                                Value::Str(sort_as.into()),
-                            )]))
-                        }
+                                Value::Str(surname.into()),
+                            ),
+                            (
+                                Key::Property(JSContactProperty::SortAsKind(JSContactKind::Given)),
+                                Value::Str(given.into()),
+                            ),
+                        ]))
                     } else {
-                        Value::Str(sort_as.into())
+                        Value::Object(Map::from_iter(vec![(
+                            Key::Property(JSContactProperty::SortAsKind(JSContactKind::Surname)),
+                            Value::Str(sort_as.into()),
+                        )]))
                     }
-                }),
-            ),
-            (
+                } else {
+                    Value::Str(sort_as.into())
+                },
+            );
+        }
+        if let Some(geo) = p.geo.take() {
+            emit(
                 Key::Property(JSContactProperty::Coordinates),
-                self.geo.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(geo.into()),
+            );
+        }
+        if let Some(tz) = p.tz.take() {
+            emit(
                 Key::Property(JSContactProperty::TimeZone),
-                self.tz.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(tz.into()),
+            );
+        }
+        if let Some(index) = p.index.take() {
+            emit(
                 Key::Property(JSContactProperty::ListAs),
-                self.index.map(|v| Value::Number((v as u64).into())),
-            ),
-            (
+                Value::Number((index as u64).into()),
+            );
+        }
+        if let Some(level) = p.level.take() {
+            emit(
                 Key::Property(JSContactProperty::Level),
-                self.level.map(|value| match value {
+                match level {
                     IanaType::Iana(value) => Value::Element(JSContactValue::Level(match value {
                         VCardLevel::Beginner | VCardLevel::Low => JSContactLevel::Low,
                         VCardLevel::Average | VCardLevel::Medium => JSContactLevel::Medium,
                         VCardLevel::Expert | VCardLevel::High => JSContactLevel::High,
                     })),
                     IanaType::Other(value) => Value::Str(value.into()),
-                }),
-            ),
-            (
+                },
+            );
+        }
+        if let Some(country_code) = p.country_code.take() {
+            emit(
                 Key::Property(JSContactProperty::CountryCode),
-                self.country_code.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(country_code.into()),
+            );
+        }
+        if let Some(created) = p.created.take() {
+            emit(
                 Key::Property(JSContactProperty::Created),
-                self.created
-                    .map(|v| Value::Element(JSContactValue::Timestamp(v))),
-            ),
-            (
-                Key::Property(if matches!(property, VCardProperty::Adr) {
+                Value::Element(JSContactValue::Timestamp(created)),
+            );
+        }
+        if let Some(label) = p.label.take() {
+            emit(
+                Key::Property(if self.is_address {
                     JSContactProperty::Full
                 } else {
                     JSContactProperty::Label
                 }),
-                self.label.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(label.into()),
+            );
+        }
+        if let Some(service_type) = p.service_type.take() {
+            emit(
                 Key::Property(JSContactProperty::Service),
-                self.service_type.map(Into::into).map(Value::Str),
-            ),
-            (
+                Value::Str(service_type.into()),
+            );
+        }
+        if let Some(username) = p.username.take() {
+            emit(
                 Key::Property(JSContactProperty::User),
-                self.username.map(Into::into).map(Value::Str),
-            ),
-        ]
-        .into_iter()
-        .filter_map(|(k, v)| v.map(|v| (k, v)))
+                Value::Str(username.into()),
+            );
+        }
     }
 }
 
@@ -318,12 +393,14 @@ impl<I: JSContactId, B: JSContactId> VCardParams<I, B> {
             let mut obj = Map::from(Vec::with_capacity(self.0.len()));
 
             for (param, value) in self.0 {
-                let value = if value.len() > 1 {
-                    Value::Array(value)
-                } else {
-                    value.into_iter().next().unwrap()
+                let value = match <[_; 1]>::try_from(value) {
+                    Ok([value]) => value,
+                    Err(values) => Value::Array(values),
                 };
-                obj.insert_unchecked(Key::Owned(param.into_string().to_ascii_lowercase()), value);
+                obj.insert_unchecked(
+                    Key::Owned(param.into_string().into_ascii_lowercase()),
+                    value,
+                );
             }
             Some(obj)
         } else {

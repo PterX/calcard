@@ -4,8 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::jscontact::*;
+use crate::{common::jsprop::text::PointerProperty, jscontact::*};
 use std::str::FromStr;
+
+impl<I: JSContactId> PointerProperty for JSContactProperty<I> {
+    fn into_pointer(self) -> Result<JsonPointer<Self>, Self> {
+        match self {
+            JSContactProperty::Pointer(pointer) => Ok(pointer),
+            property => Err(property),
+        }
+    }
+}
 
 impl<I: JSContactId> FromStr for JSContactProperty<I> {
     type Err = ();

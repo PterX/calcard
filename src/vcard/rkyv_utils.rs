@@ -57,8 +57,16 @@ impl ArchivedVCardEntry {
 impl ArchivedVCardValue {
     pub fn as_text(&self) -> Option<&str> {
         match self {
-            ArchivedVCardValue::Text(s) => Some(s),
-            _ => None,
+            ArchivedVCardValue::Text(v) => Some(v.as_str()),
+            ArchivedVCardValue::Sex(v) => Some(v.as_str()),
+            ArchivedVCardValue::GramGender(v) => Some(v.as_str()),
+            ArchivedVCardValue::Kind(v) => Some(v.as_str()),
+            ArchivedVCardValue::Component(v) => v.first().map(|s| s.as_str()),
+            ArchivedVCardValue::Integer(_)
+            | ArchivedVCardValue::Float(_)
+            | ArchivedVCardValue::Boolean(_)
+            | ArchivedVCardValue::PartialDateTime(_)
+            | ArchivedVCardValue::Binary(_) => None,
         }
     }
 
@@ -211,6 +219,60 @@ impl ArchivedVCardParameterValue {
             ArchivedVCardParameterValue::Timestamp(t) => Some(IanaType::Iana(t.to_native())),
             ArchivedVCardParameterValue::Text(v) => Some(IanaType::Other(v.as_str())),
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        common::{Data, PartialDateTime},
+        vcard::{
+            ArchivedVCard, VCard, VCardEntry, VCardGramGender, VCardKind, VCardProperty, VCardSex,
+            VCardValue,
+        },
+    };
+    use rkyv::rancor::Error;
+
+    #[test]
+    fn archived_values_read_as_the_native_text() {
+        let vcard = VCard {
+            entries: vec![
+                VCardEntry::new(VCardProperty::Uid).with_value(VCardValue::Kind(VCardKind::Group)),
+                VCardEntry::new(VCardProperty::Version).with_value(VCardValue::Text("4.0".into())),
+                VCardEntry::new(VCardProperty::Gender).with_values([
+                    VCardValue::Sex(VCardSex::Female),
+                    VCardValue::Text("woman".into()),
+                ]),
+                VCardEntry::new(VCardProperty::Gramgender)
+                    .with_value(VCardValue::GramGender(VCardGramGender::Neuter)),
+                VCardEntry::new(VCardProperty::N).with_values([
+                    VCardValue::Text("Doe".into()),
+                    VCardValue::Component(vec!["John".into(), "Paul".into()]),
+                    VCardValue::Component(vec![]),
+                ]),
+                VCardEntry::new(VCardProperty::Other("X-VALUES".into())).with_values([
+                    VCardValue::Integer(3),
+                    VCardValue::Float(1.5),
+                    VCardValue::Boolean(true),
+                    VCardValue::PartialDateTime(PartialDateTime::default()),
+                    VCardValue::Binary(Box::new(Data {
+                        content_type: None,
+                        data: vec![1, 2, 3],
+                    })),
+                ]),
+            ],
+        };
+        let bytes = rkyv::to_bytes::<Error>(&vcard).expect("the card archives");
+        let archived = rkyv::access::<ArchivedVCard, Error>(&bytes).expect("the archive validates");
+
+        assert_eq!(archived.uid(), Some("GROUP"));
+        assert_eq!(archived.uid(), vcard.uid());
+        assert_eq!(archived.version(), vcard.version());
+        for (entry, archived_entry) in vcard.entries.iter().zip(archived.entries.iter()) {
+            for (value, archived_value) in entry.values.iter().zip(archived_entry.values.iter()) {
+                assert_eq!(archived_value.as_text(), value.as_text(), "{value:?}");
+            }
         }
     }
 }

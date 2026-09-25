@@ -5,33 +5,36 @@
  */
 
 use ahash::AHashMap;
-use jmap_tools::{JsonPointer, Key, Value};
+use jmap_tools::{JsonPointer, Key, Map, Value};
 
 use crate::common::timezone::ZonedDateTime;
 use crate::{
     common::{
         blob::{BlobIdFn, BlobIdGenerator, BlobIds, BlobOptions, NoBlobIds},
+        jsprop::ordered::OrderedMap,
         timezone::Tz,
     },
     icalendar::{
         ICalendarComponentType, ICalendarEntry, ICalendarParameterName, ICalendarProperty,
     },
-    jscalendar::{JSCalendarDateTime, JSCalendarId, JSCalendarProperty, JSCalendarValue},
+    jscalendar::{
+        JSCalendarDateTime, JSCalendarId, JSCalendarProperty, JSCalendarValue,
+        ext::JSCalendarObjectExt,
+    },
 };
 
 pub mod convert;
 pub mod params;
 pub mod props;
 
+const PROPERTY_MAP_CAPACITY: usize = 16;
+
 #[derive(Default)]
 #[allow(clippy::type_complexity)]
 struct State<I: JSCalendarId, B: JSCalendarId> {
     component_type: ICalendarComponentType,
-    entries: AHashMap<
-        Key<'static, JSCalendarProperty<I>>,
-        Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
-    >,
-    ical_converted_properties: AHashMap<String, ICalendarConvertedProperty<I, B>>,
+    entries: PropertyMap<I, B>,
+    ical_converted_properties: OrderedMap<String, ICalendarConvertedProperty<I, B>>,
     ical_properties: Vec<Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>>,
     ical_components: Option<Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>>,
     recurrence_overrides: Vec<(JSCalendarDateTime, State<I, B>)>,
@@ -40,6 +43,7 @@ struct State<I: JSCalendarId, B: JSCalendarId> {
         Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
     )>,
     link_ids: LinkIds,
+    parameters: Map<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
     jsid: Option<String>,
     uid: Option<String>,
     recurrence_id: Option<ZonedDateTime>,
@@ -54,6 +58,87 @@ struct State<I: JSCalendarId, B: JSCalendarId> {
     include_ical_components: bool,
 }
 
+struct PropertyMap<I: JSCalendarId, B: JSCalendarId>(
+    Map<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+);
+
+struct PropertyEntry<'a, I: JSCalendarId, B: JSCalendarId> {
+    map: &'a mut Map<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    key: Key<'static, JSCalendarProperty<I>>,
+}
+
+impl<I: JSCalendarId, B: JSCalendarId> Default for PropertyMap<I, B> {
+    fn default() -> Self {
+        Self(Map::from(Vec::with_capacity(PROPERTY_MAP_CAPACITY)))
+    }
+}
+
+impl<I: JSCalendarId, B: JSCalendarId> PropertyMap<I, B> {
+    #[inline]
+    fn insert(
+        &mut self,
+        key: Key<'static, JSCalendarProperty<I>>,
+        value: Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) -> Option<Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>> {
+        self.0.upsert(key, value)
+    }
+
+    #[inline]
+    fn entry(&mut self, key: Key<'static, JSCalendarProperty<I>>) -> PropertyEntry<'_, I, B> {
+        PropertyEntry {
+            map: &mut self.0,
+            key,
+        }
+    }
+
+    #[inline]
+    fn get(
+        &self,
+        key: &Key<'_, JSCalendarProperty<I>>,
+    ) -> Option<&Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>> {
+        self.0.lookup(key)
+    }
+
+    #[inline]
+    fn contains_key(&self, key: &Key<'_, JSCalendarProperty<I>>) -> bool {
+        self.0.key_position(key).is_some()
+    }
+
+    fn retain(
+        &mut self,
+        mut keep: impl FnMut(
+            &Key<'static, JSCalendarProperty<I>>,
+            &mut Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+        ) -> bool,
+    ) {
+        self.0
+            .as_mut_vec()
+            .retain_mut(|(key, value)| keep(key, value));
+    }
+
+    #[inline]
+    fn into_map(self) -> Map<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>> {
+        self.0
+    }
+}
+
+impl<'a, I: JSCalendarId, B: JSCalendarId> PropertyEntry<'a, I, B> {
+    #[inline]
+    fn or_insert_with(
+        self,
+        value: impl FnOnce() -> Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
+    ) -> &'a mut Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>> {
+        let position = match self.map.key_position(&self.key) {
+            Some(position) => position,
+            None => {
+                self.map.insert_unchecked(self.key, value());
+                self.map.len() - 1
+            }
+        };
+        &mut self.map.as_mut_vec()[position].1
+    }
+}
+
 #[derive(Debug, Default)]
 struct ICalendarConvertedProperty<I: JSCalendarId, B: JSCalendarId> {
     name: Option<ICalendarProperty>,
@@ -61,13 +146,15 @@ struct ICalendarConvertedProperty<I: JSCalendarId, B: JSCalendarId> {
 }
 
 #[derive(Debug, Default)]
-#[allow(clippy::type_complexity)]
 struct ICalendarParams<I: JSCalendarId, B: JSCalendarId>(
-    Vec<(
-        ICalendarParameterName,
-        Vec<Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>>,
-    )>,
+    Vec<(ICalendarParameterName, ParamValues<I, B>)>,
 );
+
+#[derive(Debug)]
+enum ParamValues<I: JSCalendarId, B: JSCalendarId> {
+    One(Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>),
+    Many(Vec<Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>>),
+}
 
 #[derive(Debug, Default)]
 struct LinkIds(AHashMap<String, LinkId>);
@@ -81,8 +168,15 @@ struct LinkId {
 #[derive(Debug, Clone)]
 struct EntryState {
     entry: ICalendarEntry,
-    converted_to: Option<String>,
+    converted_to: Option<ConvertedTo>,
     map_name: bool,
+    keep_converted_path: bool,
+}
+
+#[derive(Debug, Clone)]
+enum ConvertedTo {
+    Name(&'static str),
+    Pointer(String),
 }
 
 #[derive(Debug, Clone, Copy)]

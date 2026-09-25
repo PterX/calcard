@@ -7,24 +7,30 @@
 pub mod export;
 pub mod ext;
 pub mod import;
+#[cfg(test)]
+mod key_tests;
 #[doc(hidden)]
 pub mod overrides;
 pub mod parser;
 pub mod types;
 
 use crate::{
-    common::{CalendarScale, IanaString, LinkRelation, elements::Elements},
+    common::{
+        CalendarScale, IanaString, LinkRelation, elements::Elements, jsprop::text::AsciiString,
+    },
     icalendar::{
         ICalendarComponentType, ICalendarDuration, ICalendarFrequency, ICalendarMethod,
         ICalendarMonth, ICalendarSkip, ICalendarWeekday,
     },
 };
 use jmap_tools::{JsonPointer, Key, Map, Value};
-use mail_parser::DateTime;
 use serde::Serialize;
+use sha1::{Digest, Sha1};
 use std::{borrow::Cow, fmt::Debug, fmt::Display, hash::Hash, str::FromStr};
+use uuid::{Builder, fmt::Hyphenated};
 
 pub(crate) const MAX_ICAL_COMPONENT_DEPTH: usize = 32;
+const RFC3339_CAPACITY: usize = 21;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[repr(transparent)]
@@ -402,15 +408,9 @@ impl JSCalendarDateTime {
     }
 
     pub fn to_rfc3339(&self) -> String {
-        let dt = DateTime::from_timestamp(self.timestamp);
-        if !self.is_local {
-            dt.to_rfc3339()
-        } else {
-            format!(
-                "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-                dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
-            )
-        }
+        let mut text = AsciiString::with_capacity(RFC3339_CAPACITY);
+        let _ = self.push_rfc3339(&mut text);
+        text.into_string()
     }
 }
 
@@ -465,11 +465,30 @@ static JSCAL_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
     127, 30, 25, 101, 174, 115, 68, 84, 176, 136, 35, 44, 144, 115, 12, 226,
 ]);
 
+pub(crate) trait Uuid5 {
+    fn uuid5_hyphenated<'b>(&self, buffer: &'b mut [u8; Hyphenated::LENGTH]) -> &'b str;
+}
+
 #[inline]
 pub fn uuid5(text: impl AsRef<[u8]>) -> String {
-    uuid::Uuid::new_v5(&JSCAL_NAMESPACE, text.as_ref())
-        .hyphenated()
-        .to_string()
+    let mut buffer = [0u8; Hyphenated::LENGTH];
+    text.as_ref().uuid5_hyphenated(&mut buffer).to_string()
+}
+
+impl Uuid5 for [u8] {
+    #[inline]
+    fn uuid5_hyphenated<'b>(&self, buffer: &'b mut [u8; Hyphenated::LENGTH]) -> &'b str {
+        let digest: [u8; 20] = Sha1::new()
+            .chain_update(JSCAL_NAMESPACE.as_bytes())
+            .chain_update(self)
+            .finalize()
+            .into();
+        let [bytes @ .., _, _, _, _] = digest;
+        Builder::from_sha1_bytes(bytes)
+            .into_uuid()
+            .hyphenated()
+            .encode_lower(buffer)
+    }
 }
 
 #[cfg(test)]

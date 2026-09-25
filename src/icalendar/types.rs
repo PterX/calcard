@@ -586,6 +586,27 @@ impl IanaParse for ICalendarComponentType {
 }
 
 impl ICalendarComponentType {
+    pub(crate) fn entry_capacity(&self) -> usize {
+        match self {
+            ICalendarComponentType::VCalendar
+            | ICalendarComponentType::VTimezone
+            | ICalendarComponentType::VAlarm
+            | ICalendarComponentType::Standard
+            | ICalendarComponentType::Daylight
+            | ICalendarComponentType::Available => 8,
+            ICalendarComponentType::VEvent
+            | ICalendarComponentType::VTodo
+            | ICalendarComponentType::VJournal
+            | ICalendarComponentType::VFreebusy
+            | ICalendarComponentType::VAvailability
+            | ICalendarComponentType::Participant
+            | ICalendarComponentType::VLocation
+            | ICalendarComponentType::VResource
+            | ICalendarComponentType::VStatus
+            | ICalendarComponentType::Other(_) => 16,
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         match self {
             ICalendarComponentType::VCalendar => "VCALENDAR",
@@ -1077,6 +1098,13 @@ impl IanaString for ICalendarTransparency {
 }
 
 impl ICalendarProperty {
+    pub(crate) fn parameter_capacity(&self) -> usize {
+        match self {
+            ICalendarProperty::Attendee => 8,
+            _ => 0,
+        }
+    }
+
     // Returns the default value type and whether the property is multi-valued.
     pub(crate) fn default_types(&self) -> (ValueType, ValueSeparator) {
         match self {

@@ -1,4 +1,4 @@
-_ignore
+.ignore
 Cargo.lock
 target
 web/dist

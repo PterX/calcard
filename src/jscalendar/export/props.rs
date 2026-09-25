@@ -6,11 +6,15 @@
 
 use crate::{
     Parser,
-    common::{CalendarScale, IanaParse, IanaType, PartialDateTime, parser::Integer},
+    common::{
+        CalendarScale, IanaParse, IanaType, PartialDateTime, jsprop::text::ConvertedKeys,
+        parser::Integer,
+    },
     icalendar::*,
     jscalendar::{JSCalendarId, JSCalendarProperty, JSCalendarValue, export::ConvertedComponent},
 };
-use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Value};
+use jmap_tools::{Key, Map, Value};
+use smallvec::{SmallVec, smallvec};
 
 impl<I: JSCalendarId, B: JSCalendarId> ConvertedComponent<'_, I, B> {
     pub(super) fn apply_conversions(
@@ -97,10 +101,15 @@ impl ICalendarComponent {
     ) {
         for prop in props.into_iter().flat_map(|prop| prop.into_array()) {
             let mut prop = prop.into_iter();
-            let Some(name) = prop.next().and_then(|v| v.into_string()).map(|name| {
-                ICalendarProperty::parse(name.as_bytes())
-                    .unwrap_or(ICalendarProperty::Other(name.to_ascii_uppercase()))
-            }) else {
+            let Some(name) = prop
+                .next()
+                .and_then(|v| v.into_string())
+                .map(|name| {
+                    ICalendarProperty::parse(name.as_bytes())
+                        .unwrap_or(ICalendarProperty::Other(name.to_ascii_uppercase()))
+                })
+                .filter(|name| !matches!(name, ICalendarProperty::Begin | ICalendarProperty::End))
+            else {
                 continue;
             };
             let Some(params) = prop.next() else {
@@ -127,9 +136,9 @@ impl ICalendarComponent {
                 Value::Array(arr) => Some(
                     arr.into_iter()
                         .filter_map(|v| convert_value(v, &convert_type).ok())
-                        .collect::<Vec<_>>(),
+                        .collect::<SmallVec<_>>(),
                 ),
-                v => convert_value(v, &convert_type).ok().map(|v| vec![v]),
+                v => convert_value(v, &convert_type).ok().map(|v| smallvec![v]),
             }) else {
                 continue;
             };
@@ -152,7 +161,7 @@ pub(super) fn convert_value<'x, I: JSCalendarId, B: JSCalendarId>(
     match value {
         Value::Element(e) => match e {
             JSCalendarValue::CalendarScale(v) => Ok(ICalendarValue::CalendarScale(v)),
-            JSCalendarValue::DateTime(v) => Ok(ICalendarValue::PartialDateTime(Box::new(v.into()))),
+            JSCalendarValue::DateTime(v) => Ok(ICalendarValue::PartialDateTime(v.into())),
             JSCalendarValue::Duration(v) => Ok(ICalendarValue::Duration(v)),
             JSCalendarValue::Method(v) => Ok(ICalendarValue::Method(v)),
             JSCalendarValue::AlertAction(_)
@@ -233,25 +242,25 @@ pub(super) fn convert_value<'x, I: JSCalendarId, B: JSCalendarId>(
                     ICalendarValueType::Date => {
                         let mut dt = PartialDateTime::default();
                         if dt.parse_ical_date(&mut s.as_ref().as_bytes().iter().peekable()) {
-                            return Ok(ICalendarValue::PartialDateTime(Box::new(dt)));
+                            return Ok(ICalendarValue::PartialDateTime(dt));
                         }
                     }
                     ICalendarValueType::Time => {
                         let mut dt = PartialDateTime::default();
                         if dt.parse_ical_time(&mut s.as_ref().as_bytes().iter().peekable()) {
-                            return Ok(ICalendarValue::PartialDateTime(Box::new(dt)));
+                            return Ok(ICalendarValue::PartialDateTime(dt));
                         }
                     }
                     ICalendarValueType::DateTime => {
                         let mut dt = PartialDateTime::default();
                         if dt.parse_timestamp(&mut s.as_ref().as_bytes().iter().peekable(), false) {
-                            return Ok(ICalendarValue::PartialDateTime(Box::new(dt)));
+                            return Ok(ICalendarValue::PartialDateTime(dt));
                         }
                     }
                     ICalendarValueType::UtcOffset => {
                         let mut dt = PartialDateTime::default();
                         if dt.parse_zone(&mut s.as_ref().as_bytes().iter().peekable()) {
-                            return Ok(ICalendarValue::PartialDateTime(Box::new(dt)));
+                            return Ok(ICalendarValue::PartialDateTime(dt));
                         }
                     }
                     ICalendarValueType::Duration => {
@@ -273,7 +282,7 @@ pub(super) fn convert_value<'x, I: JSCalendarId, B: JSCalendarId>(
                     }
                     ICalendarValueType::Period => {
                         if let Some(period) = ICalendarPeriod::parse(s.as_ref().as_bytes()) {
-                            return Ok(ICalendarValue::Period(period));
+                            return Ok(ICalendarValue::Period(Box::new(period)));
                         }
                     }
                     ICalendarValueType::Recur => {
@@ -340,46 +349,12 @@ impl<'x, I: JSCalendarId, B: JSCalendarId> ConvertedComponent<'x, I, B> {
         for (sub_property, value) in obj {
             match (sub_property, value) {
                 (Key::Property(JSCalendarProperty::ConvertedProperties), Value::Object(obj)) => {
-                    for (key, value) in obj.into_vec() {
-                        let ptr = match key {
-                            Key::Property(JSCalendarProperty::Pointer(ptr)) => ptr,
-                            _ => JsonPointer::parse(key.to_string().as_ref()),
-                        };
-
-                        let mut keys = Vec::with_capacity(2);
-                        for item in ptr.into_iter() {
-                            match item {
-                                JsonPointerItem::Key(key) => {
-                                    let key = match &key {
-                                        Key::Borrowed(v) if v.contains('/') => v,
-                                        Key::Owned(v) if v.contains('/') => v.as_str(),
-                                        _ => {
-                                            keys.push(key);
-                                            continue;
-                                        }
-                                    };
-                                    for item in JsonPointer::parse(key).into_iter() {
-                                        keys.push(match item {
-                                            JsonPointerItem::Key(k) => k,
-                                            JsonPointerItem::Number(n) => Key::Owned(n.to_string()),
-                                            JsonPointerItem::Root
-                                            | JsonPointerItem::Wildcard
-                                            | JsonPointerItem::Invalid(_) => {
-                                                continue;
-                                            }
-                                        });
-                                    }
-                                }
-                                JsonPointerItem::Number(v) => {
-                                    keys.push(Key::Owned(v.to_string()));
-                                }
-                                JsonPointerItem::Root
-                                | JsonPointerItem::Wildcard
-                                | JsonPointerItem::Invalid(_) => (),
-                            }
-                        }
-
-                        converted.converted_props.push((keys, value));
+                    let obj = obj.into_vec();
+                    converted.converted_props.reserve(obj.len());
+                    for (key, value) in obj {
+                        converted
+                            .converted_props
+                            .push((key.into_converted_keys(), value));
                     }
                 }
                 (Key::Property(JSCalendarProperty::Properties), Value::Array(array)) => {

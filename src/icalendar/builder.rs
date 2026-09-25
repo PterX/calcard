@@ -6,12 +6,13 @@
 
 use crate::{
     common::{
-        IanaType, PartialDateTime,
+        Data, IanaType, PartialDateTime,
         parser::{Boolean, Integer},
     },
     icalendar::*,
 };
 use ahash::{AHashMap, AHashSet};
+use smallvec::{SmallVec, smallvec};
 
 impl ICalendar {
     #[must_use]
@@ -141,7 +142,7 @@ impl ICalendarComponent {
         self.entries.push(ICalendarEntry {
             name: ICalendarProperty::Dtstamp,
             params: vec![],
-            values: vec![ICalendarValue::PartialDateTime(Box::new(dt_stamp))],
+            values: smallvec![ICalendarValue::PartialDateTime(dt_stamp)],
         });
     }
 
@@ -149,7 +150,7 @@ impl ICalendarComponent {
         self.entries.push(ICalendarEntry {
             name: ICalendarProperty::Sequence,
             params: vec![],
-            values: vec![ICalendarValue::Integer(sequence)],
+            values: smallvec![ICalendarValue::Integer(sequence)],
         });
     }
 
@@ -157,7 +158,7 @@ impl ICalendarComponent {
         self.entries.push(ICalendarEntry {
             name: ICalendarProperty::Uid,
             params: vec![],
-            values: vec![ICalendarValue::Text(uid.to_string())],
+            values: smallvec![ICalendarValue::Text(uid.to_string())],
         });
     }
 
@@ -165,7 +166,7 @@ impl ICalendarComponent {
         self.entries.push(ICalendarEntry {
             name,
             params: vec![],
-            values: vec![value.into()],
+            values: smallvec![value.into()],
         });
     }
 
@@ -178,7 +179,7 @@ impl ICalendarComponent {
         self.entries.push(ICalendarEntry {
             name,
             params: params.into_iter().collect(),
-            values: vec![value.into()],
+            values: smallvec![value.into()],
         });
     }
 }
@@ -188,7 +189,7 @@ impl ICalendarEntry {
         Self {
             name,
             params: vec![],
-            values: vec![],
+            values: SmallVec::new(),
         }
     }
 
@@ -202,8 +203,8 @@ impl ICalendarEntry {
         self
     }
 
-    pub fn with_values(mut self, values: Vec<ICalendarValue>) -> Self {
-        self.values = values;
+    pub fn with_values(mut self, values: impl IntoIterator<Item = ICalendarValue>) -> Self {
+        self.values = values.into_iter().collect();
         self
     }
 
@@ -625,6 +626,12 @@ impl From<bool> for ICalendarValue {
     }
 }
 
+impl From<Data> for Uri {
+    fn from(value: Data) -> Self {
+        Uri::Data(Box::new(value))
+    }
+}
+
 impl From<Uri> for ICalendarValue {
     fn from(value: Uri) -> Self {
         ICalendarValue::Uri(value)
@@ -633,13 +640,13 @@ impl From<Uri> for ICalendarValue {
 
 impl From<PartialDateTime> for ICalendarValue {
     fn from(value: PartialDateTime) -> Self {
-        ICalendarValue::PartialDateTime(Box::new(value))
+        ICalendarValue::PartialDateTime(value)
     }
 }
 
 impl From<Box<PartialDateTime>> for ICalendarValue {
     fn from(value: Box<PartialDateTime>) -> Self {
-        ICalendarValue::PartialDateTime(value)
+        ICalendarValue::PartialDateTime(*value)
     }
 }
 
@@ -663,7 +670,7 @@ impl From<Box<ICalendarRecurrenceRule>> for ICalendarValue {
 
 impl From<ICalendarPeriod> for ICalendarValue {
     fn from(value: ICalendarPeriod) -> Self {
-        ICalendarValue::Period(value)
+        ICalendarValue::Period(Box::new(value))
     }
 }
 

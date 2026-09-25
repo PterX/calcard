@@ -8,10 +8,11 @@ use super::{PartialDateTime, VCard, VCardEntry, VCardValueType, VCardVersion};
 use crate::{
     common::{
         IanaString,
+        format::{AsciiPush, BufferedWrite},
         parser::Timestamp,
         writer::{
-            FoldingWriter, LineWriter, NeedsQuotes, write_bytes, write_jscomps, write_param_value,
-            write_text,
+            DOCUMENT_BUFFER, ENTRY_BUFFER, FoldingWriter, LineWriter, NeedsQuotes, write_jscomps,
+            write_param_value, write_text,
         },
     },
     vcard::{
@@ -19,27 +20,49 @@ use crate::{
         media_type::legacy_media_type,
     },
 };
-use std::fmt::{Display, Write};
+use std::fmt::{self, Display, Write};
+
+pub(crate) const DATE_BUFFER: usize = 48;
+
+impl VCardVersion {
+    pub(crate) fn begin_and_version(self) -> &'static str {
+        match self {
+            VCardVersion::V2_0 => "BEGIN:VCARD\r\nVERSION:2.0\r\n",
+            VCardVersion::V2_1 => "BEGIN:VCARD\r\nVERSION:2.1\r\n",
+            VCardVersion::V3_0 => "BEGIN:VCARD\r\nVERSION:3.0\r\n",
+            VCardVersion::V4_0 => "BEGIN:VCARD\r\nVERSION:4.0\r\n",
+        }
+    }
+}
 
 impl VCard {
-    pub fn write_to(&self, out: &mut impl Write, version: VCardVersion) -> std::fmt::Result {
-        write!(out, "BEGIN:VCARD\r\n")?;
-        write!(out, "VERSION:{version}\r\n")?;
+    pub fn write_to(&self, out: &mut impl Write, version: VCardVersion) -> fmt::Result {
+        out.write_buffered::<DOCUMENT_BUFFER>(|buf| {
+            self.write_entries(&mut FoldingWriter::new(buf), version)
+        })
+    }
+
+    fn write_entries<W: Write + AsciiPush + ?Sized>(
+        &self,
+        out: &mut FoldingWriter<'_, W>,
+        version: VCardVersion,
+    ) -> fmt::Result {
+        out.write_raw(version.begin_and_version())?;
         for entry in &self.entries {
             if !matches!(
                 entry.name,
                 VCardProperty::Begin | VCardProperty::End | VCardProperty::Version
             ) {
-                entry.write_with_version(out, version)?;
+                entry.write_line(out, version)?;
             }
         }
-        write!(out, "END:VCARD\r\n")
+        out.write_raw("END:VCARD\r\n")
     }
 }
 
 impl VCardEntry {
     #[deprecated(since = "0.4.0", note = "use write_with_version")]
-    pub fn write_to(&self, out: &mut impl Write, is_v4: bool) -> std::fmt::Result {
+    pub fn write_to(&self, out: &mut impl Write, is_v4: bool) -> fmt::Result {
         self.write_with_version(
             out,
             if is_v4 {
@@ -50,14 +73,18 @@ impl VCardEntry {
         )
     }
 
-    pub fn write_with_version(
+    pub fn write_with_version(&self, out: &mut impl Write, version: VCardVersion) -> fmt::Result {
+        out.write_buffered::<ENTRY_BUFFER>(|buf| {
+            self.write_line(&mut FoldingWriter::new(buf), version)
+        })
+    }
+
+    pub(crate) fn write_line<W: Write + AsciiPush + ?Sized>(
         &self,
-        out: &mut impl Write,
+        out: &mut FoldingWriter<'_, W>,
         version: VCardVersion,
-    ) -> std::fmt::Result {
+    ) -> fmt::Result {
         let is_v4 = matches!(version, VCardVersion::V4_0);
-        let mut folded = FoldingWriter::new(out);
-        let out = &mut folded;
 
         if let Some(group_name) = &self.group {
             out.write_atomic(group_name)?;
@@ -92,10 +119,10 @@ impl VCardEntry {
                     write_param_value(out, v, is_v4)?;
                 }
                 VCardParameterValue::Integer(i) => {
-                    write!(out, "{i}")?;
+                    out.push_u64((*i).into())?;
                 }
                 VCardParameterValue::Timestamp(v) => {
-                    write!(out, "{}", Timestamp(*v))?;
+                    Timestamp(*v).push_to(out)?;
                 }
                 VCardParameterValue::Bool(v) => {
                     out.write_atomic(if *v { "TRUE" } else { "FALSE" })?;
@@ -208,7 +235,7 @@ impl VCardEntry {
                     }
                 }
                 VCardValue::Integer(v) => {
-                    write!(out, "{v}")?;
+                    out.push_i64(*v)?;
                 }
                 VCardValue::Float(v) => {
                     write!(out, "{v}")?;
@@ -227,9 +254,9 @@ impl VCardEntry {
                     }
                     .unwrap_or(&default_type);
                     if is_v4 {
-                        v.format_as_vcard(out, typ)?;
+                        v.push_vcard(out, typ)?;
                     } else {
-                        v.format_as_legacy_vcard(out, typ)?;
+                        v.push_legacy_vcard(out, typ)?;
                     }
                 }
                 VCardValue::Binary(v) => {
@@ -244,7 +271,7 @@ impl VCardEntry {
                         }
                         out.write_atomic("base64\\,")?;
                     }
-                    write_bytes(out, &v.data)?;
+                    out.write_base64(&v.data)?;
                 }
                 VCardValue::Sex(v) => {
                     out.write_atomic(v.as_str())?;
@@ -267,278 +294,264 @@ impl VCardEntry {
 }
 
 impl PartialDateTime {
-    pub fn format_as_vcard(&self, out: &mut impl Write, fmt: &VCardValueType) -> std::fmt::Result {
-        if matches!(fmt, VCardValueType::Timestamp) {
-            write!(
-                out,
-                "{:04}{:02}{:02}T{:02}{:02}{:02}",
-                self.year.unwrap_or_default(),
-                self.month.unwrap_or_default(),
-                self.day.unwrap_or_default(),
-                self.hour.unwrap_or_default(),
-                self.minute.unwrap_or_default(),
-                self.second.unwrap_or_default()
-            )?;
-
-            if let Some(tz_hour) = self.tz_hour {
-                let tz_minute = self.tz_minute.unwrap_or_default();
-                if tz_hour == 0 && tz_minute == 0 {
-                    write!(out, "Z")?;
-                } else {
-                    write!(
-                        out,
-                        "{}{:02}",
-                        if self.tz_minus { "-" } else { "+" },
-                        tz_hour,
-                    )?;
-
-                    if let Some(tz_minute) = self.tz_minute {
-                        write!(out, "{:02}", tz_minute)?;
-                    }
-                }
-            }
-            Ok(())
-        } else {
-            let missing_time =
-                self.hour.is_none() && self.minute.is_none() && self.second.is_none();
-            let missing_tz = self.tz_hour.is_none();
-
-            if matches!(
-                fmt,
-                VCardValueType::Date | VCardValueType::DateAndOrTime | VCardValueType::DateTime
-            ) {
-                match (self.year, self.month, self.day) {
-                    (Some(year), Some(month), Some(day)) => {
-                        write!(out, "{:04}{:02}{:02}", year, month, day)?;
-                    }
-                    (Some(year), Some(month), None) => {
-                        if missing_time && missing_tz {
-                            write!(out, "{:04}-{:02}", year, month)?;
-                        } else {
-                            write!(out, "{:04}{:02}", year, month)?;
-                        }
-                    }
-                    (None, Some(month), Some(day)) => {
-                        write!(out, "--{:02}{:02}", month, day)?;
-                    }
-                    (None, None, Some(day)) => {
-                        write!(out, "---{:02}", day)?;
-                    }
-                    (Some(year), None, None) => {
-                        write!(out, "{:04}", year)?;
-                    }
-                    (None, Some(month), None) => {
-                        write!(out, "--{month}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            if matches!(
-                fmt,
-                VCardValueType::DateAndOrTime | VCardValueType::DateTime | VCardValueType::Time
-            ) && !missing_time
-            {
-                if matches!(
-                    fmt,
-                    VCardValueType::DateAndOrTime | VCardValueType::DateTime
-                ) {
-                    write!(out, "T")?;
-                }
-                let mut last_is_some = false;
-                for value in [&self.hour, &self.minute, &self.second].iter() {
-                    if let Some(value) = value {
-                        write!(out, "{:02}", value)?;
-                        last_is_some = true;
-                    } else if !last_is_some {
-                        write!(out, "-")?;
-                    }
-                }
-            }
-
-            if matches!(
-                fmt,
-                VCardValueType::DateAndOrTime
-                    | VCardValueType::DateTime
-                    | VCardValueType::Time
-                    | VCardValueType::UtcOffset
-            ) {
-                match (self.tz_hour, self.tz_minute) {
-                    (Some(0), Some(0)) | (Some(0), _) => {
-                        write!(out, "Z")?;
-                    }
-                    (Some(hour), Some(minute)) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}{minute:02}")?;
-                    }
-                    (Some(hour), None) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            Ok(())
-        }
+    pub fn format_as_vcard(&self, out: &mut impl Write, fmt: &VCardValueType) -> fmt::Result {
+        out.write_buffered::<DATE_BUFFER>(|buf| self.push_vcard(buf, fmt))
     }
 
     pub fn format_as_legacy_vcard(
         &self,
         out: &mut impl Write,
         fmt: &VCardValueType,
-    ) -> std::fmt::Result {
+    ) -> fmt::Result {
+        out.write_buffered::<DATE_BUFFER>(|buf| self.push_legacy_vcard(buf, fmt))
+    }
+
+    pub(crate) fn push_vcard(&self, buf: &mut impl AsciiPush, fmt: &VCardValueType) -> fmt::Result {
         if matches!(fmt, VCardValueType::Timestamp) {
-            write!(
-                out,
-                "{:04}{:02}{:02}",
-                self.year.unwrap_or_default(),
-                self.month.unwrap_or_default(),
-                self.day.unwrap_or_default(),
-            )?;
+            buf.push_4_digits(self.year.unwrap_or_default())?;
+            buf.push_2_digits(self.month.unwrap_or_default())?;
+            buf.push_2_digits(self.day.unwrap_or_default())?;
+            buf.push_byte(b'T')?;
+            buf.push_2_digits(self.hour.unwrap_or_default())?;
+            buf.push_2_digits(self.minute.unwrap_or_default())?;
+            buf.push_2_digits(self.second.unwrap_or_default())?;
+            return self.push_timestamp_zone(buf);
+        }
+
+        let missing_time = self.hour.is_none() && self.minute.is_none() && self.second.is_none();
+        let missing_tz = self.tz_hour.is_none();
+
+        if matches!(
+            fmt,
+            VCardValueType::Date | VCardValueType::DateAndOrTime | VCardValueType::DateTime
+        ) {
+            match (self.year, self.month, self.day) {
+                (Some(year), Some(month), Some(day)) => {
+                    buf.push_4_digits(year)?;
+                    buf.push_2_digits(month)?;
+                    buf.push_2_digits(day)?;
+                }
+                (Some(year), Some(month), None) => {
+                    buf.push_4_digits(year)?;
+                    if missing_time && missing_tz {
+                        buf.push_byte(b'-')?;
+                    }
+                    buf.push_2_digits(month)?;
+                }
+                (None, Some(month), Some(day)) => {
+                    buf.push_ascii(b"--")?;
+                    buf.push_2_digits(month)?;
+                    buf.push_2_digits(day)?;
+                }
+                (None, None, Some(day)) => {
+                    buf.push_ascii(b"---")?;
+                    buf.push_2_digits(day)?;
+                }
+                (Some(year), None, None) => {
+                    buf.push_4_digits(year)?;
+                }
+                (None, Some(month), None) => {
+                    buf.push_ascii(b"--")?;
+                    buf.push_u64(month.into())?;
+                }
+                _ => {}
+            }
+        }
+
+        if matches!(
+            fmt,
+            VCardValueType::DateAndOrTime | VCardValueType::DateTime | VCardValueType::Time
+        ) && !missing_time
+        {
+            if matches!(
+                fmt,
+                VCardValueType::DateAndOrTime | VCardValueType::DateTime
+            ) {
+                buf.push_byte(b'T')?;
+            }
+            let mut last_is_some = false;
+            for value in [self.hour, self.minute, self.second] {
+                if let Some(value) = value {
+                    buf.push_2_digits(value)?;
+                    last_is_some = true;
+                } else if !last_is_some {
+                    buf.push_byte(b'-')?;
+                }
+            }
+        }
+
+        if matches!(
+            fmt,
+            VCardValueType::DateAndOrTime
+                | VCardValueType::DateTime
+                | VCardValueType::Time
+                | VCardValueType::UtcOffset
+        ) {
+            match (self.tz_hour, self.tz_minute) {
+                (Some(0), Some(0)) | (Some(0), _) => {
+                    buf.push_byte(b'Z')?;
+                }
+                (Some(hour), Some(minute)) => {
+                    buf.push_byte(if self.tz_minus { b'-' } else { b'+' })?;
+                    buf.push_2_digits(hour)?;
+                    buf.push_2_digits(minute)?;
+                }
+                (Some(hour), None) => {
+                    buf.push_byte(if self.tz_minus { b'-' } else { b'+' })?;
+                    buf.push_2_digits(hour)?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn push_legacy_vcard(
+        &self,
+        buf: &mut impl AsciiPush,
+        fmt: &VCardValueType,
+    ) -> fmt::Result {
+        if matches!(fmt, VCardValueType::Timestamp) {
+            buf.push_4_digits(self.year.unwrap_or_default())?;
+            buf.push_2_digits(self.month.unwrap_or_default())?;
+            buf.push_2_digits(self.day.unwrap_or_default())?;
 
             if self.hour.is_some() {
-                write!(
-                    out,
-                    "T{:02}{:02}{:02}",
-                    self.hour.unwrap_or_default(),
-                    self.minute.unwrap_or_default(),
-                    self.second.unwrap_or_default()
-                )?;
+                buf.push_byte(b'T')?;
+                buf.push_2_digits(self.hour.unwrap_or_default())?;
+                buf.push_2_digits(self.minute.unwrap_or_default())?;
+                buf.push_2_digits(self.second.unwrap_or_default())?;
             }
 
-            if let Some(tz_hour) = self.tz_hour {
-                let tz_minute = self.tz_minute.unwrap_or_default();
-                if tz_hour == 0 && tz_minute == 0 {
-                    write!(out, "Z")?;
-                } else {
-                    write!(
-                        out,
-                        "{}{:02}",
-                        if self.tz_minus { "-" } else { "+" },
-                        tz_hour,
-                    )?;
-
-                    if let Some(tz_minute) = self.tz_minute {
-                        write!(out, "{:02}", tz_minute)?;
-                    }
-                }
-            }
-            Ok(())
-        } else {
-            let missing_time =
-                self.hour.is_none() && self.minute.is_none() && self.second.is_none();
-
-            if matches!(
-                fmt,
-                VCardValueType::Date | VCardValueType::DateAndOrTime | VCardValueType::DateTime
-            ) {
-                match (self.year, self.month, self.day) {
-                    (Some(year), Some(month), Some(day)) => {
-                        write!(out, "{:04}-{:02}-{:02}", year, month, day)?;
-                    }
-                    (Some(year), Some(month), None) => {
-                        write!(out, "{:04}-{:02}", year, month)?;
-                    }
-                    (None, Some(month), Some(day)) => {
-                        write!(out, "--{:02}-{:02}", month, day)?;
-                    }
-                    (None, None, Some(day)) => {
-                        write!(out, "---{:02}", day)?;
-                    }
-                    (Some(year), None, None) => {
-                        write!(out, "{:04}", year)?;
-                    }
-                    (None, Some(month), None) => {
-                        write!(out, "--{month}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            if matches!(
-                fmt,
-                VCardValueType::DateAndOrTime | VCardValueType::DateTime | VCardValueType::Time
-            ) && !missing_time
-            {
-                if matches!(
-                    fmt,
-                    VCardValueType::DateAndOrTime | VCardValueType::DateTime
-                ) {
-                    write!(out, "T")?;
-                }
-                let mut last_is_some = false;
-                for value in [&self.hour, &self.minute, &self.second].iter() {
-                    if let Some(value) = value {
-                        if last_is_some {
-                            write!(out, ":")?;
-                        }
-                        write!(out, "{:02}", value)?;
-                        last_is_some = true;
-                    } else if !last_is_some {
-                        write!(out, "-")?;
-                    }
-                }
-            }
-
-            if matches!(
-                fmt,
-                VCardValueType::DateAndOrTime
-                    | VCardValueType::DateTime
-                    | VCardValueType::Time
-                    | VCardValueType::UtcOffset
-            ) {
-                match (self.tz_hour, self.tz_minute) {
-                    (Some(0), Some(0)) | (Some(0), _) => {
-                        write!(out, "Z")?;
-                    }
-                    (Some(hour), Some(minute)) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}:{minute:02}")?;
-                    }
-                    (Some(hour), None) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            Ok(())
+            return self.push_timestamp_zone(buf);
         }
+
+        let missing_time = self.hour.is_none() && self.minute.is_none() && self.second.is_none();
+
+        if matches!(
+            fmt,
+            VCardValueType::Date | VCardValueType::DateAndOrTime | VCardValueType::DateTime
+        ) {
+            match (self.year, self.month, self.day) {
+                (Some(year), Some(month), Some(day)) => {
+                    buf.push_4_digits(year)?;
+                    buf.push_byte(b'-')?;
+                    buf.push_2_digits(month)?;
+                    buf.push_byte(b'-')?;
+                    buf.push_2_digits(day)?;
+                }
+                (Some(year), Some(month), None) => {
+                    buf.push_4_digits(year)?;
+                    buf.push_byte(b'-')?;
+                    buf.push_2_digits(month)?;
+                }
+                (None, Some(month), Some(day)) => {
+                    buf.push_ascii(b"--")?;
+                    buf.push_2_digits(month)?;
+                    buf.push_byte(b'-')?;
+                    buf.push_2_digits(day)?;
+                }
+                (None, None, Some(day)) => {
+                    buf.push_ascii(b"---")?;
+                    buf.push_2_digits(day)?;
+                }
+                (Some(year), None, None) => {
+                    buf.push_4_digits(year)?;
+                }
+                (None, Some(month), None) => {
+                    buf.push_ascii(b"--")?;
+                    buf.push_u64(month.into())?;
+                }
+                _ => {}
+            }
+        }
+
+        if matches!(
+            fmt,
+            VCardValueType::DateAndOrTime | VCardValueType::DateTime | VCardValueType::Time
+        ) && !missing_time
+        {
+            if matches!(
+                fmt,
+                VCardValueType::DateAndOrTime | VCardValueType::DateTime
+            ) {
+                buf.push_byte(b'T')?;
+            }
+            let mut last_is_some = false;
+            for value in [self.hour, self.minute, self.second] {
+                if let Some(value) = value {
+                    if last_is_some {
+                        buf.push_byte(b':')?;
+                    }
+                    buf.push_2_digits(value)?;
+                    last_is_some = true;
+                } else if !last_is_some {
+                    buf.push_byte(b'-')?;
+                }
+            }
+        }
+
+        if matches!(
+            fmt,
+            VCardValueType::DateAndOrTime
+                | VCardValueType::DateTime
+                | VCardValueType::Time
+                | VCardValueType::UtcOffset
+        ) {
+            match (self.tz_hour, self.tz_minute) {
+                (Some(0), Some(0)) | (Some(0), _) => {
+                    buf.push_byte(b'Z')?;
+                }
+                (Some(hour), Some(minute)) => {
+                    buf.push_byte(if self.tz_minus { b'-' } else { b'+' })?;
+                    buf.push_2_digits(hour)?;
+                    buf.push_byte(b':')?;
+                    buf.push_2_digits(minute)?;
+                }
+                (Some(hour), None) => {
+                    buf.push_byte(if self.tz_minus { b'-' } else { b'+' })?;
+                    buf.push_2_digits(hour)?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn push_timestamp_zone(&self, buf: &mut impl AsciiPush) -> fmt::Result {
+        if let Some(tz_hour) = self.tz_hour {
+            let tz_minute = self.tz_minute.unwrap_or_default();
+            if tz_hour == 0 && tz_minute == 0 {
+                buf.push_byte(b'Z')?;
+            } else {
+                buf.push_byte(if self.tz_minus { b'-' } else { b'+' })?;
+                buf.push_2_digits(tz_hour)?;
+
+                if let Some(tz_minute) = self.tz_minute {
+                    buf.push_2_digits(tz_minute)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
 impl Display for VCard {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write_to(f, self.version().unwrap_or_default())
     }
 }
 
 impl Display for VCardVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VCardVersion::V2_0 => write!(f, "2.0"),
-            VCardVersion::V2_1 => write!(f, "2.1"),
-            VCardVersion::V3_0 => write!(f, "3.0"),
-            VCardVersion::V4_0 => write!(f, "4.0"),
-        }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            VCardVersion::V2_0 => "2.0",
+            VCardVersion::V2_1 => "2.1",
+            VCardVersion::V3_0 => "3.0",
+            VCardVersion::V4_0 => "4.0",
+        })
     }
 }
 
@@ -668,10 +681,10 @@ mod tests {
         for property in [VCardProperty::Adr, VCardProperty::N, VCardProperty::Org] {
             let mut vcard = parse("BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\nEND:VCARD\r\n");
             vcard.entries.push(
-                VCardEntry::new(property.clone()).with_value(VCardValue::Binary(Data {
+                VCardEntry::new(property.clone()).with_value(VCardValue::Binary(Box::new(Data {
                     content_type: Some("text/plain".to_string()),
                     data: b"hello".to_vec(),
-                })),
+                }))),
             );
             let out = write(&vcard, VCardVersion::V4_0).replace("\r\n ", "");
             assert!(
@@ -801,6 +814,27 @@ mod tests {
             );
         }
         assert_eq!(parse(&out), vcard, "{out}");
+    }
+
+    #[test]
+    fn test_write_escapes_at_every_word_lane() {
+        for offset in 0..=17 {
+            let (head, tail) = ("x".repeat(offset), "y".repeat(17 - offset));
+            for escaped in [r"\,", r"\;", r"\\", r"\n"] {
+                for line in [
+                    format!("NOTE:{head}{escaped}{tail}\r\n"),
+                    format!("N:{head}{escaped}{tail};b;c;d;e\r\n"),
+                ] {
+                    let vcard = parse(&format!(
+                        "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:T\r\n{line}END:VCARD\r\n"
+                    ));
+                    for version in [VCardVersion::V3_0, VCardVersion::V4_0] {
+                        let out = write(&vcard, version);
+                        assert!(out.contains(&line), "{line:?} {version}\n{out}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

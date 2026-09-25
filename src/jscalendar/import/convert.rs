@@ -8,11 +8,15 @@ use crate::{
     common::{
         blob::{BlobIdGenerator, NoBlobIds},
         export::ImportError,
-        jsprop::JSPropPointer,
+        jsprop::{
+            JSPropPointer,
+            text::{IntoAsciiLowercase, PointerString},
+        },
         timezone::{Tz, ZonedDateTime},
     },
     icalendar::{timezone::TzResolver, *},
     jscalendar::{
+        ext::JSCalendarObjectExt,
         import::{
             EntryState, ImportContext, ImportOptions, State, params::ExtractParams,
             props::ICalendarBinary,
@@ -21,6 +25,8 @@ use crate::{
     },
 };
 use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Value};
+use smallvec::{IntoIter, SmallVec};
+use std::mem;
 
 impl ICalendar {
     pub fn into_jscalendar<I: JSCalendarId, B: JSCalendarId>(self) -> JSCalendar<'static, I, B> {
@@ -269,14 +275,14 @@ impl ICalendar {
 
                     let mut entries = Vec::with_capacity(component.entries.len());
                     for entry in std::mem::take(&mut component.entries) {
-                        entries.push(EntryState::new(entry).into_jcal());
+                        entries.push(EntryState::new(entry, false).into_jcal());
                     }
 
                     components.push(Value::Array(vec![
                         Value::Str(
-                            std::mem::take(&mut component.component_type)
+                            mem::take(&mut component.component_type)
                                 .into_string()
-                                .to_ascii_lowercase()
+                                .into_ascii_lowercase()
                                 .into(),
                         ),
                         Value::Array(entries),
@@ -333,7 +339,7 @@ impl ICalendar {
         let is_todo = state.component_type == ICalendarComponentType::VTodo;
 
         for entry in entries {
-            let mut entry = EntryState::new(entry);
+            let mut entry = EntryState::new(entry, state.include_ical_components);
             state.has_end |= match (&entry.entry.name, entry.entry.values.first()) {
                 (ICalendarProperty::Dtend, Some(ICalendarValue::PartialDateTime(value))) => {
                     value.has_date()
@@ -435,9 +441,7 @@ impl ICalendar {
                             false,
                         ))),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Acknowledged::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Acknowledged);
                 }
                 (
                     ICalendarProperty::Action,
@@ -454,9 +458,7 @@ impl ICalendar {
                             _ => unreachable!(),
                         })),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Action::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Action);
                 }
                 (
                     ICalendarProperty::Attach,
@@ -467,6 +469,7 @@ impl ICalendar {
                     | ICalendarComponentType::VLocation
                     | ICalendarComponentType::VCalendar,
                 ) => {
+                    entry.set_map_name();
                     state.map_named_entry_with_id(
                         &mut entry,
                         if link_value_type == ICalendarValueType::Binary {
@@ -504,7 +507,6 @@ impl ICalendar {
                         ],
                         link_id,
                     );
-                    entry.set_map_name();
                 }
                 (
                     ICalendarProperty::Image,
@@ -515,6 +517,7 @@ impl ICalendar {
                     | ICalendarComponentType::VLocation
                     | ICalendarComponentType::VCalendar,
                 ) => {
+                    entry.set_map_name();
                     state.map_named_entry_with_id(
                         &mut entry,
                         if link_value_type == ICalendarValueType::Binary {
@@ -552,7 +555,6 @@ impl ICalendar {
                         ],
                         link_id,
                     );
-                    entry.set_map_name();
                 }
                 (
                     ICalendarProperty::Link,
@@ -563,6 +565,7 @@ impl ICalendar {
                     | ICalendarComponentType::VLocation
                     | ICalendarComponentType::VCalendar,
                 ) => {
+                    entry.set_map_name();
                     state.map_named_entry(
                         &mut entry,
                         &[
@@ -583,7 +586,6 @@ impl ICalendar {
                             ),
                         ],
                     );
-                    entry.set_map_name();
                 }
                 (
                     ICalendarProperty::Url,
@@ -594,6 +596,7 @@ impl ICalendar {
                     | ICalendarComponentType::VLocation
                     | ICalendarComponentType::VCalendar,
                 ) => {
+                    entry.set_map_name();
                     state.map_named_entry(
                         &mut entry,
                         &[ICalendarParameterName::Label, ICalendarParameterName::Jsid],
@@ -615,7 +618,6 @@ impl ICalendar {
                             ),
                         ],
                     );
-                    entry.set_map_name();
                 }
                 (
                     ICalendarProperty::Attendee,
@@ -677,7 +679,7 @@ impl ICalendar {
                         [
                             Some((
                                 Key::Property(JSCalendarProperty::CalendarAddress),
-                                Value::Str(uri.to_string().into()),
+                                Value::Str(uri.into()),
                             )),
                             Some((
                                 Key::Property(JSCalendarProperty::Type),
@@ -748,7 +750,7 @@ impl ICalendar {
                             [
                                 (
                                     Key::Property(JSCalendarProperty::CalendarAddress),
-                                    Value::Str(uri.to_string().into()),
+                                    Value::Str(uri.into()),
                                 ),
                                 (
                                     Key::Property(JSCalendarProperty::Type),
@@ -784,9 +786,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::CalendarAddress),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::CalendarAddress::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::CalendarAddress);
                     entry.set_map_name();
                 }
                 (
@@ -802,15 +802,13 @@ impl ICalendar {
                         .or_insert_with(Value::new_object)
                         .as_object_mut()
                         .unwrap();
-                    obj.insert(Key::Owned(value), Value::Bool(true));
+                    obj.upsert(Key::Owned(value), Value::Bool(true));
                     for value in values {
                         if let Some(value) = value.into_text() {
-                            obj.insert(Key::from(value), Value::Bool(true));
+                            obj.upsert(Key::from(value), Value::Bool(true));
                         }
                     }
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Keywords::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Keywords);
                 }
                 (
                     ICalendarProperty::Class,
@@ -822,9 +820,7 @@ impl ICalendar {
                         ICalendarClassification::Private => JSCalendarPrivacy::Private,
                         ICalendarClassification::Confidential => JSCalendarPrivacy::Secret,
                     });
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Privacy::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Privacy);
                 }
                 (
                     ICalendarProperty::Class,
@@ -832,10 +828,7 @@ impl ICalendar {
                     ICalendarComponentType::VEvent | ICalendarComponentType::VTodo,
                 ) => {
                     state.merge_privacy(JSCalendarPrivacy::Private);
-                    entry.entry.values = [ICalendarValue::Text(value)]
-                        .into_iter()
-                        .chain(values)
-                        .collect();
+                    entry.entry.values = values.prepend(Some(ICalendarValue::Text(value)));
                 }
                 (
                     ICalendarProperty::Color,
@@ -848,9 +841,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Color),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Color::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Color);
                 }
                 (
                     ICalendarProperty::Concept,
@@ -865,15 +856,13 @@ impl ICalendar {
                         .or_insert_with(Value::new_object)
                         .as_object_mut()
                         .unwrap();
-                    obj.insert(Key::Owned(value), Value::Bool(true));
+                    obj.upsert(Key::Owned(value), Value::Bool(true));
                     for value in values {
                         if let Some(value) = value.into_text() {
-                            obj.insert(Key::from(value), Value::Bool(true));
+                            obj.upsert(Key::from(value), Value::Bool(true));
                         }
                     }
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Categories::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Categories);
                 }
                 (
                     ICalendarProperty::Conference,
@@ -914,9 +903,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Coordinates),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Coordinates::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Coordinates);
                 }
                 (
                     ICalendarProperty::Geo,
@@ -929,9 +916,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Coordinates),
                         Value::Str(format!("geo:{coord1},{coord2}").into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Coordinates::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Coordinates);
                     entry.set_map_name();
                 }
                 (
@@ -948,6 +933,7 @@ impl ICalendar {
                             .add_param(ICalendarParameter::jsid(main_location_id));
                     }
 
+                    entry.set_map_name();
                     state.map_named_entry(
                         &mut entry,
                         &[ICalendarParameterName::Jsid],
@@ -963,7 +949,6 @@ impl ICalendar {
                             ),
                         ],
                     );
-                    entry.set_map_name();
                 }
                 (
                     ICalendarProperty::Name,
@@ -977,9 +962,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Name),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Name::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Name);
                     state.set_map_component();
                 }
                 (
@@ -999,9 +982,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Title),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Title::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Title);
                 }
                 (
                     ICalendarProperty::Summary,
@@ -1012,9 +993,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Name),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Name::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Name);
                     state.set_map_component();
                 }
                 (
@@ -1067,15 +1046,13 @@ impl ICalendar {
                         .or_insert_with(Value::new_object)
                         .as_object_mut()
                         .unwrap();
-                    obj.insert(Key::Owned(value), Value::Bool(true));
+                    obj.upsert(Key::Owned(value), Value::Bool(true));
                     for value in values {
                         if let Some(value) = value.into_text() {
-                            obj.insert(Key::from(value), Value::Bool(true));
+                            obj.upsert(Key::from(value), Value::Bool(true));
                         }
                     }
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::LocationTypes::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::LocationTypes);
                 }
 
                 (
@@ -1090,9 +1067,7 @@ impl ICalendar {
                             false,
                         ))),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Updated::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Updated);
                 }
                 (
                     ICalendarProperty::Created,
@@ -1108,9 +1083,7 @@ impl ICalendar {
                             false,
                         ))),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Created::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Created);
                 }
                 (
                     ICalendarProperty::Description,
@@ -1125,9 +1098,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Description),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Description::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Description);
                     if matches!(state.component_type, ICalendarComponentType::Participant) {
                         state.set_map_component();
                     }
@@ -1149,9 +1120,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Description),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Description::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Description);
                     if !state
                         .entries
                         .contains_key(&Key::Property(JSCalendarProperty::DescriptionContentType))
@@ -1195,9 +1164,7 @@ impl ICalendar {
                                 Value::Bool(true),
                             );
                         }
-                        entry.set_converted_to::<I>(&[JSCalendarProperty::Start::<I>
-                            .to_string()
-                            .as_ref()]);
+                        entry.set_converted_to_property(&JSCalendarProperty::<I>::Start);
                         start_date = Some(dt);
                         start_is_date = !value.has_time();
 
@@ -1206,10 +1173,8 @@ impl ICalendar {
                         }
                     } else {
                         state.tz_start = None;
-                        entry.entry.values = [ICalendarValue::PartialDateTime(value)]
-                            .into_iter()
-                            .chain(values)
-                            .collect();
+                        entry.entry.values =
+                            values.prepend(Some(ICalendarValue::PartialDateTime(value)));
                     }
                 }
                 (
@@ -1270,9 +1235,7 @@ impl ICalendar {
                                 Value::Bool(true),
                             );
                         }
-                        entry.set_converted_to::<I>(&[JSCalendarProperty::Duration::<I>
-                            .to_string()
-                            .as_ref()]);
+                        entry.set_converted_to_property(&JSCalendarProperty::<I>::Duration);
                         entry.set_map_name();
 
                         if state.tz_end.is_none() {
@@ -1283,10 +1246,8 @@ impl ICalendar {
                         }
                     } else {
                         state.tz_end = None;
-                        entry.entry.values = [ICalendarValue::PartialDateTime(value)]
-                            .into_iter()
-                            .chain(values)
-                            .collect();
+                        entry.entry.values =
+                            values.prepend(Some(ICalendarValue::PartialDateTime(value)));
                     }
                 }
                 (
@@ -1333,14 +1294,10 @@ impl ICalendar {
                             );
                         }
 
-                        entry.set_converted_to::<I>(&[JSCalendarProperty::Due::<I>
-                            .to_string()
-                            .as_ref()]);
+                        entry.set_converted_to_property(&JSCalendarProperty::<I>::Due);
                     } else {
-                        entry.entry.values = [ICalendarValue::PartialDateTime(value)]
-                            .into_iter()
-                            .chain(values)
-                            .collect();
+                        entry.entry.values =
+                            values.prepend(Some(ICalendarValue::PartialDateTime(value)));
                     }
                 }
                 (
@@ -1356,9 +1313,7 @@ impl ICalendar {
                         ))),
                     );
 
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Updated::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Updated);
                 }
                 (
                     ICalendarProperty::Duration,
@@ -1370,9 +1325,7 @@ impl ICalendar {
                         Value::Element(JSCalendarValue::Duration(value)),
                     );
 
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Duration::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Duration);
                 }
                 (
                     ICalendarProperty::EstimatedDuration,
@@ -1384,9 +1337,7 @@ impl ICalendar {
                         Value::Element(JSCalendarValue::Duration(value)),
                     );
 
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::EstimatedDuration::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::EstimatedDuration);
                 }
                 (
                     ICalendarProperty::RecurrenceId,
@@ -1424,14 +1375,10 @@ impl ICalendar {
                                 .retain(|p| p.name != ICalendarParameterName::Value);
                         }
 
-                        entry.set_converted_to::<I>(&[JSCalendarProperty::RecurrenceId::<I>
-                            .to_string()
-                            .as_ref()]);
+                        entry.set_converted_to_property(&JSCalendarProperty::<I>::RecurrenceId);
                     } else {
-                        entry.entry.values = [ICalendarValue::PartialDateTime(value)]
-                            .into_iter()
-                            .chain(values)
-                            .collect();
+                        entry.entry.values =
+                            values.prepend(Some(ICalendarValue::PartialDateTime(value)));
                     }
                 }
                 (
@@ -1454,7 +1401,7 @@ impl ICalendar {
                         .unwrap_or_default();
 
                     // Restore the values, they are preserved as-is unless every period converts
-                    entry.entry.values = [value].into_iter().chain(values).collect();
+                    entry.entry.values = values.prepend(Some(value));
 
                     if let Some((start, _)) = entry
                         .entry
@@ -1498,11 +1445,13 @@ impl ICalendar {
                             );
 
                             if pos == 0 {
-                                entry.set_converted_to::<I>(&[
-                                    overrides_name.as_ref(),
-                                    key_name.as_str(),
-                                ]);
                                 entry.set_map_name();
+                                entry.set_converted_to(|| {
+                                    String::from_pointer([
+                                        overrides_name.as_ref(),
+                                        key_name.as_str(),
+                                    ])
+                                });
                             } else {
                                 state.add_period_conversion_prop(format!(
                                     "{}/{}",
@@ -1573,21 +1522,21 @@ impl ICalendar {
                             ));
 
                             if pos == 0 {
-                                entry.set_converted_to::<I>(&[
-                                    JSCalendarProperty::RecurrenceOverrides::<I>
-                                        .to_string()
-                                        .as_ref(),
-                                    key.to_string().as_ref().to_string().as_ref(),
-                                ]);
+                                entry.set_converted_to(|| {
+                                    String::from_pointer([
+                                        JSCalendarProperty::RecurrenceOverrides::<I>
+                                            .to_string()
+                                            .as_ref(),
+                                        key.to_string().as_ref(),
+                                    ])
+                                });
                             }
 
-                            overrides.insert(key, value.clone());
+                            overrides.upsert(key, value.clone());
                         }
                     } else {
-                        entry.entry.values = [ICalendarValue::PartialDateTime(value)]
-                            .into_iter()
-                            .chain(values)
-                            .collect();
+                        entry.entry.values =
+                            values.prepend(Some(ICalendarValue::PartialDateTime(value)));
                     }
                 }
                 (
@@ -1774,9 +1723,7 @@ impl ICalendar {
                         Value::Object(rrule),
                     );
 
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::RecurrenceRule::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::RecurrenceRule);
                 }
                 (
                     ICalendarProperty::Method,
@@ -1800,9 +1747,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::PercentComplete),
                         Value::Number(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::PercentComplete::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::PercentComplete);
                 }
                 (
                     ICalendarProperty::Priority,
@@ -1813,9 +1758,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Priority),
                         Value::Number(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Priority::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Priority);
                 }
                 (
                     ICalendarProperty::Sequence,
@@ -1826,9 +1769,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Sequence),
                         Value::Number(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Sequence::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Sequence);
                 }
                 (
                     ICalendarProperty::Prodid,
@@ -1839,9 +1780,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::ProdId),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::ProdId::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::ProdId);
                 }
                 (
                     ICalendarProperty::RelatedTo,
@@ -1858,7 +1797,7 @@ impl ICalendar {
                                 ICalendarParameterName::Reltype,
                                 ICalendarParameterValue::Reltype(value),
                             ) => {
-                                rels.insert(
+                                rels.upsert(
                                     match value {
                                         ICalendarRelationshipType::Child => {
                                             Key::Property(JSCalendarProperty::RelationValue(
@@ -1894,7 +1833,7 @@ impl ICalendar {
                                 ICalendarParameterName::Reltype,
                                 ICalendarParameterValue::Text(value),
                             ) => {
-                                rels.insert(Key::Owned(value), Value::Bool(true));
+                                rels.upsert(Key::Owned(value), Value::Bool(true));
                             }
                             (name, value) => {
                                 entry.entry.params.push(ICalendarParameter { name, value });
@@ -1902,10 +1841,12 @@ impl ICalendar {
                         }
                     }
 
-                    entry.set_converted_to::<I>(&[
-                        JSCalendarProperty::RelatedTo::<I>.to_string().as_ref(),
-                        value.as_str(),
-                    ]);
+                    entry.set_converted_to(|| {
+                        String::from_pointer([
+                            JSCalendarProperty::RelatedTo::<I>.to_string().as_ref(),
+                            value.as_str(),
+                        ])
+                    });
 
                     state
                         .entries
@@ -1913,7 +1854,7 @@ impl ICalendar {
                         .or_insert_with(Value::new_object)
                         .as_object_mut()
                         .unwrap()
-                        .insert(
+                        .upsert(
                             Key::Owned(value),
                             Value::Object(Map::from(if !rels.is_empty() {
                                 vec![(
@@ -1934,9 +1875,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::ShowWithoutTime),
                         Value::Bool(value),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::ShowWithoutTime::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::ShowWithoutTime);
                 }
                 (
                     ICalendarProperty::Status,
@@ -1958,9 +1897,7 @@ impl ICalendar {
                             other => Value::Str(other.as_str().into()),
                         },
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Status::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Status);
                 }
                 (
                     ICalendarProperty::Status,
@@ -1988,9 +1925,7 @@ impl ICalendar {
                             other => Value::Str(other.as_str().into()),
                         },
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Progress::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Progress);
                 }
                 (
                     ICalendarProperty::Status,
@@ -2003,7 +1938,7 @@ impl ICalendar {
                         JSCalendarProperty::Status
                     };
 
-                    entry.set_converted_to::<I>(&[prop.to_string().as_ref()]);
+                    entry.set_converted_to_property(&prop);
                     state
                         .entries
                         .insert(Key::Property(prop), Value::Str(value.into()));
@@ -2017,9 +1952,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Source),
                         Value::Str(value.into()),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Source::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Source);
                 }
                 (
                     ICalendarProperty::Transp,
@@ -2033,9 +1966,7 @@ impl ICalendar {
                             ICalendarTransparency::Transparent => JSCalendarFreeBusyStatus::Free,
                         })),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::FreeBusyStatus::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::FreeBusyStatus);
                 }
                 (
                     ICalendarProperty::Trigger,
@@ -2059,7 +1990,7 @@ impl ICalendar {
                                 ICalendarParameterName::Related,
                                 ICalendarParameterValue::Related(value),
                             ) => {
-                                obj.insert(
+                                obj.upsert(
                                     Key::Property(JSCalendarProperty::RelativeTo),
                                     Value::Element(JSCalendarValue::RelativeTo(match value {
                                         ICalendarRelated::Start => JSCalendarRelativeTo::Start,
@@ -2077,9 +2008,7 @@ impl ICalendar {
                         Key::Property(JSCalendarProperty::Trigger),
                         Value::Object(obj),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Trigger::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Trigger);
                 }
                 (
                     ICalendarProperty::Trigger,
@@ -2104,9 +2033,7 @@ impl ICalendar {
                             ),
                         ])),
                     );
-                    entry.set_converted_to::<I>(&[JSCalendarProperty::Trigger::<I>
-                        .to_string()
-                        .as_ref()]);
+                    entry.set_converted_to_property(&JSCalendarProperty::<I>::Trigger);
                 }
                 (
                     ICalendarProperty::Uid,
@@ -2147,10 +2074,7 @@ impl ICalendar {
                         state.patch_objects.push((ptr, patch));
                         continue;
                     }
-                    entry.entry.values = [ICalendarValue::Text(value)]
-                        .into_iter()
-                        .chain(values)
-                        .collect();
+                    entry.entry.values = values.prepend(Some(ICalendarValue::Text(value)));
                 }
                 (
                     ICalendarProperty::Description | ICalendarProperty::Summary,
@@ -2164,7 +2088,7 @@ impl ICalendar {
                 }
 
                 (_, value, _) => {
-                    entry.entry.values = [value].into_iter().flatten().chain(values).collect();
+                    entry.entry.values = values.prepend(value);
                 }
             }
 
@@ -2199,24 +2123,89 @@ impl ICalendar {
     }
 }
 
+trait PrependValue {
+    fn prepend(self, first: Option<ICalendarValue>) -> SmallVec<[ICalendarValue; 1]>;
+}
+
+impl PrependValue for IntoIter<[ICalendarValue; 1]> {
+    fn prepend(self, first: Option<ICalendarValue>) -> SmallVec<[ICalendarValue; 1]> {
+        let mut values = SmallVec::with_capacity(usize::from(first.is_some()) + self.len());
+        values.extend(first);
+        values.extend(self);
+        values
+    }
+}
+
 fn period_to_date_time(
     value: &ICalendarValue,
     tz: Tz,
 ) -> Option<(ZonedDateTime, ICalendarDuration)> {
     match value {
-        ICalendarValue::Period(ICalendarPeriod::Range { start, end }) => {
-            let start = start.to_date_time()?.to_date_time_with_tz(tz)?;
-            let end = end.to_date_time()?.to_date_time_with_tz(tz)?;
+        ICalendarValue::Period(period) => match period.as_ref() {
+            ICalendarPeriod::Range { start, end } => {
+                let start = start.to_date_time()?.to_date_time_with_tz(tz)?;
+                let end = end.to_date_time()?.to_date_time_with_tz(tz)?;
 
-            Some((
-                start,
-                ICalendarDuration::from_seconds(end.signed_duration_since(start).as_secs()),
-            ))
-        }
-        ICalendarValue::Period(ICalendarPeriod::Duration { start, duration }) => Some((
-            start.to_date_time()?.to_date_time_with_tz(tz)?,
-            duration.clone(),
-        )),
+                Some((
+                    start,
+                    ICalendarDuration::from_seconds(end.signed_duration_since(start).as_secs()),
+                ))
+            }
+            ICalendarPeriod::Duration { start, duration } => Some((
+                start.to_date_time()?.to_date_time_with_tz(tz)?,
+                duration.clone(),
+            )),
+        },
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PrependValue;
+    use crate::icalendar::ICalendarValue;
+    use smallvec::SmallVec;
+
+    #[test]
+    fn prepend_puts_the_first_value_back_in_front() {
+        let int = ICalendarValue::Integer;
+        for (values, taken, replace, expected) in [
+            (vec![], 1, false, vec![]),
+            (vec![int(0)], 1, false, vec![int(0)]),
+            (vec![int(0)], 1, true, vec![int(-1)]),
+            (
+                vec![int(0), int(1), int(2)],
+                1,
+                false,
+                vec![int(0), int(1), int(2)],
+            ),
+            (
+                vec![int(0), int(1), int(2)],
+                1,
+                true,
+                vec![int(-1), int(1), int(2)],
+            ),
+            (vec![int(0), int(1)], 0, false, vec![int(0), int(1)]),
+            (vec![int(0), int(1), int(2)], 2, false, vec![int(1), int(2)]),
+            (vec![int(0), int(1), int(2)], 2, true, vec![int(-1), int(2)]),
+            (vec![int(0)], 2, true, vec![]),
+        ] {
+            for spare in [0, 8] {
+                let mut buffer =
+                    SmallVec::<[ICalendarValue; 1]>::with_capacity(values.len() + spare);
+                buffer.extend(values.iter().cloned());
+                let mut rest = buffer.into_iter();
+                let first = (0..taken)
+                    .map(|_| rest.next())
+                    .last()
+                    .flatten()
+                    .map(|value| if replace { int(-1) } else { value });
+                assert_eq!(
+                    rest.prepend(first).as_slice(),
+                    expected.as_slice(),
+                    "{values:?} {taken} {replace}"
+                );
+            }
+        }
     }
 }

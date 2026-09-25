@@ -438,7 +438,7 @@ fn rfc9074_uids_skip_subcomponents() {
 fn rfc5545_3_6_removing_a_component_removes_children_stored_before_it() {
     let binary = |value: &str| {
         let mut entry = ICalendarEntry::new(ICalendarProperty::Attach);
-        entry.values = vec![ICalendarValue::Binary(value.as_bytes().to_vec())];
+        entry.values = [ICalendarValue::Binary(value.as_bytes().to_vec())].into();
         entry
     };
     let with_binaries = |component_type: ICalendarComponentType,

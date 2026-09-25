@@ -13,7 +13,7 @@ use crate::{
     icalendar::*,
     jscalendar::{
         JSCalendarDateTime, JSCalendarId, JSCalendarProperty, JSCalendarValue,
-        export::ConvertedComponent,
+        export::ConvertedComponent, ext::JSCalendarKeyExt,
     },
     jscontact::export::params::ParamValue,
 };
@@ -77,7 +77,7 @@ impl ICalendarEntry {
 
             if jsid
                 .map(Key::Borrowed)
-                .is_none_or(|prop_id| keys.iter().any(|k| k == &prop_id))
+                .is_none_or(|prop_id| keys.iter().any(|k| k.same_key(&prop_id)))
             {
                 self.import_converted_properties(std::mem::take(value));
                 conversions.converted_props_count += 1;
@@ -133,13 +133,15 @@ impl ICalendarEntry {
         params: Value<'_, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
     ) {
         for (key, value) in params.into_expanded_object() {
-            let mut values = match value {
-                Value::Array(values) => values.into_iter().filter_map(ParamValue::try_from_value),
-                value => vec![value]
-                    .into_iter()
-                    .filter_map(ParamValue::try_from_value),
-            }
-            .peekable();
+            let (first, rest) = match value {
+                Value::Array(values) => (None, values),
+                value => (Some(value), Vec::new()),
+            };
+            let mut values = first
+                .into_iter()
+                .chain(rest)
+                .filter_map(ParamValue::try_from_value)
+                .peekable();
 
             if values.peek().is_none() {
                 continue;
@@ -341,11 +343,9 @@ impl ICalendarEntry {
         self = self.with_date_time(dt);
 
         if let Some(ICalendarValue::PartialDateTime(start)) = self.values.pop() {
-            self.values
-                .push(ICalendarValue::Period(ICalendarPeriod::Duration {
-                    start: *start,
-                    duration,
-                }));
+            self.values.push(ICalendarValue::Period(Box::new(
+                ICalendarPeriod::Duration { start, duration },
+            )));
         }
 
         if !self.has_parameter(&ICalendarParameterName::Value) {

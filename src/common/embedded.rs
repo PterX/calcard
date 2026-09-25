@@ -7,7 +7,6 @@
 use ahash::AHashSet;
 
 use crate::{
-    common::Data,
     icalendar::{ICalendar, ICalendarProperty, ICalendarValue, Uri},
     vcard::{VCard, VCardProperty, VCardValue},
 };
@@ -46,8 +45,8 @@ impl ICalendar {
             .flat_map(|component| component.entries.iter())
             .flat_map(|entry| entry.values.iter())
             .filter_map(|value| match value {
-                ICalendarValue::Binary(data)
-                | ICalendarValue::Uri(Uri::Data(Data { data, .. })) => Some(data.as_slice()),
+                ICalendarValue::Binary(data) => Some(data.as_slice()),
+                ICalendarValue::Uri(Uri::Data(data)) => Some(data.data.as_slice()),
                 _ => None,
             })
     }
@@ -68,8 +67,8 @@ impl VCard {
                 )
             })
             .filter_map(|entry| match entry.values.first() {
-                Some(VCardValue::Binary(Data { data, .. })) if !data.is_empty() => {
-                    Some(data.as_slice())
+                Some(VCardValue::Binary(data)) if !data.data.is_empty() => {
+                    Some(data.data.as_slice())
                 }
                 _ => None,
             })
@@ -80,7 +79,7 @@ impl VCard {
             .iter()
             .flat_map(|entry| entry.values.iter())
             .filter_map(|value| match value {
-                VCardValue::Binary(Data { data, .. }) => Some(data.as_slice()),
+                VCardValue::Binary(data) => Some(data.data.as_slice()),
                 _ => None,
             })
     }

@@ -62,6 +62,7 @@ pub(super) struct ExportContext<'a, B> {
 }
 
 const DEFAULT_MAX_EXPANSIONS: usize = 3000;
+const ENTRY_CAPACITY_EXTRA: usize = 1;
 
 impl Default for ExportOptions {
     fn default() -> Self {
@@ -115,6 +116,56 @@ impl<R> ExportOptions<R> {
             error: None,
             rejected_patches: Vec::new(),
         }
+    }
+}
+
+impl<I: JSCalendarId, B: JSCalendarId> State<'_, I, B> {
+    fn entry_capacity(&self) -> usize {
+        self.entries
+            .iter()
+            .map(|(key, value)| match (key, value) {
+                (
+                    Key::Property(
+                        JSCalendarProperty::Participants
+                        | JSCalendarProperty::Links
+                        | JSCalendarProperty::Locations
+                        | JSCalendarProperty::VirtualLocations
+                        | JSCalendarProperty::Categories
+                        | JSCalendarProperty::RelatedTo
+                        | JSCalendarProperty::RecurrenceOverrides,
+                    ),
+                    Value::Object(members),
+                ) => members.len(),
+                (Key::Property(JSCalendarProperty::ICalendar), Value::Object(ical)) => ical
+                    .iter()
+                    .filter_map(|(key, value)| match (key, value) {
+                        (Key::Property(JSCalendarProperty::Properties), Value::Array(items)) => {
+                            Some(items.len())
+                        }
+                        _ => None,
+                    })
+                    .sum(),
+                (
+                    Key::Property(
+                        JSCalendarProperty::Type
+                        | JSCalendarProperty::Alerts
+                        | JSCalendarProperty::Entries
+                        | JSCalendarProperty::TimeZone
+                        | JSCalendarProperty::EndTimeZone
+                        | JSCalendarProperty::RecurrenceIdTimeZone
+                        | JSCalendarProperty::Locale
+                        | JSCalendarProperty::MainLocationId
+                        | JSCalendarProperty::DescriptionContentType
+                        | JSCalendarProperty::SentBy
+                        | JSCalendarProperty::Version
+                        | JSCalendarProperty::Method,
+                    ),
+                    _,
+                ) => 0,
+                _ => 1,
+            })
+            .sum::<usize>()
+            + ENTRY_CAPACITY_EXTRA
     }
 }
 

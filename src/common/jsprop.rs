@@ -7,6 +7,9 @@
 use jmap_tools::{Element, JsonPointer, JsonPointerItem, Property, Value};
 use std::{io::Write, iter::repeat_n};
 
+pub(crate) mod ordered;
+pub(crate) mod text;
+
 const KEY_CAPACITY: usize = 16;
 
 pub(crate) trait JSPropPointer<P: Property> {

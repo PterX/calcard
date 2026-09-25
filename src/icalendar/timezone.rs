@@ -268,15 +268,15 @@ impl ICalendar {
                                 ICalendarValue::PartialDateTime(dt) => {
                                     expand_range(&mut range, dt);
                                 }
-                                ICalendarValue::Period(ICalendarPeriod::Range { start, end }) => {
-                                    expand_range(&mut range, start);
-                                    expand_range(&mut range, end);
-                                }
-                                ICalendarValue::Period(ICalendarPeriod::Duration {
-                                    start, ..
-                                }) => {
-                                    expand_range(&mut range, start);
-                                }
+                                ICalendarValue::Period(period) => match period.as_ref() {
+                                    ICalendarPeriod::Range { start, end } => {
+                                        expand_range(&mut range, start);
+                                        expand_range(&mut range, end);
+                                    }
+                                    ICalendarPeriod::Duration { start, .. } => {
+                                        expand_range(&mut range, start);
+                                    }
+                                },
                                 _ => (),
                             }
                         }

@@ -4,9 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
+#[cfg(feature = "rkyv")]
+use crate::common::archive::{InlineVec, Unboxed};
 use crate::common::{
     CalendarScale, Data, IanaParse, IanaString, IanaType, LinkRelation, PartialDateTime,
 };
+use smallvec::SmallVec;
 use std::hash::{Hash, Hasher};
 
 pub mod builder;
@@ -69,7 +72,8 @@ pub struct ICalendarComponent {
 pub struct ICalendarEntry {
     pub name: ICalendarProperty,
     pub params: Vec<ICalendarParameter>,
-    pub values: Vec<ICalendarValue>,
+    #[cfg_attr(feature = "rkyv", rkyv(with = InlineVec))]
+    pub values: SmallVec<[ICalendarValue; 1]>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -87,10 +91,10 @@ pub enum ICalendarValue {
     Binary(Vec<u8>),
     Boolean(bool),
     Uri(Uri),
-    PartialDateTime(Box<PartialDateTime>),
+    PartialDateTime(PartialDateTime),
     Duration(ICalendarDuration),
     RecurrenceRule(Box<ICalendarRecurrenceRule>),
-    Period(ICalendarPeriod),
+    Period(#[cfg_attr(feature = "rkyv", rkyv(with = Unboxed))] Box<ICalendarPeriod>),
     Float(f64),
     Integer(i64),
     Text(String),
@@ -535,7 +539,7 @@ pub struct ICalendarDuration {
 )]
 #[cfg_attr(feature = "rkyv", rkyv(compare(PartialEq), derive(Debug)))]
 pub enum Uri {
-    Data(Data),
+    Data(#[cfg_attr(feature = "rkyv", rkyv(with = Unboxed))] Box<Data>),
     Location(String),
 }
 
@@ -878,6 +882,9 @@ pub enum ICalendarTransparency {
     Opaque,
     Transparent,
 }
+
+pub(crate) const VALUE_SIZE: usize = 56;
+pub(crate) const PARAMETER_VALUE_SIZE: usize = 48;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ValueSeparator {

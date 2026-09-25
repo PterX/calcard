@@ -8,24 +8,36 @@ use crate::{
     common::{
         Data, IanaString, IanaType,
         blob::{BlobIds, sniff_media_type},
+        format::AsciiPush,
+        jsprop::{
+            ordered::OrderedMap,
+            text::{AsciiString, PointerString},
+        },
     },
     jscontact::{
         JSContact, JSContactId, JSContactKind, JSContactProperty, JSContactType, JSContactValue,
         import::{
-            EntryState, ExtractedParams, PropIdKey, State, VCardConvertedProperty, VCardParams,
+            CardProperties, EntryState, ExtractedParams, Localization, Member, PropIdKey, PropIds,
+            State, VCardConvertedProperty, VCardParams,
         },
     },
     vcard::{
-        VCard, VCardEntry, VCardParameter, VCardParameterName, VCardProperty, VCardValue,
-        VCardValueType,
+        VCard, VCardEntry, VCardParameter, VCardParameterName, VCardParameterValue, VCardProperty,
+        VCardValue, VCardValueType,
     },
 };
-use ahash::AHashMap;
 use jmap_tools::{JsonPointerHandler, JsonPointerItem, Key, Map, Property, Value};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, hash_map::Entry},
+    hash::{Hash, Hasher},
+    iter::once,
+    mem,
 };
+
+const NUMBERED_KEY_CAPACITY: usize = 8;
+
+#[derive(Clone, Copy)]
+struct LanguageTag<'x>(&'x str);
 
 impl<I, B> State<I, B>
 where
@@ -33,34 +45,30 @@ where
     B: JSContactId,
 {
     pub(super) fn new(vcard: &mut VCard, include_vcard_converted: bool) -> Self {
-        let mut entries = AHashMap::with_capacity(vcard.entries.len());
+        let mut entries = CardProperties::with_capacity(vcard.entries.len().min(20) + 4);
 
-        entries.extend([
-            (
-                Key::Property(JSContactProperty::Type),
-                Value::Element(JSContactValue::Type(JSContactType::Card)),
-            ),
-            (
-                Key::Property(JSContactProperty::Version),
-                Value::Str("1.0".into()),
-            ),
-        ]);
+        entries.insert(
+            JSContactProperty::Type,
+            Value::Element(JSContactValue::Type(JSContactType::Card)),
+        );
+        entries.insert(JSContactProperty::Version, Value::Str("1.0".into()));
 
-        // Find the default language and the most "popular" alt ids
         let mut default_language = None;
-        let mut language_map: HashMap<String, usize> = HashMap::new();
+        let mut language_counts: OrderedMap<LanguageTag<'_>, usize> = OrderedMap::default();
         let mut language_count = 0;
         let mut language_first_found = None;
-        let mut langful_names: HashSet<&VCardProperty> = HashSet::new();
-        let mut alt_ids: AHashMap<(&VCardProperty, &str), usize> = AHashMap::new();
+        let mut langful_names: OrderedMap<&VCardProperty, ()> = OrderedMap::default();
+        let mut name_alt_ids: OrderedMap<&str, usize> = OrderedMap::default();
+        let mut has_prop_id_lookups = false;
         for entry in &vcard.entries {
+            has_prop_id_lookups |= entry.looks_up_prop_ids();
             if let Some(lang) = entry.language() {
-                *language_map.entry(lang.to_ascii_lowercase()).or_default() += 1;
+                language_counts.upsert(LanguageTag(lang), || 0, |count| *count += 1);
                 if language_first_found.is_none() {
                     language_first_found = Some(lang);
                 }
                 language_count += 1;
-                langful_names.insert(&entry.name);
+                langful_names.insert_if_absent(&entry.name, ());
             }
 
             match &entry.name {
@@ -69,56 +77,55 @@ where
                         default_language = Some(lang.to_ascii_lowercase());
                     }
                 }
-                VCardProperty::N | VCardProperty::Adr => {
+                VCardProperty::N => {
                     if let Some(alt_id) = entry.alt_id() {
-                        *alt_ids.entry((&entry.name, alt_id)).or_default() += 1;
+                        name_alt_ids.upsert(alt_id, || 0, |count| *count += 1);
                     }
                 }
                 _ => (),
             }
         }
 
-        // Find the alt ids with the highest count
         let mut name_alt_id = None;
         let mut name_alt_id_count = 0;
-        for (&(prop, alt_id), &count) in &alt_ids {
-            match prop {
-                VCardProperty::N if count > name_alt_id_count => {
-                    name_alt_id = Some(alt_id.to_string());
-                    name_alt_id_count = count;
-                }
-                _ => (),
+        for (&alt_id, &count) in name_alt_ids.iter() {
+            if count > name_alt_id_count {
+                name_alt_id = Some(alt_id);
+                name_alt_id_count = count;
             }
         }
+        let name_alt_id = name_alt_id.map(str::to_string);
 
-        // Find the dominant language
         if default_language.is_none()
             && language_count > 1
-            && let Some((_, &min_count)) = language_map.iter().min_by_key(|&(_, count)| count)
-            && let Some((mut lang, max_count)) =
-                language_map.into_iter().max_by_key(|&(_, count)| count)
+            && let Some(min_count) = language_counts.iter().map(|(_, &count)| count).min()
+            && let Some((LanguageTag(most_used), max_count)) =
+                language_counts.into_iter().max_by_key(|&(_, count)| count)
             && max_count
                 > vcard
                     .entries
                     .iter()
                     .filter(|entry| {
-                        entry.language().is_none() && langful_names.contains(&entry.name)
+                        entry.language().is_none() && langful_names.contains_key(&entry.name)
                     })
                     .count()
         {
-            if max_count == min_count {
-                lang = language_first_found.unwrap().to_ascii_lowercase();
+            let lang = if max_count == min_count
+                && let Some(first) = language_first_found
+            {
+                first
+            } else {
+                most_used
             }
+            .to_ascii_lowercase();
 
-            let lang = lang.to_ascii_lowercase();
             default_language = Some(lang.clone());
             vcard
                 .entries
                 .push(VCardEntry::new(VCardProperty::Language).with_value(lang));
         }
 
-        // Move entries without a language to the top
-        vcard.entries.sort_unstable_by_key(|entry| {
+        let sort_key = |entry: &VCardEntry| {
             let lang = entry.language();
             let weight = u32::from(lang.is_some() && default_language.as_deref() != lang);
 
@@ -129,13 +136,16 @@ where
                 VCardProperty::Other(name) if name.eq_ignore_ascii_case("X-ABLabel") => weight + 3,
                 _ => weight,
             }
-        });
+        };
+        if !vcard.entries.is_sorted_by_key(sort_key) {
+            vcard.entries.sort_by_key(sort_key);
+        }
 
         Self {
             entries,
             default_language,
             localizations: Default::default(),
-            prop_ids: Default::default(),
+            prop_ids: PropIds::new(has_prop_id_lookups, &vcard.entries),
             vcard_converted_properties: Default::default(),
             vcard_properties: Default::default(),
             patch_objects: Default::default(),
@@ -156,12 +166,7 @@ where
         extract: &[VCardParameterName],
         top_property_name: JSContactProperty<I>,
         value_property_name: JSContactProperty<I>,
-        extra_properties: impl IntoIterator<
-            Item = (
-                Key<'static, JSContactProperty<I>>,
-                Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
-            ),
-        >,
+        extra_properties: [Option<Member<I, B>>; 2],
     ) {
         let value = if !matches!(
             entry.entry.name,
@@ -196,7 +201,7 @@ where
         ) {
             return false;
         }
-        let mut values = std::mem::take(&mut entry.entry.values).into_iter();
+        let mut values = mem::take(&mut entry.entry.values).into_iter();
         let Some(VCardValue::Binary(data)) = values.next() else {
             return false;
         };
@@ -242,17 +247,15 @@ where
                                 Value::Str(media_type.into_owned().into()),
                             )
                         }),
-                    ]
-                    .into_iter()
-                    .flatten(),
+                    ],
                 );
                 true
             }
             Err(bytes) => {
-                entry.entry.values = std::iter::once(VCardValue::Binary(Data {
+                entry.entry.values = once(VCardValue::Binary(Box::new(Data {
                     content_type: data.content_type,
                     data: bytes,
-                }))
+                })))
                 .chain(values)
                 .collect();
                 false
@@ -267,14 +270,14 @@ where
         top_property_name: JSContactProperty<I>,
         value_property_name: JSContactProperty<I>,
         value: Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
-        extra_properties: impl IntoIterator<
-            Item = (
-                Key<'static, JSContactProperty<I>>,
-                Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
-            ),
-        >,
+        extra_properties: [Option<Member<I, B>>; 2],
     ) {
-        let mut params = self.extract_params(&mut entry.entry.params, extract);
+        let mut params = ExtractedParams::default();
+        params.extract(
+            &mut entry.entry.params,
+            extract,
+            self.default_language.as_deref(),
+        );
         let prop_id = params.prop_id();
         let alt_id = params.alt_id();
         let sub_property = top_property_name.sub_property();
@@ -309,32 +312,37 @@ where
                     }
                 })
             {
-                entry.set_converted_to::<I>(&[
-                    JSContactProperty::Localizations::<I>.to_cow().as_ref(),
-                    language.as_str(),
-                    patch.as_str(),
-                ]);
+                entry.set_converted_to(|| {
+                    String::from_pointer([
+                        JSContactProperty::Localizations::<I>.to_cow().as_ref(),
+                        language.as_str(),
+                        patch.as_str(),
+                    ])
+                });
 
-                let localizations = self.localizations.entry(language).or_default();
-                let mut base_path = None;
+                self.localize(language, |localizations| {
+                    let base_path = patch
+                        .rsplit_once('/')
+                        .map_or(patch.as_str(), |(base, _)| base);
 
-                for (prop, value) in params.into_iter(&entry.entry.name) {
-                    let base_path = base_path.get_or_insert_with(|| {
-                        patch
-                            .rsplit_once('/')
-                            .map_or(patch.as_str(), |(base, _)| base)
-                    });
-                    localizations.push((format!("{}/{}", base_path, prop.to_string()), value));
-                }
+                    params
+                        .members::<I, B>(&entry.entry.name)
+                        .for_each(|prop, value| {
+                            localizations
+                                .push((format!("{}/{}", base_path, prop.to_string()), value));
+                        });
 
-                localizations.push((patch, value));
+                    localizations.push((patch, value));
+                });
                 return;
             } else {
                 entry.entry.params.push(VCardParameter::language(language));
             }
         }
 
-        let mut entries = self.get_mut_object_or_insert(top_property_name.clone());
+        let mut entries = self
+            .entries
+            .get_mut_object_or_insert(top_property_name.clone());
         if let Some(sub_property) = sub_property.clone() {
             let Some(sub_entries) = entries
                 .insert_or_get_mut(sub_property, Value::Object(Map::from(vec![])))
@@ -345,169 +353,36 @@ where
             entries = sub_entries;
         }
 
-        let mut obj = vec![(Key::Property(value_property_name.clone()), value)];
-        obj.extend(extra_properties);
-        obj.extend(params.into_iter(&entry.entry.name));
-        let prop_id = entries.insert_named(prop_id, Value::Object(Map::from(obj)));
+        let members = params.members::<I, B>(&entry.entry.name);
+        let mut obj =
+            Vec::with_capacity(1 + extra_properties.iter().flatten().count() + members.len());
+        obj.push((Key::Property(value_property_name.clone()), value));
+        obj.extend(extra_properties.into_iter().flatten());
+        members.append_to(&mut obj);
+        let prop_id = entries.named_key(prop_id);
 
         if let Some(sub_property) = sub_property {
-            entry.set_converted_to::<I>(&[
-                top_property_name.to_cow().as_ref(),
-                sub_property.to_cow().as_ref(),
-                prop_id.as_str(),
-                value_property_name.to_cow().as_ref(),
-            ]);
+            entry.set_converted_to(|| {
+                String::from_pointer([
+                    top_property_name.to_cow().as_ref(),
+                    sub_property.to_cow().as_ref(),
+                    prop_id.as_str(),
+                    value_property_name.to_cow().as_ref(),
+                ])
+            });
         } else {
-            entry.set_converted_to::<I>(&[
-                top_property_name.to_cow().as_ref(),
-                prop_id.as_str(),
-                value_property_name.to_cow().as_ref(),
-            ]);
+            entry.set_converted_to(|| {
+                String::from_pointer([
+                    top_property_name.to_cow().as_ref(),
+                    prop_id.as_str(),
+                    value_property_name.to_cow().as_ref(),
+                ])
+            });
         }
 
-        self.track_prop(&entry.entry, top_property_name, alt_id, prop_id);
-    }
-
-    pub(super) fn extract_params(
-        &self,
-        params: &mut Vec<VCardParameter>,
-        extract: &[VCardParameterName],
-    ) -> ExtractedParams {
-        let mut p = ExtractedParams::default();
-
-        for param in std::mem::take(params) {
-            match &param.name {
-                VCardParameterName::Language => {
-                    let v = param.value.into_text().to_ascii_lowercase();
-                    if p.language.is_none()
-                        && self.default_language.as_ref().is_none_or(|lang| lang != &v)
-                        && extract.contains(&VCardParameterName::Language)
-                    {
-                        p.language = Some(v);
-                    } else {
-                        params.push(VCardParameter::language(v));
-                    }
-                }
-                VCardParameterName::Pref
-                    if p.pref.is_none() && extract.contains(&VCardParameterName::Pref) =>
-                {
-                    p.pref = param.value.as_integer().and_then(|v| v.into_iana());
-                }
-                VCardParameterName::Author
-                    if p.author.is_none() && extract.contains(&VCardParameterName::Author) =>
-                {
-                    p.author = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::AuthorName
-                    if p.author_name.is_none()
-                        && extract.contains(&VCardParameterName::AuthorName) =>
-                {
-                    p.author_name = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Mediatype
-                    if p.media_type.is_none()
-                        && extract.contains(&VCardParameterName::Mediatype) =>
-                {
-                    p.media_type = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Calscale
-                    if p.calscale.is_none() && extract.contains(&VCardParameterName::Calscale) =>
-                {
-                    p.calscale = param.value.into_calscale();
-                }
-                VCardParameterName::SortAs
-                    if p.sort_as.is_none() && extract.contains(&VCardParameterName::SortAs) =>
-                {
-                    p.sort_as = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Geo
-                    if p.geo.is_none() && extract.contains(&VCardParameterName::Geo) =>
-                {
-                    p.geo = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Tz
-                    if p.tz.is_none() && extract.contains(&VCardParameterName::Tz) =>
-                {
-                    p.tz = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Index
-                    if p.index.is_none() && extract.contains(&VCardParameterName::Index) =>
-                {
-                    p.index = param.value.as_integer().and_then(|v| v.into_iana());
-                }
-                VCardParameterName::Level
-                    if p.level.is_none() && extract.contains(&VCardParameterName::Level) =>
-                {
-                    p.level = param.value.into_level();
-                }
-                VCardParameterName::Cc
-                    if p.country_code.is_none() && extract.contains(&VCardParameterName::Cc) =>
-                {
-                    p.country_code = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Created
-                    if p.created.is_none() && extract.contains(&VCardParameterName::Created) =>
-                {
-                    p.created = param.value.into_timestamp().and_then(|v| v.into_iana());
-                }
-                VCardParameterName::Label
-                    if p.label.is_none() && extract.contains(&VCardParameterName::Label) =>
-                {
-                    p.label = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Phonetic
-                    if p.phonetic_system.is_none()
-                        && extract.contains(&VCardParameterName::Phonetic) =>
-                {
-                    p.phonetic_system = param.value.into_phonetic();
-                }
-                VCardParameterName::Script
-                    if p.phonetic_script.is_none()
-                        && extract.contains(&VCardParameterName::Script) =>
-                {
-                    p.phonetic_script = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::ServiceType
-                    if p.service_type.is_none()
-                        && extract.contains(&VCardParameterName::ServiceType) =>
-                {
-                    p.service_type = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Username
-                    if p.username.is_none() && extract.contains(&VCardParameterName::Username) =>
-                {
-                    p.username = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::PropId
-                    if p.prop_id.is_none() && extract.contains(&VCardParameterName::PropId) =>
-                {
-                    p.prop_id = Some(param.value.into_text().into_owned());
-                }
-                VCardParameterName::Altid if p.alt_id.is_none() => {
-                    p.alt_id = param.value.as_text().map(|v| v.to_string());
-                    params.push(param);
-                }
-                VCardParameterName::Type if extract.contains(&VCardParameterName::Type) => {
-                    if let Some(typ) = param.value.into_type() {
-                        if p.types.is_empty() {
-                            p.types = vec![typ];
-                        } else {
-                            p.types.push(typ);
-                        }
-                    }
-                }
-                VCardParameterName::Jscomps if extract.contains(&VCardParameterName::Jscomps) => {
-                    if let Some(jscomps) = param.value.into_jscomps() {
-                        p.jscomps = jscomps;
-                    }
-                }
-                _ => {
-                    params.push(param);
-                }
-            }
-        }
-
-        p
+        self.prop_ids
+            .track(&entry.entry, top_property_name, alt_id, &prop_id);
+        entries.insert_unchecked(Key::Owned(prop_id), Value::Object(Map::from(obj)));
     }
 
     #[inline]
@@ -515,46 +390,53 @@ where
         &mut self,
         key: JSContactProperty<I>,
     ) -> &mut Map<'static, JSContactProperty<I>, JSContactValue<I, B>> {
-        self.entries
-            .entry(Key::Property(key))
-            .or_insert_with(|| Value::Object(Map::from(Vec::new())))
-            .as_object_mut()
-            .unwrap()
+        self.entries.get_mut_object_or_insert(key)
     }
 
     #[inline]
     pub(super) fn has_property(&self, key: JSContactProperty<I>) -> bool {
-        self.entries.contains_key(&Key::Property(key))
+        self.entries.contains(&key)
+    }
+
+    pub(super) fn localize(
+        &mut self,
+        language: String,
+        update: impl FnOnce(&mut Localization<I, B>),
+    ) {
+        self.localizations.upsert(language, Vec::new, update);
     }
 
     pub(super) fn add_conversion_props(&mut self, mut entry: EntryState) {
         if self.include_vcard_converted {
             if let Some(converted_to) = entry.converted_to.take() {
-                if entry.map_name || !entry.entry.params.is_empty() || entry.entry.group.is_some() {
+                if entry.has_conversion_params() {
                     let mut value_type = None;
 
-                    match self.vcard_converted_properties.entry(converted_to) {
-                        Entry::Occupied(mut conv_prop) => {
-                            entry.jcal_parameters(&mut conv_prop.get_mut().params, &mut value_type);
+                    match self.vcard_converted_properties.get_mut(&converted_to) {
+                        Some(conv_prop) => {
+                            entry.jcal_parameters(&mut conv_prop.params, &mut value_type);
                         }
-                        Entry::Vacant(conv_prop) => {
+                        None => {
                             let mut params = VCardParams::default();
                             entry.jcal_parameters(&mut params, &mut value_type);
                             if let Some(value_type) = value_type {
-                                params.0.insert(
+                                params.set(
                                     VCardParameterName::Value,
                                     vec![Value::Str(value_type.into_string())],
                                 );
                             }
                             if !params.0.is_empty() || entry.map_name {
-                                conv_prop.insert(VCardConvertedProperty {
-                                    name: if entry.map_name {
-                                        Some(entry.entry.name)
-                                    } else {
-                                        None
+                                self.vcard_converted_properties.push(
+                                    converted_to,
+                                    VCardConvertedProperty {
+                                        name: if entry.map_name {
+                                            Some(entry.entry.name)
+                                        } else {
+                                            None
+                                        },
+                                        params,
                                     },
-                                    params,
-                                });
+                                );
                             }
                         }
                     }
@@ -565,23 +447,26 @@ where
 
                 entry.jcal_parameters(&mut params, &mut value_type);
 
-                let values = if entry.entry.values.len() == 1 {
-                    entry
-                        .entry
-                        .values
-                        .into_iter()
-                        .next()
-                        .unwrap()
-                        .into_jscontact_value(value_type.as_ref())
-                } else {
-                    let mut values = Vec::with_capacity(entry.entry.values.len());
-                    for value in entry.entry.values {
-                        values.push(value.into_jscontact_value(value_type.as_ref()));
+                let mut values = entry.entry.values.into_iter();
+                let values = match (values.next(), values.len()) {
+                    (Some(value), 0) => value.into_jscontact_value(value_type.as_ref()),
+                    (first, _) => Value::Array(
+                        first
+                            .into_iter()
+                            .chain(values)
+                            .map(|value| value.into_jscontact_value(value_type.as_ref()))
+                            .collect(),
+                    ),
+                };
+                let name = match entry.entry.name {
+                    VCardProperty::Other(mut name) => {
+                        name.make_ascii_lowercase();
+                        name
                     }
-                    Value::Array(values)
+                    name => name.as_str().to_ascii_lowercase(),
                 };
                 self.vcard_properties.push(Value::Array(vec![
-                    Value::Str(entry.entry.name.as_str().to_ascii_lowercase().into()),
+                    Value::Str(name.into()),
                     Value::Object(
                         params
                             .into_jscontact_value()
@@ -598,23 +483,6 @@ where
         }
     }
 
-    #[inline]
-    pub(super) fn track_prop(
-        &mut self,
-        entry: &VCardEntry,
-        prop_js: JSContactProperty<I>,
-        alt_id: Option<String>,
-        prop_id: String,
-    ) {
-        self.prop_ids.push(PropIdKey {
-            prop_id,
-            prop_js,
-            prop: entry.name.clone(),
-            group: entry.group.clone(),
-            alt_id,
-        });
-    }
-
     pub(super) fn find_prop_id(
         &self,
         prop: &VCardProperty,
@@ -622,6 +490,7 @@ where
         alt_id: Option<&str>,
     ) -> Option<&str> {
         self.prop_ids
+            .keys
             .iter()
             .find(|p| {
                 p.prop == *prop && p.group.as_deref() == group && p.alt_id.as_deref() == alt_id
@@ -630,11 +499,15 @@ where
     }
 
     pub(super) fn find_entry_by_group(&self, group: Option<&str>) -> Option<&PropIdKey<I>> {
-        self.prop_ids.iter().find(|p| p.group.as_deref() == group)
+        self.prop_ids
+            .keys
+            .iter()
+            .find(|p| p.group.as_deref() == group)
     }
 
     pub(super) fn has_prop_id(&self, prop: &VCardProperty, prop_id: &str) -> bool {
         self.prop_ids
+            .keys
             .iter()
             .any(|p| p.prop == *prop && p.prop_id == prop_id)
     }
@@ -642,7 +515,7 @@ where
     pub(super) fn into_jscontact(mut self) -> JSContact<'static, I, B> {
         if !self.localizations.is_empty() {
             self.entries.insert(
-                Key::Property(JSContactProperty::Localizations),
+                JSContactProperty::Localizations,
                 Value::Object(
                     self.localizations
                         .into_iter()
@@ -699,13 +572,11 @@ where
         }
 
         if !vcard_obj.is_empty() {
-            self.entries.insert(
-                Key::Property(JSContactProperty::VCard),
-                Value::Object(vcard_obj),
-            );
+            self.entries
+                .insert(JSContactProperty::VCard, Value::Object(vcard_obj));
         }
 
-        let mut obj = Value::Object(self.entries.into_iter().collect());
+        let mut obj = Value::Object(self.entries.into_map());
         if !self.patch_objects.is_empty() {
             for (ptr, patch) in self.patch_objects {
                 patch_card(&mut obj, ptr.as_slice(), patch);
@@ -713,6 +584,23 @@ where
         }
 
         JSContact(obj)
+    }
+}
+
+impl PartialEq for LanguageTag<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_ascii_case(other.0)
+    }
+}
+
+impl Eq for LanguageTag<'_> {}
+
+impl Hash for LanguageTag<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for byte in self.0.bytes() {
+            state.write_u8(byte.to_ascii_lowercase());
+        }
+        state.write_usize(self.0.len());
     }
 }
 
@@ -761,6 +649,283 @@ impl VCardValue {
     }
 }
 
+impl ExtractedParams {
+    pub(super) fn extract(
+        &mut self,
+        params: &mut Vec<VCardParameter>,
+        extract: &[VCardParameterName],
+        default_language: Option<&str>,
+    ) {
+        let p = self;
+
+        params.retain_mut(|param| match &param.name {
+            VCardParameterName::Language => {
+                let v = param.take_value().into_text().to_ascii_lowercase();
+                if p.language.is_none()
+                    && default_language.is_none_or(|lang| lang != v)
+                    && extract.contains(&VCardParameterName::Language)
+                {
+                    p.language = Some(v);
+                    false
+                } else {
+                    param.value = VCardParameterValue::Text(v);
+                    true
+                }
+            }
+            VCardParameterName::Pref
+                if p.pref.is_none() && extract.contains(&VCardParameterName::Pref) =>
+            {
+                p.pref = param.value.as_integer().and_then(|v| v.into_iana());
+                false
+            }
+            VCardParameterName::Author
+                if p.author.is_none() && extract.contains(&VCardParameterName::Author) =>
+            {
+                p.author = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::AuthorName
+                if p.author_name.is_none() && extract.contains(&VCardParameterName::AuthorName) =>
+            {
+                p.author_name = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Mediatype
+                if p.media_type.is_none() && extract.contains(&VCardParameterName::Mediatype) =>
+            {
+                p.media_type = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Calscale
+                if p.calscale.is_none() && extract.contains(&VCardParameterName::Calscale) =>
+            {
+                p.calscale = param.take_value().into_calscale();
+                false
+            }
+            VCardParameterName::SortAs
+                if p.sort_as.is_none() && extract.contains(&VCardParameterName::SortAs) =>
+            {
+                p.sort_as = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Geo
+                if p.geo.is_none() && extract.contains(&VCardParameterName::Geo) =>
+            {
+                p.geo = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Tz
+                if p.tz.is_none() && extract.contains(&VCardParameterName::Tz) =>
+            {
+                p.tz = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Index
+                if p.index.is_none() && extract.contains(&VCardParameterName::Index) =>
+            {
+                p.index = param.value.as_integer().and_then(|v| v.into_iana());
+                false
+            }
+            VCardParameterName::Level
+                if p.level.is_none() && extract.contains(&VCardParameterName::Level) =>
+            {
+                p.level = param.take_value().into_level();
+                false
+            }
+            VCardParameterName::Cc
+                if p.country_code.is_none() && extract.contains(&VCardParameterName::Cc) =>
+            {
+                p.country_code = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Created
+                if p.created.is_none() && extract.contains(&VCardParameterName::Created) =>
+            {
+                p.created = param
+                    .take_value()
+                    .into_timestamp()
+                    .and_then(|v| v.into_iana());
+                false
+            }
+            VCardParameterName::Label
+                if p.label.is_none() && extract.contains(&VCardParameterName::Label) =>
+            {
+                p.label = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Phonetic
+                if p.phonetic_system.is_none()
+                    && extract.contains(&VCardParameterName::Phonetic) =>
+            {
+                p.phonetic_system = param.take_value().into_phonetic();
+                false
+            }
+            VCardParameterName::Script
+                if p.phonetic_script.is_none() && extract.contains(&VCardParameterName::Script) =>
+            {
+                p.phonetic_script = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::ServiceType
+                if p.service_type.is_none()
+                    && extract.contains(&VCardParameterName::ServiceType) =>
+            {
+                p.service_type = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Username
+                if p.username.is_none() && extract.contains(&VCardParameterName::Username) =>
+            {
+                p.username = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::PropId
+                if p.prop_id.is_none() && extract.contains(&VCardParameterName::PropId) =>
+            {
+                p.prop_id = Some(param.take_value().into_text().into_owned());
+                false
+            }
+            VCardParameterName::Altid if p.alt_id.is_none() => {
+                p.alt_id = param.value.as_text().map(|v| v.to_string());
+                true
+            }
+            VCardParameterName::Type if extract.contains(&VCardParameterName::Type) => {
+                if let Some(typ) = param.take_value().into_type() {
+                    p.types.push(typ);
+                }
+                false
+            }
+            VCardParameterName::Jscomps if extract.contains(&VCardParameterName::Jscomps) => {
+                if let Some(jscomps) = param.take_value().into_jscomps() {
+                    p.jscomps = jscomps;
+                }
+                false
+            }
+            _ => true,
+        });
+    }
+}
+
+pub(super) trait NamedKey {
+    fn named_key(&self, key: Option<String>) -> String;
+}
+
+impl<I: JSContactId, B: JSContactId> NamedKey
+    for Map<'static, JSContactProperty<I>, JSContactValue<I, B>>
+{
+    fn named_key(&self, key: Option<String>) -> String {
+        let number = self.len() as u64 + 1;
+        let key = key.unwrap_or_else(|| {
+            let mut key = AsciiString::with_capacity(NUMBERED_KEY_CAPACITY);
+            let _ = key.push_byte(b'k').and_then(|()| key.push_u64(number));
+            key.into_string()
+        });
+        if self.contains_key(&Key::Borrowed(key.as_str())) {
+            let mut key = AsciiString::from(key);
+            let _ = key.push_byte(b'-').and_then(|()| key.push_u64(number));
+            key.into_string()
+        } else {
+            key
+        }
+    }
+}
+
+impl<I: JSContactId> PropIds<I> {
+    fn new(is_enabled: bool, entries: &[VCardEntry]) -> Self {
+        Self {
+            keys: if is_enabled {
+                Vec::with_capacity(
+                    entries
+                        .iter()
+                        .filter(|entry| entry.name.is_named_property())
+                        .count(),
+                )
+            } else {
+                Vec::new()
+            },
+            is_enabled,
+        }
+    }
+
+    pub(super) fn track(
+        &mut self,
+        entry: &VCardEntry,
+        prop_js: JSContactProperty<I>,
+        alt_id: Option<String>,
+        prop_id: &str,
+    ) {
+        if self.is_enabled {
+            self.keys.push(PropIdKey {
+                prop_id: prop_id.to_string(),
+                prop_js,
+                prop: entry.name.clone(),
+                group: entry.group.clone(),
+                alt_id,
+            });
+        }
+    }
+}
+
+impl VCardEntry {
+    fn looks_up_prop_ids(&self) -> bool {
+        match &self.name {
+            VCardProperty::Birthplace
+            | VCardProperty::Deathplace
+            | VCardProperty::Role
+            | VCardProperty::Tz
+            | VCardProperty::Geo => true,
+            VCardProperty::Other(name)
+                if self.group.is_some() && name.eq_ignore_ascii_case("X-ABLabel") =>
+            {
+                true
+            }
+            _ => self
+                .params
+                .iter()
+                .any(|param| param.name == VCardParameterName::Language),
+        }
+    }
+}
+
+impl VCardProperty {
+    fn is_named_property(&self) -> bool {
+        matches!(
+            self,
+            VCardProperty::Source
+                | VCardProperty::OrgDirectory
+                | VCardProperty::Anniversary
+                | VCardProperty::Bday
+                | VCardProperty::Deathdate
+                | VCardProperty::Birthplace
+                | VCardProperty::Deathplace
+                | VCardProperty::Pronouns
+                | VCardProperty::Nickname
+                | VCardProperty::Photo
+                | VCardProperty::Logo
+                | VCardProperty::Sound
+                | VCardProperty::Adr
+                | VCardProperty::Email
+                | VCardProperty::Impp
+                | VCardProperty::Lang
+                | VCardProperty::Socialprofile
+                | VCardProperty::Tel
+                | VCardProperty::ContactUri
+                | VCardProperty::Title
+                | VCardProperty::Role
+                | VCardProperty::Hobby
+                | VCardProperty::Interest
+                | VCardProperty::Expertise
+                | VCardProperty::Org
+                | VCardProperty::Note
+                | VCardProperty::Url
+                | VCardProperty::Key
+                | VCardProperty::Caladruri
+                | VCardProperty::Fburl
+                | VCardProperty::Caluri
+        )
+    }
+}
+
 fn patch_card<I: JSContactId, B: JSContactId>(
     value: &mut Value<'static, JSContactProperty<I>, JSContactValue<I, B>>,
     pointer: &[JsonPointerItem<JSContactProperty<I>>],
@@ -795,5 +960,69 @@ fn patch_card<I: JSContactId, B: JSContactId>(
                 .is_some_and(|(_, item)| patch_card(item, rest, patch))
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LanguageTag, NamedKey};
+    use crate::{
+        common::{
+            jsprop::ordered::{INDEX_THRESHOLD, OrderedMap},
+            xorshift::XorShift,
+        },
+        jscontact::{JSContactProperty, JSContactValue},
+    };
+    use jmap_tools::{Key, Map, Value};
+
+    type TestMap = Map<'static, JSContactProperty<String>, JSContactValue<String, String>>;
+
+    #[test]
+    fn language_tags_count_case_insensitively_past_the_index_threshold() {
+        let lower = (0..4 * INDEX_THRESHOLD)
+            .map(|index| format!("l{index}-x"))
+            .collect::<Vec<_>>();
+        let upper = lower
+            .iter()
+            .map(|language| language.to_ascii_uppercase())
+            .collect::<Vec<_>>();
+        let mut counts = OrderedMap::<LanguageTag<'_>, usize>::default();
+        for language in lower.iter().chain(&upper) {
+            counts.upsert(LanguageTag(language), || 0, |count| *count += 1);
+        }
+        assert_eq!(counts.len(), lower.len());
+        assert!(
+            counts
+                .iter()
+                .zip(&lower)
+                .all(|((tag, &count), language)| tag.0 == language && count == 2)
+        );
+    }
+
+    #[test]
+    fn named_key_matches_insert_named() {
+        const KEYS: &[&str] = &[
+            "k1", "k2", "k3", "k4", "k10", "k2-3", "k1-2", "k4-5", "a", "", "name", "kind",
+        ];
+        let mut rng = XorShift::new(0x2545_f491_4f6c_dd1d);
+        let mut next = |n: usize| rng.below(n);
+        for _ in 0..5_000 {
+            let mut map = TestMap::new();
+            for _ in 0..next(12) {
+                let key = KEYS[next(KEYS.len())];
+                if next(4) == 0 {
+                    map.insert_unchecked(Key::Property(JSContactProperty::Name), Value::Null);
+                } else {
+                    map.insert_unchecked(Key::Owned(key.to_string()), Value::Null);
+                }
+            }
+            let key = (next(3) != 0).then(|| KEYS[next(KEYS.len())].to_string());
+            let mut expected_map = map.clone();
+            let expected = expected_map.insert_named(key.clone(), Value::Bool(true));
+            let named = map.named_key(key);
+            map.insert_unchecked(Key::Owned(named.clone()), Value::Bool(true));
+            assert_eq!(named, expected);
+            assert_eq!(format!("{map:?}"), format!("{expected_map:?}"));
+        }
     }
 }

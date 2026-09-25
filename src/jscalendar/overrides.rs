@@ -5,16 +5,16 @@
  */
 
 use crate::{
-    common::{IanaParse, elements::Elements},
+    common::{IanaParse, elements::Elements, jsprop::text::ConvertedKeys},
     icalendar::ICalendarProperty,
     jscalendar::{
         JSCalendarDateTime, JSCalendarId, JSCalendarProperty, JSCalendarValue,
-        ext::JSCalendarKeyExt,
+        ext::{JSCalendarKeyExt, JSCalendarObjectExt, JSCalendarPatch},
     },
 };
 use ahash::AHashMap;
 use jmap_tools::{JsonPointerHandler, JsonPointerItem, Key, Map, Value};
-use std::{borrow::Cow, str::FromStr};
+use std::{borrow::Cow, ptr, str::FromStr};
 
 type JSCalendarMap<'x, I, B> = Map<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>;
 type JSCalendarObject<'x, I, B> = Value<'x, JSCalendarProperty<I>, JSCalendarValue<I, B>>;
@@ -72,7 +72,98 @@ impl SeriesDates {
     }
 }
 
+trait OverrideMapExt<I: JSCalendarId>: Sized {
+    fn last_object(&self, property: &JSCalendarProperty<I>) -> Option<&Self>;
+    fn converted_override_dates(&self) -> Vec<JSCalendarDateTime>;
+    fn reaches_template(&self, is_converted: impl FnMut() -> bool) -> bool;
+}
+
+impl<I: JSCalendarId, B: JSCalendarId> OverrideMapExt<I> for JSCalendarMap<'_, I, B> {
+    fn last_object(&self, property: &JSCalendarProperty<I>) -> Option<&Self> {
+        self.as_vec()
+            .iter()
+            .rev()
+            .find_map(|(key, value)| match (key, value) {
+                (Key::Property(key), Value::Object(obj)) if key == property => Some(obj),
+                _ => None,
+            })
+    }
+
+    fn converted_override_dates(&self) -> Vec<JSCalendarDateTime> {
+        self.last_object(&JSCalendarProperty::ICalendar)
+            .into_iter()
+            .flat_map(|ical| ical.iter())
+            .filter_map(|(key, value)| match (key, value) {
+                (Key::Property(JSCalendarProperty::ConvertedProperties), Value::Object(props)) => {
+                    Some(props.keys())
+                }
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|key| match key.clone().into_converted_keys().as_slice() {
+                [
+                    Key::Property(JSCalendarProperty::RecurrenceOverrides),
+                    Key::Property(JSCalendarProperty::DateTime(dt)),
+                    ..,
+                ] => Some(*dt),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn reaches_template(&self, mut is_converted: impl FnMut() -> bool) -> bool {
+        let exported = || {
+            self.iter().filter(|(key, value)| {
+                !key.is_forbidden_override_key()
+                    && (!matches!(key, Key::Property(JSCalendarProperty::Excluded))
+                        || matches!(value, Value::Bool(true)))
+            })
+        };
+        let mut members = exported();
+        match (members.next(), members.next()) {
+            (None, _) => false,
+            (Some((key, Value::Element(JSCalendarValue::Duration(_)))), None)
+                if key.same_key(&Key::Property(JSCalendarProperty::Duration)) && is_converted() =>
+            {
+                false
+            }
+            _ => !exported().any(|(key, value)| {
+                matches!(value, Value::Bool(true))
+                    && key.same_key(&Key::Property(JSCalendarProperty::Excluded))
+            }),
+        }
+    }
+}
+
 impl<'x, I: JSCalendarId, B: JSCalendarId> OverrideTemplate<'x, I, B> {
+    pub(crate) fn uses(
+        base: &JSCalendarMap<'x, I, B>,
+        overrides: &JSCalendarMap<'x, I, B>,
+    ) -> usize {
+        let instances = overrides
+            .values()
+            .filter(|patch| patch.is_instance_patch())
+            .count();
+        if instances == 0
+            || !base
+                .last_object(&JSCalendarProperty::RecurrenceOverrides)
+                .is_some_and(|exported| ptr::eq(exported, overrides))
+        {
+            return instances;
+        }
+        let mut converted = None;
+        let has_instance = overrides.iter().any(|(key, patch)| match (key, patch) {
+            (Key::Property(JSCalendarProperty::DateTime(dt)), Value::Object(patch)) => patch
+                .reaches_template(|| {
+                    converted
+                        .get_or_insert_with(|| base.converted_override_dates())
+                        .contains(dt)
+                }),
+            _ => false,
+        });
+        if has_instance { instances } else { 0 }
+    }
+
     pub(crate) fn new(base: &JSCalendarMap<'x, I, B>, uses: usize) -> Self {
         let mut entries = Map::from(Vec::with_capacity(base.len()));
         let mut has_participants = false;
@@ -122,7 +213,7 @@ impl<'x, I: JSCalendarId, B: JSCalendarId> OverrideTemplate<'x, I, B> {
             (JSCalendarProperty::Due, due),
         ] {
             if let Some(dt) = dt
-                && let Some(value) = self.entries.get_mut(&Key::Property(property))
+                && let Some(value) = self.entries.lookup_mut(&Key::Property(property))
             {
                 *value = Value::Element(JSCalendarValue::DateTime(dt));
             }
@@ -155,12 +246,11 @@ impl<'x, I: JSCalendarId, B: JSCalendarId> OverrideTemplate<'x, I, B> {
                 key => {
                     if let Value::Object(entries) = &mut instance {
                         if value.is_null() {
-                            if let Some(pos) = entries.as_vec().iter().position(|(k, _)| k == &key)
-                            {
+                            if let Some(pos) = entries.key_position(&key) {
                                 entries.as_mut_vec().remove(pos);
                             }
                         } else {
-                            entries.insert(key, value);
+                            entries.upsert(key, value);
                         }
                     }
                 }
@@ -173,7 +263,7 @@ impl<'x, I: JSCalendarId, B: JSCalendarId> OverrideTemplate<'x, I, B> {
 
         if self.has_participants
             && instance
-                .get(&Key::Property(JSCalendarProperty::Participants))
+                .lookup(&Key::Property(JSCalendarProperty::Participants))
                 .and_then(Value::as_object)
                 .is_none_or(|participants| participants.is_empty())
         {
@@ -306,7 +396,7 @@ impl<'a, I: JSCalendarId, B: JSCalendarId> OverrideDiff<'a, I, B> {
         Self {
             base,
             base_ical: base
-                .get(&Key::Property(JSCalendarProperty::ICalendar))
+                .lookup(&Key::Property(JSCalendarProperty::ICalendar))
                 .and_then(Value::as_object)
                 .and_then(instance_ical_clone),
             dates: SeriesDates::new(base),
@@ -330,7 +420,7 @@ impl<'a, I: JSCalendarId, B: JSCalendarId> OverrideDiff<'a, I, B> {
                     Key::Property(JSCalendarProperty::Start | JSCalendarProperty::ICalendar)
                 )
                 && !inherited.covers_key(key)
-                && !instance.contains_key(key)
+                && instance.key_position(key).is_none()
             {
                 patch.insert_unchecked(key.to_owned(), Value::Null);
             }
@@ -341,12 +431,12 @@ impl<'a, I: JSCalendarId, B: JSCalendarId> OverrideDiff<'a, I, B> {
         {
             inherit_date_conversions(&mut instance, base_ical, inherited);
         }
-        let has_ical = match instance.get_mut(&ical_key) {
+        let has_ical = match instance.lookup_mut(&ical_key) {
             Some(Value::Object(obj)) => retain_instance_ical(obj),
             _ => false,
         };
         if !has_ical {
-            if let Some(pos) = instance.as_vec().iter().position(|(k, _)| k == &ical_key) {
+            if let Some(pos) = instance.key_position(&ical_key) {
                 instance.as_mut_vec().remove(pos);
             }
             if self.base_ical.is_some() {
@@ -383,7 +473,7 @@ impl<'a, I: JSCalendarId, B: JSCalendarId> OverrideDiff<'a, I, B> {
                     ),
                     _,
                 ) => None,
-                (key, _) => self.base.get(key),
+                (key, _) => self.base.lookup(key),
             };
 
             match (base_value, key, value) {
@@ -411,7 +501,7 @@ fn inherit_date_conversions<I: JSCalendarId, B: JSCalendarId>(
     inherited: Inherited,
 ) {
     let converted_key = Key::Property(JSCalendarProperty::ConvertedProperties);
-    let Some(Value::Object(base_converted)) = base_ical.get(&converted_key) else {
+    let Some(Value::Object(base_converted)) = base_ical.lookup(&converted_key) else {
         return;
     };
     let mut conversions = base_converted
@@ -422,25 +512,23 @@ fn inherit_date_conversions<I: JSCalendarId, B: JSCalendarId>(
         return;
     }
 
-    let Value::Object(ical) = instance.insert_or_get_mut(
+    let Value::Object(ical) = instance.upsert_or_get_mut(
         Key::Property(JSCalendarProperty::ICalendar),
-        Value::Object(Map::from(Vec::new())),
+        Value::new_object,
     ) else {
         return;
     };
     let name_key = Key::Property(JSCalendarProperty::Name);
-    if !ical.contains_key(&name_key)
-        && let Some(name) = base_ical.get(&name_key)
+    if ical.key_position(&name_key).is_none()
+        && let Some(name) = base_ical.lookup(&name_key)
     {
         ical.insert_unchecked(name_key, name.clone());
     }
-    let Value::Object(converted) =
-        ical.insert_or_get_mut(converted_key, Value::Object(Map::from(Vec::new())))
-    else {
+    let Value::Object(converted) = ical.upsert_or_get_mut(converted_key, Value::new_object) else {
         return;
     };
     for (key, value) in conversions {
-        if !converted.contains_key(key) {
+        if converted.key_position(key).is_none() {
             converted.insert_unchecked(key.clone(), value.clone());
         }
     }
@@ -460,7 +548,7 @@ fn diff_members<I: JSCalendarId, B: JSCalendarId>(
     for (id, member) in members.into_vec() {
         let pos = if base_members
             .get(next_pos)
-            .is_some_and(|(base_id, _)| base_id == &id)
+            .is_some_and(|(base_id, _)| base_id.same_key(&id))
         {
             Some(next_pos)
         } else {
@@ -491,14 +579,14 @@ fn diff_members<I: JSCalendarId, B: JSCalendarId>(
             (base_member, member) if same_value(base_member, &member) => {}
             (Value::Object(base_member), Value::Object(member))
                 if property == JSCalendarProperty::Participants
-                    && base_member.get(&Key::Property(JSCalendarProperty::CalendarAddress))
-                        != member.get(&Key::Property(JSCalendarProperty::CalendarAddress)) =>
+                    && base_member.lookup(&Key::Property(JSCalendarProperty::CalendarAddress))
+                        != member.lookup(&Key::Property(JSCalendarProperty::CalendarAddress)) =>
             {
                 patch.insert_unchecked(property.member_pointer([id]), Value::Object(member));
             }
             (Value::Object(base_member), Value::Object(member)) => {
                 for (sub_property, _) in base_member.iter() {
-                    if !member.contains_key(sub_property) {
+                    if member.key_position(sub_property).is_none() {
                         patch.insert_unchecked(
                             property.member_pointer([id.clone(), sub_property.to_owned()]),
                             Value::Null,
@@ -506,13 +594,13 @@ fn diff_members<I: JSCalendarId, B: JSCalendarId>(
                     }
                 }
                 for (sub_property, value) in member.into_vec() {
-                    match (base_member.get(&sub_property), value) {
+                    match (base_member.lookup(&sub_property), value) {
                         (Some(base_value), value) if same_value(base_value, &value) => {}
                         (Some(Value::Object(base_set)), Value::Object(set))
                             if is_boolean_set(base_set) && is_boolean_set(&set) =>
                         {
                             for (key, _) in base_set.iter() {
-                                if !set.contains_key(key) {
+                                if set.key_position(key).is_none() {
                                     patch.insert_unchecked(
                                         property.member_pointer([
                                             id.clone(),
@@ -525,7 +613,7 @@ fn diff_members<I: JSCalendarId, B: JSCalendarId>(
                             }
                             for (key, value) in set.into_vec() {
                                 if !base_set
-                                    .get(&key)
+                                    .lookup(&key)
                                     .is_some_and(|base| same_value(base, &value))
                                 {
                                     patch.insert_unchecked(
@@ -582,7 +670,7 @@ fn same_members<I: JSCalendarId, B: JSCalendarId>(
         return false;
     }
     for (pos, ((a_key, a_value), (b_key, b_value))) in a.iter().zip(b.iter()).enumerate() {
-        if a_key != b_key {
+        if !a_key.same_key(b_key) {
             let index = b
                 .iter()
                 .skip(pos)

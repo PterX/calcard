@@ -4,10 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
+#[cfg(feature = "rkyv")]
+use crate::common::archive::{InlineVec, Unboxed};
 use crate::{
     Entry, Parser,
     common::{CalendarScale, Data, IanaParse, IanaString, IanaType, PartialDateTime},
 };
+use smallvec::SmallVec;
 
 pub mod builder;
 pub(crate) mod media_type;
@@ -60,7 +63,8 @@ pub struct VCardEntry {
     pub group: Option<String>,
     pub name: VCardProperty,
     pub params: Vec<VCardParameter>,
-    pub values: Vec<VCardValue>,
+    #[cfg_attr(feature = "rkyv", rkyv(with = InlineVec))]
+    pub values: SmallVec<[VCardValue; 1]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -147,7 +151,7 @@ pub enum VCardValue {
     Float(f64),
     Boolean(bool),
     PartialDateTime(PartialDateTime),
-    Binary(Data),
+    Binary(#[cfg_attr(feature = "rkyv", rkyv(with = Unboxed))] Box<Data>),
     Sex(VCardSex),
     GramGender(VCardGramGender),
     Kind(VCardKind),

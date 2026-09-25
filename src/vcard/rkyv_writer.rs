@@ -6,19 +6,31 @@
 
 use crate::{
     common::{
+        ArchivedPartialDateTime, PartialDateTime,
+        format::{AsciiPush, BufferedWrite},
         parser::Timestamp,
         writer::{
-            FoldingWriter, LineWriter, NeedsQuotes, write_bytes, write_param_value, write_text,
+            DOCUMENT_BUFFER, ENTRY_BUFFER, FoldingWriter, JscompRef, LineWriter, NeedsQuotes,
+            write_jscomps, write_param_value, write_text,
         },
     },
     vcard::{media_type::legacy_media_type, *},
 };
-use std::fmt::{Display, Write};
+use std::fmt::{self, Display, Write};
 
 impl ArchivedVCard {
-    pub fn write_to(&self, out: &mut impl Write, version: VCardVersion) -> std::fmt::Result {
-        write!(out, "BEGIN:VCARD\r\n")?;
-        write!(out, "VERSION:{version}\r\n")?;
+    pub fn write_to(&self, out: &mut impl Write, version: VCardVersion) -> fmt::Result {
+        out.write_buffered::<DOCUMENT_BUFFER>(|buf| {
+            self.write_entries(&mut FoldingWriter::new(buf), version)
+        })
+    }
+
+    fn write_entries<W: Write + AsciiPush + ?Sized>(
+        &self,
+        out: &mut FoldingWriter<'_, W>,
+        version: VCardVersion,
+    ) -> fmt::Result {
+        out.write_raw(version.begin_and_version())?;
         for entry in self.entries.iter() {
             if !matches!(
                 entry.name,
@@ -26,22 +38,17 @@ impl ArchivedVCard {
                     | ArchivedVCardProperty::Begin
                     | ArchivedVCardProperty::End
             ) {
-                entry.write_with_version(out, true, version)?;
+                entry.write_line(out, true, version)?;
             }
         }
 
-        write!(out, "END:VCARD\r\n")
+        out.write_raw("END:VCARD\r\n")
     }
 }
 
 impl ArchivedVCardEntry {
     #[deprecated(since = "0.4.0", note = "use write_with_version")]
-    pub fn write_to(
-        &self,
-        out: &mut impl Write,
-        with_value: bool,
-        is_v4: bool,
-    ) -> std::fmt::Result {
+    pub fn write_to(&self, out: &mut impl Write, with_value: bool, is_v4: bool) -> fmt::Result {
         self.write_with_version(
             out,
             with_value,
@@ -58,10 +65,19 @@ impl ArchivedVCardEntry {
         out: &mut impl Write,
         with_value: bool,
         version: VCardVersion,
-    ) -> std::fmt::Result {
+    ) -> fmt::Result {
+        out.write_buffered::<ENTRY_BUFFER>(|buf| {
+            self.write_line(&mut FoldingWriter::new(buf), with_value, version)
+        })
+    }
+
+    pub(crate) fn write_line<W: Write + AsciiPush + ?Sized>(
+        &self,
+        out: &mut FoldingWriter<'_, W>,
+        with_value: bool,
+        version: VCardVersion,
+    ) -> fmt::Result {
         let is_v4 = matches!(version, VCardVersion::V4_0);
-        let mut folded = FoldingWriter::new(out);
-        let out = &mut folded;
 
         if let Some(group_name) = self.group.as_ref() {
             out.write_atomic(group_name)?;
@@ -96,10 +112,10 @@ impl ArchivedVCardEntry {
                     write_param_value(out, v, is_v4)?;
                 }
                 ArchivedVCardParameterValue::Integer(i) => {
-                    write!(out, "{}", i)?;
+                    out.push_u64(i.to_native().into())?;
                 }
                 ArchivedVCardParameterValue::Timestamp(v) => {
-                    write!(out, "{}", Timestamp(v.to_native()))?;
+                    Timestamp(v.to_native()).push_to(out)?;
                 }
                 ArchivedVCardParameterValue::Bool(v) => {
                     out.write_atomic(if *v { "TRUE" } else { "FALSE" })?;
@@ -214,7 +230,7 @@ impl ArchivedVCardEntry {
                         }
                     }
                     ArchivedVCardValue::Integer(v) => {
-                        write!(out, "{v}")?;
+                        out.push_i64(v.to_native())?;
                     }
                     ArchivedVCardValue::Float(v) => {
                         write!(out, "{v}")?;
@@ -232,10 +248,12 @@ impl ArchivedVCardEntry {
                                 .and_then(|v| v.iana().copied())
                         }
                         .unwrap_or(&default_type);
+                        let date = PartialDateTime::from(v);
+                        let typ = VCardValueType::from(typ);
                         if is_v4 {
-                            v.format_as_vcard(out, typ)?;
+                            date.push_vcard(out, &typ)?;
                         } else {
-                            v.format_as_legacy_vcard(out, typ)?;
+                            date.push_legacy_vcard(out, &typ)?;
                         }
                     }
                     ArchivedVCardValue::Binary(v) => {
@@ -250,7 +268,7 @@ impl ArchivedVCardEntry {
                             }
                             out.write_atomic("base64\\,")?;
                         }
-                        write_bytes(out, &v.data)?;
+                        out.write_base64(&v.data)?;
                     }
                     ArchivedVCardValue::Sex(v) => {
                         out.write_atomic(v.as_str())?;
@@ -272,335 +290,59 @@ impl ArchivedVCardEntry {
     }
 }
 
-impl crate::common::ArchivedPartialDateTime {
+impl ArchivedPartialDateTime {
     pub fn format_as_vcard(
         &self,
         out: &mut impl Write,
         fmt: &ArchivedVCardValueType,
-    ) -> std::fmt::Result {
-        use ArchivedVCardValueType;
-        use rkyv::option::ArchivedOption;
-
-        if matches!(fmt, ArchivedVCardValueType::Timestamp) {
-            write!(
-                out,
-                "{:04}{:02}{:02}T{:02}{:02}{:02}",
-                self.year.as_ref().map(u16::from).unwrap_or_default(),
-                self.month.as_ref().copied().unwrap_or_default(),
-                self.day.as_ref().copied().unwrap_or_default(),
-                self.hour.as_ref().copied().unwrap_or_default(),
-                self.minute.as_ref().copied().unwrap_or_default(),
-                self.second.as_ref().copied().unwrap_or_default()
-            )?;
-
-            if let Some(tz_hour) = self.tz_hour.as_ref().copied() {
-                let tz_minute = self.tz_minute.as_ref().copied().unwrap_or_default();
-                if tz_hour == 0 && tz_minute == 0 {
-                    write!(out, "Z")?;
-                } else {
-                    write!(
-                        out,
-                        "{}{:02}",
-                        if self.tz_minus { "-" } else { "+" },
-                        tz_hour,
-                    )?;
-
-                    if let Some(tz_minute) = self.tz_minute.as_ref() {
-                        write!(out, "{:02}", tz_minute)?;
-                    }
-                }
-            }
-            Ok(())
-        } else {
-            let missing_time =
-                self.hour.is_none() && self.minute.is_none() && self.second.is_none();
-            let missing_tz = self.tz_hour.is_none();
-
-            if matches!(
-                fmt,
-                ArchivedVCardValueType::Date
-                    | ArchivedVCardValueType::DateAndOrTime
-                    | ArchivedVCardValueType::DateTime
-            ) {
-                match (self.year, self.month, self.day) {
-                    (
-                        ArchivedOption::Some(year),
-                        ArchivedOption::Some(month),
-                        ArchivedOption::Some(day),
-                    ) => {
-                        write!(out, "{:04}{:02}{:02}", year, month, day)?;
-                    }
-                    (
-                        ArchivedOption::Some(year),
-                        ArchivedOption::Some(month),
-                        ArchivedOption::None,
-                    ) => {
-                        if missing_time && missing_tz {
-                            write!(out, "{:04}-{:02}", year, month)?;
-                        } else {
-                            write!(out, "{:04}{:02}", year, month)?;
-                        }
-                    }
-                    (
-                        ArchivedOption::None,
-                        ArchivedOption::Some(month),
-                        ArchivedOption::Some(day),
-                    ) => {
-                        write!(out, "--{:02}{:02}", month, day)?;
-                    }
-                    (ArchivedOption::None, ArchivedOption::None, ArchivedOption::Some(day)) => {
-                        write!(out, "---{:02}", day)?;
-                    }
-                    (ArchivedOption::Some(year), ArchivedOption::None, ArchivedOption::None) => {
-                        write!(out, "{:04}", year)?;
-                    }
-                    (ArchivedOption::None, ArchivedOption::Some(month), ArchivedOption::None) => {
-                        write!(out, "--{month}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            if matches!(
-                fmt,
-                ArchivedVCardValueType::DateAndOrTime
-                    | ArchivedVCardValueType::DateTime
-                    | ArchivedVCardValueType::Time
-            ) && !missing_time
-            {
-                if matches!(
-                    fmt,
-                    ArchivedVCardValueType::DateAndOrTime | ArchivedVCardValueType::DateTime
-                ) {
-                    write!(out, "T")?;
-                }
-                let mut last_is_some = false;
-                for value in [&self.hour, &self.minute, &self.second].iter() {
-                    if let ArchivedOption::Some(value) = value {
-                        write!(out, "{:02}", value)?;
-                        last_is_some = true;
-                    } else if !last_is_some {
-                        write!(out, "-")?;
-                    }
-                }
-            }
-
-            if matches!(
-                fmt,
-                ArchivedVCardValueType::DateAndOrTime
-                    | ArchivedVCardValueType::DateTime
-                    | ArchivedVCardValueType::Time
-                    | ArchivedVCardValueType::UtcOffset
-            ) {
-                match (self.tz_hour.as_ref(), self.tz_minute.as_ref()) {
-                    (Some(0), Some(0)) | (Some(0), _) => {
-                        write!(out, "Z")?;
-                    }
-                    (Some(hour), Some(minute)) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}{minute:02}")?;
-                    }
-                    (Some(hour), None) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            Ok(())
-        }
+    ) -> fmt::Result {
+        PartialDateTime::from(self).format_as_vcard(out, &VCardValueType::from(fmt))
     }
 
     pub fn format_as_legacy_vcard(
         &self,
         out: &mut impl Write,
         fmt: &ArchivedVCardValueType,
-    ) -> std::fmt::Result {
-        if matches!(fmt, ArchivedVCardValueType::Timestamp) {
-            write!(
-                out,
-                "{:04}{:02}{:02}",
-                self.year.as_ref().map(u16::from).unwrap_or_default(),
-                self.month.as_ref().copied().unwrap_or_default(),
-                self.day.as_ref().copied().unwrap_or_default(),
-            )?;
+    ) -> fmt::Result {
+        PartialDateTime::from(self).format_as_legacy_vcard(out, &VCardValueType::from(fmt))
+    }
+}
 
-            if self.hour.is_some() {
-                write!(
-                    out,
-                    "T{:02}{:02}{:02}",
-                    self.hour.as_ref().copied().unwrap_or_default(),
-                    self.minute.as_ref().copied().unwrap_or_default(),
-                    self.second.as_ref().copied().unwrap_or_default()
-                )?;
-            }
-
-            if let Some(tz_hour) = self.tz_hour.as_ref().copied() {
-                let tz_minute = self.tz_minute.as_ref().copied().unwrap_or_default();
-                if tz_hour == 0 && tz_minute == 0 {
-                    write!(out, "Z")?;
-                } else {
-                    write!(
-                        out,
-                        "{}{:02}",
-                        if self.tz_minus { "-" } else { "+" },
-                        tz_hour,
-                    )?;
-
-                    if let Some(tz_minute) = self.tz_minute.as_ref().copied() {
-                        write!(out, "{:02}", tz_minute)?;
-                    }
-                }
-            }
-            Ok(())
-        } else {
-            let missing_time =
-                self.hour.is_none() && self.minute.is_none() && self.second.is_none();
-
-            if matches!(
-                fmt,
-                ArchivedVCardValueType::Date
-                    | ArchivedVCardValueType::DateAndOrTime
-                    | ArchivedVCardValueType::DateTime
-            ) {
-                match (self.year.as_ref(), self.month.as_ref(), self.day.as_ref()) {
-                    (Some(year), Some(month), Some(day)) => {
-                        write!(out, "{:04}-{:02}-{:02}", year, month, day)?;
-                    }
-                    (Some(year), Some(month), None) => {
-                        write!(out, "{:04}-{:02}", year, month)?;
-                    }
-                    (None, Some(month), Some(day)) => {
-                        write!(out, "--{:02}-{:02}", month, day)?;
-                    }
-                    (None, None, Some(day)) => {
-                        write!(out, "---{:02}", day)?;
-                    }
-                    (Some(year), None, None) => {
-                        write!(out, "{:04}", year)?;
-                    }
-                    (None, Some(month), None) => {
-                        write!(out, "--{month}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            if matches!(
-                fmt,
-                ArchivedVCardValueType::DateAndOrTime
-                    | ArchivedVCardValueType::DateTime
-                    | ArchivedVCardValueType::Time
-            ) && !missing_time
-            {
-                if matches!(
-                    fmt,
-                    ArchivedVCardValueType::DateAndOrTime | ArchivedVCardValueType::DateTime
-                ) {
-                    write!(out, "T")?;
-                }
-                let mut last_is_some = false;
-                for value in [&self.hour, &self.minute, &self.second].iter() {
-                    if let Some(value) = value.as_ref() {
-                        if last_is_some {
-                            write!(out, ":")?;
-                        }
-                        write!(out, "{:02}", value)?;
-                        last_is_some = true;
-                    } else if !last_is_some {
-                        write!(out, "-")?;
-                    }
-                }
-            }
-
-            if matches!(
-                fmt,
-                ArchivedVCardValueType::DateAndOrTime
-                    | ArchivedVCardValueType::DateTime
-                    | ArchivedVCardValueType::Time
-                    | ArchivedVCardValueType::UtcOffset
-            ) {
-                match (self.tz_hour.as_ref(), self.tz_minute.as_ref()) {
-                    (Some(0), Some(0)) | (Some(0), _) => {
-                        write!(out, "Z")?;
-                    }
-                    (Some(hour), Some(minute)) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}:{minute:02}")?;
-                    }
-                    (Some(hour), None) => {
-                        if self.tz_minus {
-                            write!(out, "-")?;
-                        } else {
-                            write!(out, "+")?;
-                        }
-                        write!(out, "{hour:02}")?;
-                    }
-                    _ => {}
-                }
-            }
-
-            Ok(())
+impl From<&ArchivedVCardValueType> for VCardValueType {
+    fn from(value_type: &ArchivedVCardValueType) -> Self {
+        match value_type {
+            ArchivedVCardValueType::Boolean => VCardValueType::Boolean,
+            ArchivedVCardValueType::Date => VCardValueType::Date,
+            ArchivedVCardValueType::DateAndOrTime => VCardValueType::DateAndOrTime,
+            ArchivedVCardValueType::DateTime => VCardValueType::DateTime,
+            ArchivedVCardValueType::Float => VCardValueType::Float,
+            ArchivedVCardValueType::Integer => VCardValueType::Integer,
+            ArchivedVCardValueType::LanguageTag => VCardValueType::LanguageTag,
+            ArchivedVCardValueType::Text => VCardValueType::Text,
+            ArchivedVCardValueType::Time => VCardValueType::Time,
+            ArchivedVCardValueType::Timestamp => VCardValueType::Timestamp,
+            ArchivedVCardValueType::Uri => VCardValueType::Uri,
+            ArchivedVCardValueType::UtcOffset => VCardValueType::UtcOffset,
         }
     }
 }
 
 impl Display for ArchivedVCard {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write_to(f, self.version().unwrap_or_default())
     }
 }
 
-pub(crate) fn write_jscomps(
-    out: &mut impl LineWriter,
-    values: &[ArchivedJscomp],
-) -> std::fmt::Result {
-    for (pos, item) in values.iter().enumerate() {
-        if pos > 0 {
-            out.write_atomic(";")?;
-        }
-        match item {
-            ArchivedJscomp::Entry { position, value } => {
-                write!(out, "{position}")?;
-                if *value > 0 {
-                    write!(out, ",{value}")?;
-                }
-            }
-            ArchivedJscomp::Separator(s) => {
-                if !s.is_empty() {
-                    out.write_atomic("s,")?;
-
-                    for ch in s.chars() {
-                        match ch {
-                            '\\' => out.write_atomic("\\\\")?,
-                            ',' => out.write_atomic("\\,")?,
-                            ':' => out.write_atomic("\\:")?,
-                            '=' => out.write_atomic("\\=")?,
-                            ';' => out.write_atomic("\\;")?,
-                            '"' => out.write_atomic("\\\"")?,
-                            '\r' | '\n' => {}
-                            _ => out.write_char(ch)?,
-                        }
-                    }
-                }
-            }
+impl<'x> From<&'x ArchivedJscomp> for JscompRef<'x> {
+    fn from(jscomp: &'x ArchivedJscomp) -> Self {
+        match jscomp {
+            ArchivedJscomp::Entry { position, value } => JscompRef::Entry {
+                position: position.to_native(),
+                value: value.to_native(),
+            },
+            ArchivedJscomp::Separator(separator) => JscompRef::Separator(separator),
         }
     }
-
-    Ok(())
 }
 
 #[cfg(test)]

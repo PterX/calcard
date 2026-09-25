@@ -4,32 +4,19 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use super::{Data, PartialDateTime, tokenizer::Token};
+use super::{Data, Encoding, PartialDateTime, tokenizer::Token};
 use crate::{
     Parser,
     common::{IanaParse, IanaString, IanaType},
     icalendar::Uri,
 };
-use mail_parser::{
-    DateTime,
-    decoders::{base64::base64_decode, hex::decode_hex},
-};
+use mail_parser::{DateTime, decoders::hex::decode_hex};
 use std::{borrow::Cow, iter::Peekable, slice::Iter, str::FromStr};
 
 impl<'x> Parser<'x> {
     pub(crate) fn raw_token(&mut self) -> Option<Cow<'x, str>> {
-        self.token_buf
-            .first()
-            .and_then(|first| {
-                self.input
-                    .get(first.start..=self.token_buf.last().unwrap().end)
-            })
-            .and_then(|v| std::str::from_utf8(v).ok())
-            .map(unfold)
-    }
-
-    pub(crate) fn buf_parse_many<T: From<Token<'x>>>(&mut self) -> Vec<T> {
-        self.token_buf.drain(..).map(T::from).collect()
+        let (first, last) = (self.token_buf.first()?, self.token_buf.last()?);
+        self.source.get(first.start..=last.end).map(unfold)
     }
 
     pub(crate) fn buf_parse_one<T: From<Token<'x>>>(&mut self) -> Option<T> {
@@ -51,11 +38,9 @@ impl Token<'_> {
         self,
         require_time: bool,
     ) -> std::result::Result<PartialDateTime, String> {
-        let mut dt = PartialDateTime::default();
-        if dt.parse_timestamp(&mut self.text.iter().peekable(), require_time) {
-            Ok(dt)
-        } else {
-            Err(self.into_string())
+        match PartialDateTime::from_timestamp_bytes(&self.text, require_time) {
+            (dt, true) => Ok(dt),
+            (_, false) => Err(self.into_string()),
         }
     }
 
@@ -70,8 +55,7 @@ impl Token<'_> {
     }
 
     pub(crate) fn into_float(self) -> std::result::Result<f64, String> {
-        if let Ok(text) = std::str::from_utf8(self.text.as_ref())
-            && let Ok(float) = text.parse::<f64>()
+        if let Ok(float) = self.text.as_str().parse::<f64>()
             && float.is_finite()
         {
             return Ok(float);
@@ -81,10 +65,8 @@ impl Token<'_> {
     }
 
     pub(crate) fn into_integer(self) -> std::result::Result<i64, String> {
-        if let Ok(text) = std::str::from_utf8(self.text.as_ref())
-            && let Ok(float) = text.parse::<i64>()
-        {
-            return Ok(float);
+        if let Ok(integer) = self.text.as_str().parse::<i64>() {
+            return Ok(integer);
         }
 
         Err(self.into_string())
@@ -121,7 +103,7 @@ impl Data {
                 .filter(|media_type| !media_type.is_empty())
                 .map(str::to_string),
             data: if is_base64 {
-                base64_decode(data)?
+                Encoding::Base64.decode(data)?
             } else {
                 let (success, bytes) = decode_hex(data);
                 success.then_some(bytes)?
@@ -131,6 +113,57 @@ impl Data {
 }
 
 impl PartialDateTime {
+    pub(crate) fn from_timestamp_bytes(bytes: &[u8], require_time: bool) -> (Self, bool) {
+        if let Some(dt) = Self::from_basic_format(bytes) {
+            let valid = !require_time || dt.has_time();
+            (dt, valid)
+        } else {
+            let mut dt = Self::default();
+            let valid = dt.parse_timestamp(&mut bytes.iter().peekable(), require_time);
+            (dt, valid)
+        }
+    }
+
+    fn from_basic_format(bytes: &[u8]) -> Option<Self> {
+        let (date, time) = bytes.split_first_chunk::<8>()?;
+        let mut dt = Self::from_basic_date(date)?;
+        match time {
+            [] => {}
+            [b'T' | b't', h0, h1, m0, m1, s0, s1, zone @ ..] => {
+                dt.hour = Some(Self::two_digits(*h0, *h1)?);
+                dt.minute = Some(Self::two_digits(*m0, *m1)?);
+                dt.second = Some(Self::two_digits(*s0, *s1)?);
+                match zone {
+                    [] => {}
+                    [b'Z' | b'z'] => {
+                        dt.tz_hour = Some(0);
+                        dt.tz_minute = Some(0);
+                    }
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        }
+        Some(dt)
+    }
+
+    pub(crate) fn from_basic_date(&[y0, y1, y2, y3, m0, m1, d0, d1]: &[u8; 8]) -> Option<Self> {
+        Some(PartialDateTime {
+            year: Some(
+                u16::from(Self::two_digits(y0, y1)?) * 100 + u16::from(Self::two_digits(y2, y3)?),
+            ),
+            month: Some(Self::two_digits(m0, m1)?),
+            day: Some(Self::two_digits(d0, d1)?),
+            ..Default::default()
+        })
+    }
+
+    #[inline(always)]
+    fn two_digits(tens: u8, ones: u8) -> Option<u8> {
+        let (tens, ones) = (tens.wrapping_sub(b'0'), ones.wrapping_sub(b'0'));
+        (tens < 10 && ones < 10).then(|| tens * 10 + ones)
+    }
+
     pub fn parse_timestamp(
         &mut self,
         iter: &mut Peekable<Iter<'_, u8>>,
@@ -407,17 +440,16 @@ impl FromStr for Timestamp {
     type Err = ();
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let mut dt = PartialDateTime::default();
-        dt.parse_timestamp(&mut s.as_bytes().iter().peekable(), true);
-        dt.to_timestamp().map(Timestamp).ok_or(())
+        Timestamp::parse(s.as_bytes()).ok_or(())
     }
 }
 
 impl IanaParse for Timestamp {
     fn parse(value: &[u8]) -> Option<Self> {
-        let mut dt = PartialDateTime::default();
-        dt.parse_timestamp(&mut value.iter().peekable(), true);
-        dt.to_timestamp().map(Timestamp)
+        PartialDateTime::from_timestamp_bytes(value, true)
+            .0
+            .to_timestamp()
+            .map(Timestamp)
     }
 }
 
@@ -493,7 +525,7 @@ where
                 IanaType::Other(
                     value
                         .into_uri_bytes()
-                        .map(Uri::Data)
+                        .map(Uri::from)
                         .unwrap_or_else(Uri::Location),
                 )
             })
@@ -502,10 +534,17 @@ where
 
 #[cfg(test)]
 mod tests {
-
-    use crate::common::tokenizer::StopChar;
-
     use super::*;
+    use crate::{StopChar, common::tokenizer::TokenText};
+
+    fn token(text: &str) -> Token<'_> {
+        Token {
+            text: TokenText::Borrowed(text),
+            start: 0,
+            end: 0,
+            stop_char: StopChar::Lf,
+        }
+    }
 
     #[test]
     fn rfc2397_data_url_keeps_media_type_parameters() {
@@ -572,7 +611,7 @@ mod tests {
             ("1e400", Err("1e400".to_string())),
         ] {
             assert_eq!(
-                Token::new(text.as_bytes().into()).into_float(),
+                token(text).into_float(),
                 expected,
                 "RFC 5545 Section 3.3.7: float = ([\"+\"] / \"-\") 1*DIGIT [\".\" 1*DIGIT]"
             );
@@ -630,16 +669,73 @@ mod tests {
                 },
             ),
         ] {
-            assert_eq!(
-                Token {
-                    text: uri.as_bytes().into(),
-                    start: 0,
-                    end: 0,
-                    stop_char: StopChar::Lf
-                }
-                .into_uri_bytes(),
-                Ok(expected)
-            );
+            assert_eq!(token(uri).into_uri_bytes(), Ok(expected));
         }
+    }
+
+    #[test]
+    fn test_timestamp_basic_format_matches_byte_parser() {
+        for text in [
+            "20250101",
+            "20250101T090000",
+            "20250101T090000Z",
+            "20250101t090000z",
+            "00000000T000000Z",
+            "99991231T235959Z",
+            "20251332T246161",
+            "2025010",
+            "202501011",
+            "20250101T",
+            "20250101T0900",
+            "20250101T09000",
+            "20250101T0900000",
+            "20250101T090000ZZ",
+            "20250101T090000Z ",
+            "20250101T090000+0100",
+            "20250101T090000-0530",
+            "20250101Z",
+            "20250101 090000",
+            " 20250101",
+            "2025-01-01",
+            "2025-01-01T09:00:00Z",
+            "20250101T09:00:00",
+            "2025010aT090000",
+            "20250101T09000a",
+            "20250101X090000",
+            "2025:101T090000",
+            "20250/01T090000",
+            "20250101T:90000",
+            "20250101T0900/0",
+            "\u{661}0250101",
+            "",
+        ] {
+            for require_time in [false, true] {
+                let mut expected = PartialDateTime::default();
+                let valid =
+                    expected.parse_timestamp(&mut text.as_bytes().iter().peekable(), require_time);
+                assert_eq!(
+                    PartialDateTime::from_timestamp_bytes(text.as_bytes(), require_time),
+                    (expected, valid),
+                    "{text:?} require_time {require_time}"
+                );
+            }
+        }
+        assert_eq!(
+            PartialDateTime::from_timestamp_bytes(b"20250102T030405Z", true),
+            (
+                PartialDateTime {
+                    year: Some(2025),
+                    month: Some(1),
+                    day: Some(2),
+                    hour: Some(3),
+                    minute: Some(4),
+                    second: Some(5),
+                    tz_hour: Some(0),
+                    tz_minute: Some(0),
+                    tz_minus: false,
+                },
+                true
+            )
+        );
     }
 }

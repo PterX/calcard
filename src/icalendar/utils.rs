@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use super::{
     ICalendar, ICalendarComponent, ICalendarComponentType, ICalendarDuration, ICalendarEntry,
     ICalendarParameterName, ICalendarProperty, ICalendarRecurrenceRule, ICalendarStatus,
-    ICalendarTransparency, ICalendarValue, Uri,
+    ICalendarTransparency, ICalendarValue, PARAMETER_VALUE_SIZE, Uri, VALUE_SIZE,
 };
 use crate::{
     common::{IanaString, IanaType, PartialDateTime, timezone::NominalDuration},
@@ -178,7 +178,7 @@ impl ICalendarValue {
             ICalendarValue::Text(value) => value.len(),
             ICalendarValue::PartialDateTime(_) => std::mem::size_of::<PartialDateTime>(),
             ICalendarValue::RecurrenceRule(_) => std::mem::size_of::<ICalendarRecurrenceRule>(),
-            _ => std::mem::size_of::<ICalendarValue>(),
+            _ => VALUE_SIZE,
         }
     }
 
@@ -225,7 +225,7 @@ impl ICalendarValue {
         }
     }
 
-    pub fn into_partial_date_time(self) -> Option<Box<PartialDateTime>> {
+    pub fn into_partial_date_time(self) -> Option<PartialDateTime> {
         match self {
             ICalendarValue::PartialDateTime(dt) => Some(dt),
             _ => None,
@@ -403,7 +403,7 @@ impl ICalendarParameterValue {
         match self {
             ICalendarParameterValue::Text(v) => v.len(),
             ICalendarParameterValue::Uri(v) => v.size(),
-            _ => std::mem::size_of::<ICalendarParameterValue>(),
+            _ => PARAMETER_VALUE_SIZE,
         }
     }
 }

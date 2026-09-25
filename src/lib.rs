@@ -6,13 +6,9 @@
 #![doc = include_str!("../README.md")]
 #![deny(rust_2018_idioms)]
 #![forbid(unsafe_code)]
-use common::tokenizer::{StopChar, Token};
+use common::tokenizer::{Mode, StopChar, Token};
 use icalendar::{ICalendar, ICalendarComponentType};
-use std::{
-    borrow::Cow,
-    iter::{Enumerate, Peekable},
-    slice::Iter,
-};
+use std::borrow::Cow;
 use vcard::VCard;
 
 pub mod common;
@@ -39,53 +35,42 @@ pub enum Entry {
     Eof,
 }
 
+const PRESIZE_BYTES_PER_SLOT: usize = 8;
+
 pub struct Parser<'x> {
     pub(crate) input: &'x [u8],
-    pub(crate) iter: Peekable<Enumerate<Iter<'x, u8>>>,
+    pub(crate) source: &'x str,
+    pub(crate) pos: usize,
     pub(crate) strict: bool,
-    pub(crate) stop_colon: bool,
-    pub(crate) stop_semicolon: bool,
-    pub(crate) stop_comma: bool,
-    pub(crate) stop_equal: bool,
-    pub(crate) stop_dot: bool,
-    pub(crate) unfold_qp: bool,
-    pub(crate) unfold_b64: bool,
-    pub(crate) unquote: bool,
-    pub(crate) skip_ws: bool,
-    pub(crate) strip_ctl: bool,
-    pub(crate) unescape_caret: bool,
-    pub(crate) unescape_backslash: bool,
+    pub(crate) mode: Mode,
     pub(crate) token_buf: Vec<Token<'x>>,
     pub(crate) last_token_end: usize,
+    presize_budget: usize,
 }
 
 impl<'x> Parser<'x> {
     pub fn new(input: &'x str) -> Self {
-        let input = input.as_bytes();
         Self {
-            input,
-            iter: input.iter().enumerate().peekable(),
+            input: input.as_bytes(),
+            source: input,
+            pos: 0,
             strict: false,
-            stop_colon: true,
-            stop_semicolon: true,
-            stop_comma: true,
-            stop_equal: true,
-            stop_dot: false,
-            unfold_qp: false,
-            unfold_b64: false,
-            unquote: true,
-            skip_ws: false,
-            strip_ctl: false,
-            unescape_caret: false,
-            unescape_backslash: true,
-            token_buf: Vec::with_capacity(10),
+            mode: Mode::INITIAL,
+            token_buf: Vec::new(),
             last_token_end: usize::MAX,
+            presize_budget: input.len() / PRESIZE_BYTES_PER_SLOT,
         }
     }
 
     pub fn strict(mut self) -> Self {
         self.strict = true;
         self
+    }
+
+    pub(crate) fn presize<T>(&mut self, items: &mut Vec<T>, hint: usize) {
+        let slots = hint.min(self.presize_budget);
+        self.presize_budget -= slots;
+        items.reserve_exact(slots);
     }
 
     pub fn entry(&mut self) -> Entry {
@@ -141,11 +126,10 @@ impl<'x> Parser<'x> {
                 }
 
                 return Entry::InvalidLine(
-                    std::str::from_utf8(
-                        self.input.get(token_start..=token_end).unwrap_or_default(),
-                    )
-                    .unwrap_or_default()
-                    .to_string(),
+                    self.source
+                        .get(token_start..=token_end)
+                        .unwrap_or_default()
+                        .to_string(),
                 );
             } else {
                 return Entry::Eof;

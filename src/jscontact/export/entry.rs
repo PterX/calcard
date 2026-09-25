@@ -16,6 +16,7 @@ use crate::{
     },
 };
 use jmap_tools::{Key, Value};
+use std::mem;
 
 impl VCardEntry {
     pub(super) fn import_converted_properties<I, B>(
@@ -49,13 +50,15 @@ impl VCardEntry {
         B: JSContactId,
     {
         for (key, value) in params.into_expanded_object() {
-            let mut values = match value {
-                Value::Array(values) => values.into_iter().filter_map(ParamValue::try_from_value),
-                value => vec![value]
-                    .into_iter()
-                    .filter_map(ParamValue::try_from_value),
-            }
-            .peekable();
+            let (single, many) = match value {
+                Value::Array(values) => (None, values),
+                value => (Some(value), Vec::new()),
+            };
+            let mut values = single
+                .into_iter()
+                .chain(many)
+                .filter_map(ParamValue::try_from_value)
+                .peekable();
 
             if values.peek().is_none() {
                 continue;
@@ -63,11 +66,16 @@ impl VCardEntry {
 
             let key = key.to_string();
             let Some(param) = VCardParameterName::try_parse(key.as_bytes()) else {
-                let key = key.into_owned();
+                let mut name = key.to_ascii_uppercase();
 
-                for value in values {
+                while let Some(value) = values.next() {
+                    let name = if values.peek().is_some() {
+                        name.clone()
+                    } else {
+                        mem::take(&mut name)
+                    };
                     self.params.push(VCardParameter {
-                        name: VCardParameterName::Other(key.to_ascii_uppercase()),
+                        name: VCardParameterName::Other(name),
                         value: value.into_string().into_owned().into(),
                     });
                 }

@@ -9,27 +9,30 @@ use crate::{
     Entry, Parser, StopChar, Token,
     common::{
         CalendarScale, Encoding, PartialDateTime,
+        decode::{Decoded, ValueDecoder},
         parser::{Boolean, Integer, parse_digits, parse_small_digits},
+        stack::ComponentStack,
+        tokenizer::Mode,
     },
     icalendar::{ICalendarDay, ICalendarWeekday},
 };
-use mail_parser::decoders::{
-    base64::base64_decode, charsets::map::charset_decoder,
-    quoted_printable::quoted_printable_decode,
-};
-use std::{borrow::Cow, iter::Peekable, slice::Iter};
+use smallvec::{SmallVec, smallvec};
+use std::{iter::Peekable, mem::take, slice::Iter};
 
 const EMPTY_CALENDAR_LINE: &str = "BEGIN:VCALENDAR";
+const COMPONENT_CAPACITY: usize = 4;
 
-fn calendar_entry(ical: ICalendar, strict: bool) -> Entry {
-    if strict
-        && ical
-            .calendar_root()
-            .is_some_and(|root| root.component_ids.is_empty())
-    {
-        Entry::InvalidLine(EMPTY_CALENDAR_LINE.to_string())
-    } else {
-        Entry::ICalendar(ical)
+impl ICalendar {
+    fn into_entry(self, strict: bool) -> Entry {
+        if strict
+            && self
+                .calendar_root()
+                .is_some_and(|root| root.component_ids.is_empty())
+        {
+            Entry::InvalidLine(EMPTY_CALENDAR_LINE.to_string())
+        } else {
+            Entry::ICalendar(self)
+        }
     }
 }
 
@@ -41,81 +44,336 @@ struct Params {
     encoding: Option<Encoding>,
 }
 
+impl Params {
+    fn decode_value(
+        &self,
+        token: &mut Token<'_>,
+        payload: Option<Vec<u8>>,
+        encoding: Encoding,
+        name: &ICalendarProperty,
+    ) -> Option<Vec<u8>> {
+        let binary = match &self.data_type {
+            Some(data_type) => data_type == &IanaType::Iana(ICalendarValueType::Binary),
+            None => {
+                encoding == Encoding::Base64
+                    && matches!(name, ICalendarProperty::Attach | ICalendarProperty::Image)
+            }
+        };
+        let decoder = ValueDecoder {
+            encoding,
+            charset: self.charset.as_deref(),
+            binary,
+        };
+        match decoder.decode(&token.text, payload) {
+            Decoded::Text(text) => {
+                token.text = text.into();
+                None
+            }
+            Decoded::Binary(bytes) => Some(bytes),
+            Decoded::Undecodable => None,
+        }
+    }
+
+    fn value(&mut self, token: Token<'_>, default_type: &ValueType) -> ICalendarValue {
+        let value_type = match default_type {
+            ValueType::Ical(default_type) => self
+                .data_type
+                .as_ref()
+                .map(|v| v.iana().unwrap_or(&ICalendarValueType::Text))
+                .unwrap_or(default_type),
+            ValueType::CalendarScale => {
+                return IanaType::from(token).map_or_text(ICalendarValue::CalendarScale);
+            }
+            ValueType::Method => return IanaType::from(token).map_or_text(ICalendarValue::Method),
+            ValueType::Classification => {
+                return IanaType::from(token).map_or_text(ICalendarValue::Classification);
+            }
+            ValueType::Status => return IanaType::from(token).map_or_text(ICalendarValue::Status),
+            ValueType::Transparency => {
+                return IanaType::from(token).map_or_text(ICalendarValue::Transparency);
+            }
+            ValueType::Action => return IanaType::from(token).map_or_text(ICalendarValue::Action),
+            ValueType::BusyType => {
+                return IanaType::from(token).map_or_text(ICalendarValue::BusyType);
+            }
+            ValueType::ParticipantType => {
+                return IanaType::from(token).map_or_text(ICalendarValue::ParticipantType);
+            }
+            ValueType::ResourceType => {
+                return IanaType::from(token).map_or_text(ICalendarValue::ResourceType);
+            }
+            ValueType::Proximity => {
+                return IanaType::from(token).map_or_text(ICalendarValue::Proximity);
+            }
+        };
+        match value_type {
+            ICalendarValueType::Date => token
+                .into_ical_date()
+                .map(ICalendarValue::PartialDateTime)
+                .unwrap_or_else(ICalendarValue::Text),
+            ICalendarValueType::DateTime => match token.into_timestamp(false) {
+                Ok(timestamp) => {
+                    if !timestamp.has_time() {
+                        self.data_type = Some(IanaType::Iana(ICalendarValueType::Date));
+                    }
+                    ICalendarValue::PartialDateTime(timestamp)
+                }
+                Err(other) => ICalendarValue::Text(other),
+            },
+            ICalendarValueType::Time => token
+                .into_ical_time()
+                .map(ICalendarValue::PartialDateTime)
+                .unwrap_or_else(ICalendarValue::Text),
+            ICalendarValueType::UtcOffset => token
+                .into_offset()
+                .map(ICalendarValue::PartialDateTime)
+                .unwrap_or_else(ICalendarValue::Text),
+            ICalendarValueType::Boolean => ICalendarValue::Boolean(token.into_boolean()),
+            ICalendarValueType::Float => token
+                .into_float()
+                .map(ICalendarValue::Float)
+                .unwrap_or_else(ICalendarValue::Text),
+            ICalendarValueType::Integer => token
+                .into_integer()
+                .map(ICalendarValue::Integer)
+                .unwrap_or_else(ICalendarValue::Text),
+            ICalendarValueType::Uri | ICalendarValueType::CalAddress => token
+                .into_uri_bytes()
+                .map(|data| ICalendarValue::Uri(Uri::from(data)))
+                .unwrap_or_else(|uri| ICalendarValue::Uri(Uri::Location(uri))),
+            ICalendarValueType::Duration => match ICalendarDuration::parse(token.text.as_ref()) {
+                Some(duration) => ICalendarValue::Duration(duration),
+                None => ICalendarValue::Text(token.into_string()),
+            },
+            ICalendarValueType::Period => match ICalendarPeriod::parse(token.text.as_ref()) {
+                Some(period) => ICalendarValue::Period(Box::new(period)),
+                None => ICalendarValue::Text(token.into_string()),
+            },
+            ICalendarValueType::Text
+            | ICalendarValueType::Binary
+            | ICalendarValueType::Unknown
+            | ICalendarValueType::XmlReference
+            | ICalendarValueType::Uid
+            | ICalendarValueType::Recur => ICalendarValue::Text(token.into_string()),
+        }
+    }
+
+    fn push_known(&mut self, name: &ICalendarParameterName, token: Token<'_>) {
+        let value = match name {
+            ICalendarParameterName::Altrep
+            | ICalendarParameterName::DelegatedFrom
+            | ICalendarParameterName::DelegatedTo
+            | ICalendarParameterName::Dir
+            | ICalendarParameterName::Member
+            | ICalendarParameterName::SentBy
+            | ICalendarParameterName::Schema => ICalendarParameterValue::Uri(Uri::from(token)),
+            ICalendarParameterName::Rsvp | ICalendarParameterName::Derived => {
+                IanaType::<Boolean, String>::from(token).into()
+            }
+            ICalendarParameterName::Range => {
+                if token.text.as_ref().eq_ignore_ascii_case(b"THISANDFUTURE") {
+                    ICalendarParameterValue::Bool(true)
+                } else {
+                    return;
+                }
+            }
+            ICalendarParameterName::Size | ICalendarParameterName::Order => {
+                IanaType::<Integer, String>::from(token).into()
+            }
+            ICalendarParameterName::Gap => {
+                IanaType::<ICalendarDuration, String>::from(token).into()
+            }
+            ICalendarParameterName::Cutype => {
+                IanaType::<ICalendarUserTypes, String>::from(token).into()
+            }
+            ICalendarParameterName::Fbtype => {
+                IanaType::<ICalendarFreeBusyType, String>::from(token).into()
+            }
+            ICalendarParameterName::Partstat => {
+                IanaType::<ICalendarParticipationStatus, String>::from(token).into()
+            }
+            ICalendarParameterName::Related => {
+                IanaType::<ICalendarRelated, String>::from(token).into()
+            }
+            ICalendarParameterName::Reltype => {
+                IanaType::<ICalendarRelationshipType, String>::from(token).into()
+            }
+            ICalendarParameterName::Role => {
+                IanaType::<ICalendarParticipationRole, String>::from(token).into()
+            }
+            ICalendarParameterName::ScheduleAgent => {
+                IanaType::<ICalendarScheduleAgentValue, String>::from(token).into()
+            }
+            ICalendarParameterName::ScheduleForceSend => {
+                IanaType::<ICalendarScheduleForceSendValue, String>::from(token).into()
+            }
+            ICalendarParameterName::Value => {
+                self.data_type = Some(token.into());
+                return;
+            }
+            ICalendarParameterName::Display => {
+                IanaType::<ICalendarDisplayType, String>::from(token).into()
+            }
+            ICalendarParameterName::Feature => {
+                IanaType::<ICalendarFeatureType, String>::from(token).into()
+            }
+            ICalendarParameterName::Linkrel => IanaType::<LinkRelation, String>::from(token).into(),
+            _ => ICalendarParameterValue::Text(token.into_string()),
+        };
+        self.params
+            .push(ICalendarParameter::new(name.clone(), value));
+    }
+}
+
+trait IntoValue<I> {
+    fn map_or_text(self, iana: impl FnOnce(I) -> ICalendarValue) -> ICalendarValue;
+}
+
+impl<I> IntoValue<I> for IanaType<I, String> {
+    fn map_or_text(self, iana: impl FnOnce(I) -> ICalendarValue) -> ICalendarValue {
+        match self {
+            IanaType::Iana(value) => iana(value),
+            IanaType::Other(value) => ICalendarValue::Text(value),
+        }
+    }
+}
+
+enum ParamKind {
+    Known(ICalendarParameterName),
+    Charset,
+    Encoding,
+    Other(ICalendarParameterName),
+    Pending,
+}
+
+impl ParamKind {
+    fn classify(token: Token<'_>, params: &mut Params) -> Self {
+        let name = token.text.as_ref();
+        if let Some(name) = ICalendarParameterName::try_parse(name) {
+            return ParamKind::Known(name);
+        }
+        match name.first() {
+            None => ParamKind::Pending,
+            Some(b'c' | b'C') if name.eq_ignore_ascii_case(b"charset") => ParamKind::Charset,
+            Some(b'e' | b'E') if name.eq_ignore_ascii_case(b"encoding") => ParamKind::Encoding,
+            _ if params.encoding.is_none() && name.eq_ignore_ascii_case(b"base64") => {
+                params.encoding = Some(Encoding::Base64);
+                ParamKind::Pending
+            }
+            _ => ParamKind::Other(ICalendarParameterName::Other(token.into_string())),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ParamValues {
+    count: usize,
+    last_other: Option<String>,
+}
+
+impl ParamValues {
+    fn push(&mut self, kind: &ParamKind, token: Token<'_>, params: &mut Params) {
+        self.count += 1;
+        match kind {
+            ParamKind::Known(name) => params.push_known(name, token),
+            ParamKind::Charset => params.charset = Some(token.into_string()),
+            ParamKind::Encoding => params.encoding = Encoding::parse(token.text.as_ref()),
+            ParamKind::Other(name) => {
+                if let Some(value) = self.last_other.replace(token.into_string()) {
+                    params.params.push(ICalendarParameter::new(
+                        name.clone(),
+                        ICalendarParameterValue::Text(value),
+                    ));
+                }
+            }
+            ParamKind::Pending => {}
+        }
+    }
+
+    fn finish(self, kind: ParamKind, params: &mut Params) {
+        match kind {
+            ParamKind::Known(name) if self.count == 0 => {
+                params
+                    .params
+                    .push(ICalendarParameter::new(name, ICalendarParameterValue::Null));
+            }
+            ParamKind::Other(name) => params.params.push(ICalendarParameter::new(
+                name,
+                self.last_other
+                    .map_or(ICalendarParameterValue::Null, ICalendarParameterValue::Text),
+            )),
+            _ => {}
+        }
+    }
+}
+
 impl Parser<'_> {
     pub fn icalendar(&mut self, component_type: ICalendarComponentType) -> Entry {
-        let mut ical_stack: Vec<usize> = Vec::new();
-        let mut ical_components = vec![ICalendarComponent {
+        let mut components = Vec::with_capacity(COMPONENT_CAPACITY);
+        components.push(ICalendarComponent {
             component_type,
             ..Default::default()
-        }];
+        });
+        let mut parents = ComponentStack::new();
+        let mut current = 0;
         let mut next_component_id: u32 = 1;
-        let mut ical_idx = 0;
-        let mut ical = ical_components.last_mut().unwrap();
 
         loop {
-            // Fetch property name
             self.expect_iana_token();
-            let token = match self.token() {
-                Some(token) => token,
-                None => break,
+            let Some(name) = self.token() else {
+                break;
             };
+            let property = ICalendarProperty::parse(name.text.as_ref());
 
             let mut params = Params {
                 params: Vec::new(),
-                stop_char: token.stop_char,
+                stop_char: name.stop_char,
                 data_type: None,
                 encoding: None,
                 charset: None,
             };
 
-            // Parse parameters
-            let name = token.text;
             match params.stop_char {
                 StopChar::Semicolon => {
+                    params.params = Vec::with_capacity(
+                        property
+                            .as_ref()
+                            .map_or(0, ICalendarProperty::parameter_capacity),
+                    );
                     self.ical_parameters(&mut params);
                 }
                 StopChar::Colon => {}
                 StopChar::Lf => {
-                    // Invalid line
-                    if name.is_empty() || !self.strict {
+                    if name.text.is_empty() || !self.strict {
                         continue;
                     } else {
-                        return Entry::InvalidLine(Token::new(name).into_string());
+                        return Entry::InvalidLine(name.into_string());
                     }
                 }
-                _ => {}
+                StopChar::Comma | StopChar::Equal | StopChar::Dot => {
+                    params.stop_char = self.seek_value_or_eol();
+                }
             }
 
-            // Invalid stop char, try seeking colon
-            if !matches!(params.stop_char, StopChar::Colon | StopChar::Lf) {
-                params.stop_char = self.seek_value_or_eol();
-            }
-
-            // Parse property
-            let name = match ICalendarProperty::parse(name.as_ref()) {
+            let name = match property {
                 Some(ICalendarProperty::Begin) => {
-                    if params.stop_char == StopChar::Colon {
-                        self.expect_single_value();
-                        if let Some(token) = self.token() {
-                            let component_type = ICalendarComponentType::parse(token.text.as_ref())
-                                .unwrap_or_else(|| {
-                                    ICalendarComponentType::Other(token.into_string())
-                                });
-                            ical_stack.push(ical_idx);
-                            ical.component_ids.push(next_component_id);
-                            ical_components.push(ICalendarComponent {
-                                component_type,
-                                ..Default::default()
-                            });
-                            ical_idx = next_component_id as usize;
-                            if let Some(id) = next_component_id.checked_add(1) {
-                                next_component_id = id;
-                            } else {
-                                return Entry::TooManyComponents;
-                            }
-                            ical = ical_components.last_mut().unwrap();
-                            continue;
+                    if params.stop_char == StopChar::Colon
+                        && let Some(component_type) = self.component_type()
+                    {
+                        if let Some(parent) = components.get_mut(current) {
+                            parent.component_ids.push(next_component_id);
                         }
+                        components.push(ICalendarComponent {
+                            component_type,
+                            ..Default::default()
+                        });
+                        parents.push(current);
+                        current = next_component_id as usize;
+                        let Some(id) = next_component_id.checked_add(1) else {
+                            return Entry::TooManyComponents;
+                        };
+                        next_component_id = id;
+                        continue;
                     }
 
                     if !self.strict {
@@ -125,27 +383,24 @@ impl Parser<'_> {
                     }
                 }
                 Some(ICalendarProperty::End) => {
-                    if params.stop_char == StopChar::Colon {
-                        self.expect_single_value();
-                        if let Some(token) = self.token() {
-                            let component_type = ICalendarComponentType::parse(token.text.as_ref())
-                                .unwrap_or_else(|| {
-                                    ICalendarComponentType::Other(token.into_string())
-                                });
-                            if ical.component_type == component_type || !self.strict {
-                                if let Some(parent_ical_idx) = ical_stack.pop() {
-                                    ical_idx = parent_ical_idx;
-                                    ical = ical_components.get_mut(ical_idx).unwrap();
-                                    continue;
-                                } else {
-                                    break;
-                                }
+                    if params.stop_char == StopChar::Colon
+                        && let Some(component_type) = self.component_type()
+                    {
+                        let open_type = components
+                            .get(current)
+                            .map(|component| &component.component_type);
+                        if open_type == Some(&component_type) || !self.strict {
+                            if let Some(parent) = parents.pop() {
+                                current = parent;
+                                continue;
                             } else {
-                                return Entry::UnexpectedComponentEnd {
-                                    expected: ical.component_type.clone(),
-                                    found: component_type,
-                                };
+                                break;
                             }
+                        } else {
+                            return Entry::UnexpectedComponentEnd {
+                                expected: open_type.cloned().unwrap_or_default(),
+                                found: component_type,
+                            };
                         }
                     }
 
@@ -157,10 +412,9 @@ impl Parser<'_> {
                 }
                 Some(name) => name,
                 None => {
-                    if !name.is_empty() {
-                        ICalendarProperty::Other(Token::new(name).into_string())
+                    if !name.text.is_empty() {
+                        ICalendarProperty::Other(name.into_string())
                     } else {
-                        // Invalid line, skip
                         if params.stop_char != StopChar::Lf {
                             self.seek_lf();
                         }
@@ -168,40 +422,74 @@ impl Parser<'_> {
                     }
                 }
             };
-            let mut entry = ICalendarEntry {
-                name,
-                params: params.params,
-                values: Vec::new(),
-            };
 
-            // Parse value
-            if params.stop_char != StopChar::Lf {
-                // Obtain default type and separator
-                let (default_type, multi_value) = entry.name.default_types();
-                match multi_value {
-                    ValueSeparator::None => {
-                        self.expect_single_value();
-                    }
-                    ValueSeparator::Comma => {
-                        self.expect_multi_value_comma();
-                    }
-                    ValueSeparator::Semicolon => {
-                        self.expect_multi_value_semicolon();
-                    }
+            let entry = self.ical_entry(name, params);
+            if let Some(component) = components.get_mut(current) {
+                if component.entries.capacity() == 0 {
+                    self.presize(
+                        &mut component.entries,
+                        component.component_type.entry_capacity(),
+                    );
                 }
+                component.entries.push(entry);
+            }
+        }
 
-                // Decode
-                match params.encoding {
-                    Some(Encoding::Base64) if multi_value != ValueSeparator::None => {
-                        self.expect_single_value();
-                    }
-                    Some(Encoding::QuotedPrintable) => {
-                        self.unfold_qp = true;
-                    }
-                    _ => {}
+        if !parents.is_empty() && self.strict {
+            return Entry::UnterminatedComponent(
+                components
+                    .get(current)
+                    .map_or("", |component| component.component_type.as_str())
+                    .to_string()
+                    .into(),
+            );
+        }
+
+        ICalendar { components }.into_entry(self.strict)
+    }
+
+    fn component_type(&mut self) -> Option<ICalendarComponentType> {
+        self.expect_single_value();
+        self.token().map(|token| {
+            ICalendarComponentType::parse(token.text.as_ref())
+                .unwrap_or_else(|| ICalendarComponentType::Other(token.into_string()))
+        })
+    }
+
+    fn ical_entry(&mut self, name: ICalendarProperty, mut params: Params) -> ICalendarEntry {
+        let mut entry = ICalendarEntry {
+            name,
+            params: take(&mut params.params),
+            values: SmallVec::new(),
+        };
+
+        if params.stop_char != StopChar::Lf {
+            let (default_type, multi_value) = entry.name.default_types();
+            match multi_value {
+                ValueSeparator::None => {
+                    self.expect_single_value();
                 }
+                ValueSeparator::Comma => {
+                    self.expect_multi_value_comma();
+                }
+                ValueSeparator::Semicolon => {
+                    self.expect_multi_value_semicolon();
+                }
+            }
 
-                self.unescape_backslash = !matches!(
+            match params.encoding {
+                Some(Encoding::Base64) if multi_value != ValueSeparator::None => {
+                    self.expect_single_value();
+                }
+                Some(Encoding::QuotedPrintable) => {
+                    self.mode.set(Mode::UNFOLD_QP, true);
+                }
+                _ => {}
+            }
+
+            self.mode.set(
+                Mode::UNESCAPE_BACKSLASH,
+                !matches!(
                     params
                         .data_type
                         .as_ref()
@@ -211,284 +499,78 @@ impl Parser<'_> {
                             _ => None,
                         }),
                     Some(ICalendarValueType::Uri | ICalendarValueType::CalAddress)
-                );
+                ),
+            );
 
-                if matches!(
-                    (&params.data_type, &default_type),
-                    (Some(IanaType::Iana(ICalendarValueType::Recur)), _)
-                        | (None, ValueType::Ical(ICalendarValueType::Recur))
-                ) {
-                    match self.rrule() {
-                        Ok(rrule) => {
-                            entry
-                                .values
-                                .push(ICalendarValue::RecurrenceRule(Box::new(rrule)));
-                        }
-                        Err(other) => {
-                            entry.values.push(ICalendarValue::Text(other));
-                        }
-                    }
-                } else {
-                    while let Some(mut token) = self.token() {
-                        let eol = token.stop_char == StopChar::Lf;
+            if matches!(
+                (&params.data_type, &default_type),
+                (Some(IanaType::Iana(ICalendarValueType::Recur)), _)
+                    | (None, ValueType::Ical(ICalendarValueType::Recur))
+            ) {
+                entry.values = smallvec![match self.rrule() {
+                    Ok(rrule) => ICalendarValue::RecurrenceRule(Box::new(rrule)),
+                    Err(other) => ICalendarValue::Text(other),
+                }];
+            } else {
+                let mut payload = None;
+                while let Some(mut token) = self.value_token(params.encoding, &mut payload) {
+                    let eol = token.stop_char == StopChar::Lf;
 
-                        if token.text.is_empty()
-                            && (matches!(multi_value, ValueSeparator::None)
-                                || matches!(entry.name, ICalendarProperty::Other(_))
-                                    && entry.values.is_empty())
-                        {
-                            if eol {
-                                break;
-                            } else {
-                                continue;
-                            }
-                        }
-
-                        // Decode binary parts
-                        if let Some(encoding) = params.encoding {
-                            let (bytes, default_encoding) = match encoding {
-                                Encoding::Base64 => (base64_decode(&token.text), None),
-                                Encoding::QuotedPrintable => {
-                                    (quoted_printable_decode(&token.text), "iso-8859-1".into())
-                                }
-                            };
-                            if let Some(bytes) = bytes {
-                                let is_binary = match &params.data_type {
-                                    Some(data_type) => {
-                                        data_type == &IanaType::Iana(ICalendarValueType::Binary)
-                                    }
-                                    None => {
-                                        encoding == Encoding::Base64
-                                            && matches!(
-                                                entry.name,
-                                                ICalendarProperty::Attach
-                                                    | ICalendarProperty::Image
-                                            )
-                                    }
-                                };
-                                if let Some(decoded) = params
-                                    .charset
-                                    .as_deref()
-                                    .or(default_encoding)
-                                    .filter(|_| !is_binary)
-                                    .and_then(|charset| {
-                                        charset_decoder(charset.as_bytes())
-                                            .map(|decoder| decoder(&bytes))
-                                    })
-                                {
-                                    token.text = Cow::Owned(decoded.into_bytes());
-                                } else if !is_binary && std::str::from_utf8(&bytes).is_ok() {
-                                    token.text = Cow::Owned(bytes);
-                                } else {
-                                    entry.values.push(ICalendarValue::Binary(bytes));
-                                    params.data_type =
-                                        Some(IanaType::Iana(ICalendarValueType::Binary));
-                                    if eol {
-                                        break;
-                                    } else {
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-
-                        match &default_type {
-                            ValueType::Ical(default_type) => {
-                                let value = match params
-                                    .data_type
-                                    .as_ref()
-                                    .map(|v| v.iana().unwrap_or(&ICalendarValueType::Text))
-                                    .unwrap_or(default_type)
-                                {
-                                    ICalendarValueType::Date => token
-                                        .into_ical_date()
-                                        .map(|data| ICalendarValue::PartialDateTime(Box::new(data)))
-                                        .unwrap_or_else(ICalendarValue::Text),
-                                    ICalendarValueType::DateTime => {
-                                        match token.into_timestamp(false) {
-                                            Ok(timestamp) => {
-                                                if !timestamp.has_time() {
-                                                    params.data_type = Some(IanaType::Iana(
-                                                        ICalendarValueType::Date,
-                                                    ));
-                                                }
-                                                ICalendarValue::PartialDateTime(Box::new(timestamp))
-                                            }
-                                            Err(other) => ICalendarValue::Text(other),
-                                        }
-                                    }
-                                    ICalendarValueType::Time => token
-                                        .into_ical_time()
-                                        .map(|data| ICalendarValue::PartialDateTime(Box::new(data)))
-                                        .unwrap_or_else(ICalendarValue::Text),
-                                    ICalendarValueType::UtcOffset => token
-                                        .into_offset()
-                                        .map(|data| ICalendarValue::PartialDateTime(Box::new(data)))
-                                        .unwrap_or_else(ICalendarValue::Text),
-                                    ICalendarValueType::Boolean => {
-                                        ICalendarValue::Boolean(token.into_boolean())
-                                    }
-                                    ICalendarValueType::Float => token
-                                        .into_float()
-                                        .map(ICalendarValue::Float)
-                                        .unwrap_or_else(ICalendarValue::Text),
-                                    ICalendarValueType::Integer => token
-                                        .into_integer()
-                                        .map(ICalendarValue::Integer)
-                                        .unwrap_or_else(ICalendarValue::Text),
-                                    ICalendarValueType::Text
-                                    | ICalendarValueType::Binary
-                                    | ICalendarValueType::Unknown
-                                    | ICalendarValueType::XmlReference
-                                    | ICalendarValueType::Uid => {
-                                        ICalendarValue::Text(token.into_string())
-                                    }
-                                    ICalendarValueType::Uri | ICalendarValueType::CalAddress => {
-                                        token
-                                            .into_uri_bytes()
-                                            .map(|data| ICalendarValue::Uri(Uri::Data(data)))
-                                            .unwrap_or_else(|uri| {
-                                                ICalendarValue::Uri(Uri::Location(uri))
-                                            })
-                                    }
-                                    ICalendarValueType::Duration => {
-                                        if let Some(duration) =
-                                            ICalendarDuration::parse(token.text.as_ref())
-                                        {
-                                            ICalendarValue::Duration(duration)
-                                        } else {
-                                            ICalendarValue::Text(token.into_string())
-                                        }
-                                    }
-                                    ICalendarValueType::Period => {
-                                        if let Some(period) =
-                                            ICalendarPeriod::parse(token.text.as_ref())
-                                        {
-                                            ICalendarValue::Period(period)
-                                        } else {
-                                            ICalendarValue::Text(token.into_string())
-                                        }
-                                    }
-                                    ICalendarValueType::Recur => unreachable!(),
-                                };
-
-                                entry.values.push(value);
-                            }
-                            ValueType::CalendarScale => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::CalendarScale(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::Method => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::Method(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::Classification => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::Classification(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::Status => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::Status(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::Transparency => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::Transparency(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::Action => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::Action(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::BusyType => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::BusyType(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::ParticipantType => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::ParticipantType(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::ResourceType => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::ResourceType(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                            ValueType::Proximity => {
-                                entry.values.push(match IanaType::from(token) {
-                                    IanaType::Iana(value) => ICalendarValue::Proximity(value),
-                                    IanaType::Other(value) => ICalendarValue::Text(value),
-                                });
-                            }
-                        }
-
+                    if token.text.is_empty()
+                        && (matches!(multi_value, ValueSeparator::None)
+                            || matches!(entry.name, ICalendarProperty::Other(_))
+                                && entry.values.is_empty())
+                    {
                         if eol {
                             break;
+                        } else {
+                            continue;
                         }
+                    }
+
+                    let value = if let Some(encoding) = params.encoding
+                        && let Some(binary) =
+                            params.decode_value(&mut token, payload.take(), encoding, &entry.name)
+                    {
+                        params.data_type = Some(IanaType::Iana(ICalendarValueType::Binary));
+                        ICalendarValue::Binary(binary)
+                    } else {
+                        params.value(token, &default_type)
+                    };
+                    entry.values.push(value);
+
+                    if eol {
+                        break;
                     }
                 }
             }
-
-            // Skip begin and end properties
-            if !matches!(
-                entry.name,
-                ICalendarProperty::Begin | ICalendarProperty::End
-            ) {
-                // Add types
-                if let Some(data_type) = params.data_type {
-                    entry.params.push(ICalendarParameter {
-                        name: ICalendarParameterName::Value,
-                        value: match data_type {
-                            IanaType::Iana(value) => ICalendarParameterValue::Value(value),
-                            IanaType::Other(value) => ICalendarParameterValue::Text(value),
-                        },
-                    });
-                }
-
-                ical.entries.push(entry);
-            }
         }
 
-        if !ical_stack.is_empty() && self.strict {
-            return Entry::UnterminatedComponent(ical.component_type.as_str().to_string().into());
+        if let Some(data_type) = params.data_type {
+            entry.params.push(ICalendarParameter {
+                name: ICalendarParameterName::Value,
+                value: match data_type {
+                    IanaType::Iana(value) => ICalendarParameterValue::Value(value),
+                    IanaType::Other(value) => ICalendarParameterValue::Text(value),
+                },
+            });
         }
 
-        calendar_entry(
-            ICalendar {
-                components: ical_components,
-            },
-            self.strict,
-        )
+        entry
     }
 
     fn ical_parameters(&mut self, params: &mut Params) {
         while params.stop_char == StopChar::Semicolon {
             self.expect_iana_token();
-            let token = match self.token() {
-                Some(token) => token,
-                None => {
-                    params.stop_char = StopChar::Lf;
-                    break;
-                }
+            let Some(token) = self.token() else {
+                params.stop_char = StopChar::Lf;
+                break;
             };
-
-            // Obtain parameter values
-            let param_name = token.text;
             params.stop_char = token.stop_char;
+            let kind = ParamKind::classify(token, params);
+            let buffered = matches!(kind, ParamKind::Pending) || !self.token_buf.is_empty();
+            let mut values = ParamValues::default();
+
             if !matches!(
                 params.stop_char,
                 StopChar::Lf | StopChar::Colon | StopChar::Semicolon
@@ -505,7 +587,11 @@ impl Parser<'_> {
                         match self.token() {
                             Some(token) => {
                                 params.stop_char = token.stop_char;
-                                self.token_buf.push(token);
+                                if buffered {
+                                    self.token_buf.push(token);
+                                } else {
+                                    values.push(&kind, token, params);
+                                }
                             }
                             None => {
                                 params.stop_char = StopChar::Lf;
@@ -516,168 +602,52 @@ impl Parser<'_> {
                 }
             }
 
-            let param_values = &mut params.params;
-            if let Some(param_name) = ICalendarParameterName::try_parse(param_name.as_ref()) {
-                if self.token_buf.is_empty() {
-                    param_values.push(ICalendarParameter::new(
-                        param_name.clone(),
-                        ICalendarParameterValue::Null,
-                    ));
-                }
-                for token in self.token_buf.drain(..) {
-                    match &param_name {
-                        ICalendarParameterName::Altrep
-                        | ICalendarParameterName::DelegatedFrom
-                        | ICalendarParameterName::DelegatedTo
-                        | ICalendarParameterName::Dir
-                        | ICalendarParameterName::Member
-                        | ICalendarParameterName::SentBy
-                        | ICalendarParameterName::Schema => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                ICalendarParameterValue::Uri(Uri::from(token)),
-                            ));
-                        }
-                        ICalendarParameterName::Rsvp | ICalendarParameterName::Derived => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<Boolean, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Range => {
-                            if token.text.as_ref().eq_ignore_ascii_case(b"THISANDFUTURE") {
-                                param_values.push(ICalendarParameter::new(
-                                    param_name.clone(),
-                                    ICalendarParameterValue::Bool(true),
-                                ));
-                            }
-                        }
-                        ICalendarParameterName::Size | ICalendarParameterName::Order => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<Integer, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Gap => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarDuration, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Cutype => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarUserTypes, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Fbtype => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarFreeBusyType, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Partstat => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarParticipationStatus, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Related => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarRelated, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Reltype => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarRelationshipType, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Role => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarParticipationRole, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::ScheduleAgent => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarScheduleAgentValue, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::ScheduleForceSend => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarScheduleForceSendValue, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Value => {
-                            params.data_type = Some(token.into());
-                        }
-                        ICalendarParameterName::Display => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarDisplayType, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Feature => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<ICalendarFeatureType, String>::from(token),
-                            ));
-                        }
-                        ICalendarParameterName::Linkrel => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                IanaType::<LinkRelation, String>::from(token),
-                            ));
-                        }
-                        _ => {
-                            param_values.push(ICalendarParameter::new(
-                                param_name.clone(),
-                                ICalendarParameterValue::Text(token.into_string()),
-                            ));
-                        }
-                    }
-                }
-            } else if !param_name.is_empty() {
-                match param_name.first() {
-                    Some(b'c' | b'C') if param_name.as_ref().eq_ignore_ascii_case(b"charset") => {
-                        for token in self.token_buf.drain(..) {
-                            params.charset = token.into_string().into();
-                        }
-                    }
-                    Some(b'e' | b'E') if param_name.as_ref().eq_ignore_ascii_case(b"encoding") => {
-                        for token in self.token_buf.drain(..) {
-                            params.encoding = Encoding::parse(token.text.as_ref());
-                        }
-                    }
-                    _ => {
-                        if params.encoding.is_none() && param_name.eq_ignore_ascii_case(b"base64") {
-                            params.encoding = Some(Encoding::Base64);
-                        } else {
-                            let name =
-                                ICalendarParameterName::Other(Token::new(param_name).into_string())
-                                    .clone();
+            if buffered {
+                self.buffered_param(kind, params);
+            } else {
+                values.finish(kind, params);
+            }
+        }
+    }
 
-                            if !self.token_buf.is_empty() {
-                                param_values.extend(self.token_buf.drain(..).map(|token| {
-                                    ICalendarParameter::new(
-                                        name.clone(),
-                                        ICalendarParameterValue::Text(token.into_string()),
-                                    )
-                                }));
-                            } else {
-                                param_values.push(ICalendarParameter::new(
-                                    name,
-                                    ICalendarParameterValue::Null,
-                                ));
-                            }
-                        }
+    fn buffered_param(&mut self, kind: ParamKind, params: &mut Params) {
+        match kind {
+            ParamKind::Known(name) => {
+                if self.token_buf.is_empty() {
+                    params
+                        .params
+                        .push(ICalendarParameter::new(name, ICalendarParameterValue::Null));
+                } else {
+                    for token in self.token_buf.drain(..) {
+                        params.push_known(&name, token);
                     }
                 }
             }
+            ParamKind::Charset => {
+                for token in self.token_buf.drain(..) {
+                    params.charset = token.into_string().into();
+                }
+            }
+            ParamKind::Encoding => {
+                for token in self.token_buf.drain(..) {
+                    params.encoding = Encoding::parse(token.text.as_ref());
+                }
+            }
+            ParamKind::Other(name) => {
+                if self.token_buf.is_empty() {
+                    params
+                        .params
+                        .push(ICalendarParameter::new(name, ICalendarParameterValue::Null));
+                } else {
+                    params.params.extend(self.token_buf.drain(..).map(|token| {
+                        ICalendarParameter::new(
+                            name.clone(),
+                            ICalendarParameterValue::Text(token.into_string()),
+                        )
+                    }));
+                }
+            }
+            ParamKind::Pending => {}
         }
     }
 
@@ -902,6 +872,13 @@ impl Parser<'_> {
 
 impl Token<'_> {
     pub(crate) fn into_ical_date(self) -> std::result::Result<PartialDateTime, String> {
+        if let Some(dt) = self
+            .text
+            .first_chunk::<8>()
+            .and_then(PartialDateTime::from_basic_date)
+        {
+            return Ok(dt);
+        }
         let mut dt = PartialDateTime::default();
         if dt.parse_ical_date(&mut self.text.iter().peekable()) {
             Ok(dt)
@@ -944,11 +921,9 @@ struct ICalendarDateOrTime(PartialDateTime);
 
 impl IanaParse for ICalendarDateOrTime {
     fn parse(value: &[u8]) -> Option<Self> {
-        let mut dt = PartialDateTime::default();
-        if dt.parse_timestamp(&mut value.iter().peekable(), false) {
-            Some(ICalendarDateOrTime(dt))
-        } else {
-            None
+        match PartialDateTime::from_timestamp_bytes(value, false) {
+            (dt, true) => Some(ICalendarDateOrTime(dt)),
+            (_, false) => None,
         }
     }
 }
@@ -1001,7 +976,8 @@ impl IanaParse for ICalendarMonth {
 
 impl ICalendarMonth {
     pub fn new(month: u8, is_leap: bool) -> Self {
-        ICalendarMonth(if is_leap { -(month as i8) } else { month as i8 })
+        let month = i8::try_from(month).unwrap_or(i8::MAX);
+        ICalendarMonth(if is_leap { -month } else { month })
     }
 
     pub fn is_leap(&self) -> bool {
@@ -1099,7 +1075,7 @@ impl From<Token<'_>> for Uri {
     fn from(token: Token<'_>) -> Self {
         token
             .into_uri_bytes()
-            .map(Uri::Data)
+            .map(Uri::from)
             .unwrap_or_else(Uri::Location)
     }
 }
@@ -1141,7 +1117,7 @@ impl Uri {
     pub fn parse(value: impl Into<String>) -> Self {
         let uri = value.into();
         Data::try_parse(uri.as_bytes())
-            .map(Uri::Data)
+            .map(Uri::from)
             .unwrap_or_else(|| Uri::Location(uri))
     }
 }
@@ -1149,6 +1125,7 @@ impl Uri {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::tokenizer::TokenText;
     use std::io::Write;
 
     #[test]
@@ -1180,7 +1157,7 @@ mod tests {
                             for item in &mut ical.components {
                                 for item in &mut item.entries {
                                     if item.name == ICalendarProperty::Version {
-                                        item.values = vec![ICalendarValue::Text("2.0".into())];
+                                        item.values = smallvec![ICalendarValue::Text("2.0".into())];
                                     }
                                 }
                             }
@@ -2209,5 +2186,274 @@ mod tests {
 
         let reparsed = ICalendarDuration::parse(zero.to_string().as_bytes()).unwrap();
         assert_eq!(reparsed, zero);
+    }
+
+    fn entries(input: &str) -> Vec<Entry> {
+        let mut parser = Parser::new(input);
+        let mut entries = Vec::new();
+        loop {
+            match parser.entry() {
+                Entry::Eof => return entries,
+                entry => entries.push(entry),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_ical_date_shapes() {
+        for text in [
+            "20250101",
+            "20250101T090000Z",
+            "202501011",
+            "20251332",
+            "00000000",
+            "2025010",
+            "2025010a",
+            "2025-01-01",
+            " 20250101",
+            "2025 0101",
+            "2025:101",
+            "202501/1",
+            "\u{661}0250101",
+            "",
+        ] {
+            let token = Token {
+                text: TokenText::Borrowed(text),
+                start: 0,
+                end: 0,
+                stop_char: StopChar::Lf,
+            };
+            let mut expected = PartialDateTime::default();
+            let expected = if expected.parse_ical_date(&mut text.as_bytes().iter().peekable()) {
+                Ok(expected)
+            } else {
+                Err(text.to_string())
+            };
+            assert_eq!(token.into_ical_date(), expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_parameter_carry_over() {
+        const BEGIN: &str = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n";
+        const END: &str = "END:VEVENT\r\nEND:VCALENDAR\r\n";
+        for (input, equivalent) in [
+            (
+                "ATTENDEE;=a,b;CN=c:mailto:x\r\n",
+                "ATTENDEE;CN=a,b,c:mailto:x\r\n",
+            ),
+            (
+                "ATTENDEE;=a;ROLE:mailto:x\r\n",
+                "ATTENDEE;ROLE=a:mailto:x\r\n",
+            ),
+            (
+                "ATTACH;BASE64=a;FMTTYPE=text/plain:SGVsbG8=\r\n",
+                "ATTACH;ENCODING=BASE64;FMTTYPE=a,text/plain:SGVsbG8=\r\n",
+            ),
+            ("SUMMARY;=a;X-A=b:x\r\n", "SUMMARY;X-A=a,b:x\r\n"),
+            (
+                "SUMMARY;=a:x\r\nATTENDEE;CN=b:mailto:y\r\n",
+                "SUMMARY:x\r\nATTENDEE;CN=a,b:mailto:y\r\n",
+            ),
+            (
+                "DTSTART;=x;VALUE=DATE:20250101\r\n",
+                "DTSTART;VALUE=x,DATE:20250101\r\n",
+            ),
+            (
+                "DESCRIPTION;=x;ENCODING=QUOTED-PRINTABLE:a=3Db\r\n",
+                "DESCRIPTION;ENCODING=x,QUOTED-PRINTABLE:a=3Db\r\n",
+            ),
+            (
+                "DESCRIPTION;ENCODING=QUOTED-PRINTABLE;=x;CHARSET=utf-8:a=C3=A9\r\n",
+                "DESCRIPTION;ENCODING=QUOTED-PRINTABLE;CHARSET=x,utf-8:a=C3=A9\r\n",
+            ),
+        ] {
+            assert_eq!(
+                entries(&format!("{BEGIN}{input}{END}")),
+                entries(&format!("{BEGIN}{equivalent}{END}")),
+                "{input:?}"
+            );
+        }
+        assert_eq!(
+            entries(concat!(
+                "BEGIN:VCALENDAR\r\nSUMMARY;=a:x\r\nEND:VCALENDAR\r\n",
+                "BEGIN:VCARD\r\nTEL;TYPE=home:1\r\nEND:VCARD\r\n"
+            )),
+            entries(concat!(
+                "BEGIN:VCALENDAR\r\nSUMMARY:x\r\nEND:VCALENDAR\r\n",
+                "BEGIN:VCARD\r\nTEL;TYPE=a,home:1\r\nEND:VCARD\r\n"
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_deep_nesting() {
+        const DEPTH: usize = 11;
+        let level_type = |level: usize| ICalendarComponentType::Other(format!("X-LEVEL-{level}"));
+        let input = std::iter::once("BEGIN:VCALENDAR\r\n".to_string())
+            .chain(
+                (1..=DEPTH)
+                    .map(|level| format!("BEGIN:X-LEVEL-{level}\r\nSUMMARY:open {level}\r\n")),
+            )
+            .chain(
+                (1..=DEPTH)
+                    .rev()
+                    .map(|level| format!("END:X-LEVEL-{level}\r\nSUMMARY:closed {level}\r\n")),
+            )
+            .chain(std::iter::once("END:VCALENDAR\r\n".to_string()))
+            .collect::<String>();
+        let ical = ICalendar::parse(&input).expect("valid calendar");
+        assert_eq!(ical.components.len(), DEPTH + 1);
+        for (depth, component) in ical.components.iter().enumerate() {
+            let summaries = component
+                .entries
+                .iter()
+                .filter_map(|entry| entry.values.first().and_then(ICalendarValue::as_text))
+                .collect::<Vec<_>>();
+            let (component_type, expected_summaries, component_ids) = match depth {
+                0 => (
+                    ICalendarComponentType::VCalendar,
+                    vec!["closed 1".to_string()],
+                    vec![1],
+                ),
+                DEPTH => (level_type(depth), vec![format!("open {depth}")], vec![]),
+                _ => (
+                    level_type(depth),
+                    vec![format!("open {depth}"), format!("closed {}", depth + 1)],
+                    vec![depth as u32 + 1],
+                ),
+            };
+            assert_eq!(component.component_type, component_type, "{depth}");
+            assert_eq!(summaries, expected_summaries, "{depth}");
+            assert_eq!(component.component_ids, component_ids, "{depth}");
+        }
+
+        let open = (1..DEPTH)
+            .map(|level| format!("BEGIN:X-LEVEL-{level}\r\n"))
+            .collect::<String>();
+        let mismatched =
+            format!("BEGIN:VCALENDAR\r\n{open}END:X-LEVEL-3\r\nSUMMARY:after\r\nEND:X-LEVEL-9\r\n");
+        assert_eq!(
+            Parser::new(&mismatched).strict().entry(),
+            Entry::UnexpectedComponentEnd {
+                expected: level_type(DEPTH - 1),
+                found: level_type(3),
+            }
+        );
+        let ical = ICalendar::parse(&mismatched).expect("lenient parse");
+        assert_eq!(
+            ical.components
+                .iter()
+                .map(|component| component.entries.len())
+                .collect::<Vec<_>>(),
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+        );
+    }
+
+    #[test]
+    fn test_parse_encoded_values() {
+        let binary = |bytes: &[u8]| ICalendarValue::Binary(bytes.to_vec());
+        let text = |text: &str| ICalendarValue::Text(text.to_string());
+        let binary_type = ICalendarParameter {
+            name: ICalendarParameterName::Value,
+            value: ICalendarParameterValue::Value(ICalendarValueType::Binary),
+        };
+        for (line, expected, typed_binary) in [
+            (
+                "ATTACH;ENCODING=BASE64;VALUE=BINARY:SGVs\r\n bG8=",
+                binary(b"Hello"),
+                true,
+            ),
+            ("ATTACH;ENCODING=BASE64:SGVsbG8=", binary(b"Hello"), true),
+            (
+                "DESCRIPTION;ENCODING=BASE64:SGVs\r\n\tbG8=",
+                text("Hello"),
+                false,
+            ),
+            ("DESCRIPTION;ENCODING=BASE64:/w==", binary(&[0xff]), true),
+            (
+                "DESCRIPTION;ENCODING=QUOTED-PRINTABLE:caf=E9",
+                text("caf\u{e9}"),
+                false,
+            ),
+            (
+                "DESCRIPTION;ENCODING=QUOTED-PRINTABLE;CHARSET=UTF-8:caf=C3=\r\n=A9",
+                text("caf\u{e9}"),
+                false,
+            ),
+            ("X-DATA;ENCODING=BASE64:QU*D", text("QU*D"), false),
+        ] {
+            let input = format!(
+                "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n{line}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+            );
+            let ical = ICalendar::parse(&input).expect("valid calendar");
+            let entry = ical
+                .components
+                .iter()
+                .flat_map(|component| &component.entries)
+                .next()
+                .expect("one entry");
+            assert_eq!(entry.values.as_slice(), [expected], "{line:?}");
+            assert_eq!(
+                entry.params.contains(&binary_type),
+                typed_binary,
+                "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_month_new_saturates_out_of_range_months() {
+        for month in 0..=u8::MAX {
+            for is_leap in [false, true] {
+                let value = ICalendarMonth::new(month, is_leap);
+                assert_eq!(value.month(), month.min(127), "{month} {is_leap}");
+                assert_eq!(value.is_leap(), is_leap && month != 0, "{month} {is_leap}");
+                if let Ok(month) = i8::try_from(month) {
+                    assert_eq!(value.0, if is_leap { -month } else { month });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_entry_presize_is_bounded_by_the_input() {
+        const COMPONENTS: usize = 20_000;
+        const FIRST_PUSH_CAPACITY: usize = 4;
+        let events = "BEGIN:VEVENT\nX:1\nEND:VEVENT\n".repeat(COMPONENTS);
+        let ical = ICalendar::parse(format!("BEGIN:VCALENDAR\n{events}END:VCALENDAR\n"))
+            .expect("valid calendar");
+        let events = ical.components.iter().skip(1);
+        assert_eq!(
+            events.clone().filter(|c| c.entries.len() == 1).count(),
+            COMPONENTS
+        );
+        let capacity = events.map(|c| c.entries.capacity()).sum::<usize>();
+        assert!(
+            capacity <= 2 * FIRST_PUSH_CAPACITY * COMPONENTS,
+            "{COMPONENTS} one-entry components reserve {capacity} entry slots"
+        );
+
+        let event = concat!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Example Corp.//Example Client//EN\r\n",
+            "BEGIN:VEVENT\r\nUID:6D3B9A2E-4C1F-4B8E-9E57-2A1C0F7D8B34\r\n",
+            "DTSTAMP:20250113T091631Z\r\nDTSTART;TZID=Europe/Berlin:20250121T103000\r\n",
+            "DTEND;TZID=Europe/Berlin:20250121T113000\r\nSUMMARY:Quarterly planning review\r\n",
+            "LOCATION:Meeting Room 4.12\r\nDESCRIPTION:Bring the Q4 numbers and the hiring plan.\r\n",
+            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT15M\r\n",
+            "END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        );
+        let ical = ICalendar::parse(event).expect("valid calendar");
+        assert_eq!(
+            ical.components
+                .iter()
+                .map(|c| (c.entries.len(), c.entries.capacity()))
+                .collect::<Vec<_>>(),
+            [
+                (2, ICalendarComponentType::VCalendar.entry_capacity()),
+                (7, ICalendarComponentType::VEvent.entry_capacity()),
+                (3, ICalendarComponentType::VAlarm.entry_capacity())
+            ]
+        );
     }
 }

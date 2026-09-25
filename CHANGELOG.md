@@ -1,6 +1,7 @@
 calcard 0.4.0
 ================================
 - RFC compliance fixes.
+- Performance improvements.
 
 calcard 0.3.14
 ================================

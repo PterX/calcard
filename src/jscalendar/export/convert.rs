@@ -10,19 +10,21 @@ use crate::{
         IanaParse, PartialDateTime,
         blob::BlobResolver,
         export::{ExportError, RejectedPatch},
+        jsprop::text::PointerString,
         timezone::{NominalDuration, Tz, ZonedDateTime},
     },
     icalendar::*,
     jscalendar::{
         export::{ConvertedComponent, ExportContext, ExportOptions, State},
-        ext::{JSCalendarKeyExt, JSCalendarMapExt, JSCalendarPatch},
+        ext::{JSCalendarKeyExt, JSCalendarMapExt, JSCalendarObjectExt},
         overrides::OverrideTemplate,
         *,
     },
 };
 use ahash::AHashSet;
 use jiff::{civil, tz::Offset};
-use jmap_tools::{JsonPointer, Key, Map, Value};
+use jmap_tools::{Key, Map, Value};
+use smallvec::smallvec;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,9 +135,10 @@ impl ICalendar {
         let mut is_show_without_time = false;
         let mut has_time_component = false;
         let mut has_time_zone = false;
+        let entry_capacity = state.entry_capacity();
         let mut override_template = match state
             .entries
-            .get(&Key::Property(JSCalendarProperty::RecurrenceOverrides))
+            .lookup(&Key::Property(JSCalendarProperty::RecurrenceOverrides))
         {
             Some(Value::Object(overrides))
                 if matches!(
@@ -143,10 +146,7 @@ impl ICalendar {
                     ICalendarComponentType::VEvent | ICalendarComponentType::VTodo
                 ) =>
             {
-                let instances = overrides
-                    .values()
-                    .filter(|patch| patch.is_instance_patch())
-                    .count();
+                let instances = OverrideTemplate::uses(&state.entries, overrides);
                 (instances > 0).then(|| {
                     let template = OverrideTemplate::new(&state.entries, instances);
                     if let Some(blobs) = &mut options.blobs {
@@ -232,7 +232,7 @@ impl ICalendar {
                 }
                 (Key::Property(JSCalendarProperty::RecurrenceRule), Value::Object(obj)) => {
                     if let Some(Value::Element(JSCalendarValue::DateTime(dt))) =
-                        obj.get(&Key::Property(JSCalendarProperty::Until))
+                        obj.lookup(&Key::Property(JSCalendarProperty::Until))
                     {
                         has_time_component |= !dt.is_start_of_day();
                     }
@@ -318,6 +318,7 @@ impl ICalendar {
         // Build component
         let mut component =
             ICalendarComponent::new(component_type.unwrap_or(state.default_component_type));
+        component.entries.reserve_exact(entry_capacity);
         if parent_component.is_none() {
             debug_assert!(self.components.is_empty());
             self.components
@@ -377,10 +378,11 @@ impl ICalendar {
 
                         let mut item_conversions = ConvertedComponent::build(&mut value);
                         let has_address = matches!(
-                            value.get(&Key::Property(JSCalendarProperty::CalendarAddress)),
+                            value.lookup(&Key::Property(JSCalendarProperty::CalendarAddress)),
                             Some(Value::Str(_))
                         );
                         let mut entry = ICalendarEntry::new(ICalendarProperty::Attendee);
+                        entry.params.reserve_exact(value.len() + 1);
                         let mut participant =
                             ICalendarComponent::new(ICalendarComponentType::Participant);
                         let mut participant_name = None;
@@ -400,7 +402,7 @@ impl ICalendar {
                                     Key::Property(JSCalendarProperty::CalendarAddress),
                                     Value::Str(text),
                                 ) => {
-                                    is_uuid5_key = uuid5(text.as_ref()) == name.to_string();
+                                    is_uuid5_key = name.is_uuid5_of(text.as_bytes());
                                     calendar_address = Some(text);
                                 }
                                 (
@@ -1085,7 +1087,7 @@ impl ICalendar {
                             }
                             alert.entries.push(
                                 ICalendarEntry::new(ICalendarProperty::Jsid)
-                                    .with_value(name.to_string().into_owned()),
+                                    .with_value(name.into_string()),
                             );
                             alerts.push(alert);
                         }
@@ -1157,8 +1159,7 @@ impl ICalendar {
                         ICalendarEntry::new(ICalendarProperty::Categories)
                             .with_values(
                                 obj.into_expanded_boolean_set()
-                                    .map(|v| ICalendarValue::Text(v.into_string()))
-                                    .collect(),
+                                    .map(|v| ICalendarValue::Text(v.into_string())),
                             )
                             .import_converted(
                                 &[JSCalendarProperty::Keywords],
@@ -1282,7 +1283,7 @@ impl ICalendar {
                                         .push(ICalendarParameter::label(text.into_owned()));
                                 }
                                 (Key::Property(JSCalendarProperty::Uri), Value::Str(text)) => {
-                                    is_uuid5_key = uuid5(text.as_ref()) == name.to_string();
+                                    is_uuid5_key = name.is_uuid5_of(text.as_bytes());
                                     entry
                                         .values
                                         .push(ICalendarValue::Uri(Uri::parse(text.into_owned())));
@@ -1409,18 +1410,14 @@ impl ICalendar {
                                                     &[JSCalendarProperty::LocationTypes],
                                                     &mut item_conversions,
                                                 )
-                                                .with_values(
-                                                    obj.into_expanded_boolean_set()
-                                                        .map(|v| {
-                                                            ICalendarValue::Text(v.into_string())
-                                                        })
-                                                        .collect(),
-                                                ),
+                                                .with_values(obj.into_expanded_boolean_set().map(
+                                                    |v| ICalendarValue::Text(v.into_string()),
+                                                )),
                                         );
                                     }
                                 }
                                 (Key::Property(JSCalendarProperty::Name), Value::Str(text)) => {
-                                    is_uuid5_key |= uuid5(text.as_ref()) == name.to_string();
+                                    is_uuid5_key |= name.is_uuid5_of(text.as_bytes());
 
                                     if let Some(location) = &mut location {
                                         location.entries.push(
@@ -1464,7 +1461,7 @@ impl ICalendar {
                                                     &[JSCalendarProperty::Description],
                                                     &mut item_conversions,
                                                 )
-                                                .with_value(text.clone().into_owned()),
+                                                .with_value(text.into_owned()),
                                         );
                                     }
                                 }
@@ -1472,7 +1469,7 @@ impl ICalendar {
                                     Key::Property(JSCalendarProperty::Coordinates),
                                     Value::Str(text),
                                 ) => {
-                                    is_uuid5_key |= uuid5(text.as_ref()) == name.to_string();
+                                    is_uuid5_key |= name.is_uuid5_of(text.as_bytes());
                                     if let Some(location) = &mut location {
                                         let entry =
                                             ICalendarEntry::new(ICalendarProperty::Coordinates)
@@ -1694,8 +1691,8 @@ impl ICalendar {
                             (JSCalendarProperty::ByDay, Value::Array(value))
                                 if value.iter().all(|item| {
                                     !matches!(
-                                        item.as_object_and_get(&Key::Property(
-                                            JSCalendarProperty::NthOfPeriod
+                                        item.as_object().and_then(|item| item.lookup(
+                                            &Key::Property(JSCalendarProperty::NthOfPeriod)
                                         )),
                                         Some(Value::Number(nth)) if nth
                                             .as_i64()
@@ -2230,10 +2227,8 @@ impl ICalendar {
                             (
                                 Key::Property(JSCalendarProperty::DateTime(dt)),
                                 Value::Object(patch),
-                            ) if !patch.contains_key_value(
-                                &Key::Property(JSCalendarProperty::Excluded),
-                                &Value::Bool(true),
-                            ) =>
+                            ) if !patch
+                                .contains_true(&Key::Property(JSCalendarProperty::Excluded)) =>
                             {
                                 Some(dt.timestamp)
                             }
@@ -2271,7 +2266,7 @@ impl ICalendar {
                 if has_converted_prop
                     && obj.len() == 1
                     && let Some(Value::Element(JSCalendarValue::Duration(duration))) =
-                        obj.get(&Key::Property(JSCalendarProperty::Duration))
+                        obj.lookup(&Key::Property(JSCalendarProperty::Duration))
                 {
                     let duration = duration.clone();
                     let mut entry = ICalendarEntry::new(ICalendarProperty::Rdate)
@@ -2289,10 +2284,7 @@ impl ICalendar {
                 }
 
                 if !obj.is_empty() {
-                    if !obj.contains_key_value(
-                        &Key::Property(JSCalendarProperty::Excluded),
-                        &Value::Bool(true),
-                    ) {
+                    if !obj.contains_true(&Key::Property(JSCalendarProperty::Excluded)) {
                         let Some(template) = &mut override_template else {
                             continue;
                         };
@@ -2324,7 +2316,7 @@ impl ICalendar {
                             rdates.push(dt);
                         }
                         if let Some(privacy) = privacy {
-                            instance.insert(
+                            instance.upsert(
                                 Key::Property(JSCalendarProperty::Privacy),
                                 Value::Element(JSCalendarValue::Privacy(privacy)),
                             );
@@ -2395,7 +2387,7 @@ impl ICalendar {
                 )));
             }
             organizer.params = organizer_params;
-            organizer.values = vec![ICalendarValue::Uri(Uri::parse(
+            organizer.values = smallvec![ICalendarValue::Uri(Uri::parse(
                 organizer_address.into_owned(),
             ))];
 
@@ -2582,21 +2574,21 @@ impl ICalendarComponent {
                 continue;
             };
             let has_blob = matches!(
-                link.get(&Key::Property(JSCalendarProperty::BlobId)),
+                link.lookup(&Key::Property(JSCalendarProperty::BlobId)),
                 Some(Value::Element(JSCalendarValue::BlobId(_)) | Value::Str(_))
             );
             if has_blob && options.blobs.is_none() {
                 jsprop_links.push((name.into_owned(), Value::Object(link).into_owned()));
                 continue;
             }
-            let has_rel = match link.get(&Key::Property(JSCalendarProperty::Rel)) {
+            let has_rel = match link.lookup(&Key::Property(JSCalendarProperty::Rel)) {
                 None => false,
                 Some(Value::Element(JSCalendarValue::LinkRelation(_))) => true,
                 Some(Value::Str(rel)) if rel.is_link_relation_type() => true,
                 Some(_)
                     if has_blob
                         || matches!(
-                            link.get(&Key::Property(JSCalendarProperty::Display)),
+                            link.lookup(&Key::Property(JSCalendarProperty::Display)),
                             Some(Value::Object(_))
                         ) =>
                 {
@@ -2792,7 +2784,7 @@ impl ICalendarComponent {
                         entry.name = ICalendarProperty::Attach;
                     }
                     let is_uuid5_key = name.is_uuid5_of(&bytes);
-                    entry.values = vec![ICalendarValue::Binary(bytes)];
+                    entry.values = smallvec![ICalendarValue::Binary(bytes)];
                     is_uuid5_key
                 }
                 (Some(Err(blob_id)), _) => {
@@ -2804,12 +2796,12 @@ impl ICalendarComponent {
                         continue;
                     }
                     let is_uuid5_key = name.is_uuid5_of(&data.data);
-                    entry.values = vec![ICalendarValue::Uri(Uri::Data(data))];
+                    entry.values = smallvec![ICalendarValue::Uri(Uri::Data(data))];
                     is_uuid5_key
                 }
                 (None, Some(Uri::Location(href))) => {
                     let is_uuid5_key = name.is_uuid5_of(href.as_bytes());
-                    entry.values = vec![ICalendarValue::Uri(Uri::Location(href))];
+                    entry.values = smallvec![ICalendarValue::Uri(Uri::Location(href))];
                     is_uuid5_key
                 }
                 (None, None) => false,
@@ -3044,9 +3036,7 @@ impl ICalendarComponent {
         if set == JSPropSet::Exists {
             for key in keys {
                 self.insert_encoded_jsprop::<I, B>(
-                    JsonPointer::<JSCalendarProperty<I>>::encode(
-                        path.iter().copied().chain([key.to_string().as_ref()]),
-                    ),
+                    String::from_pointer(path.iter().copied().chain([key.to_string().as_ref()])),
                     Value::Bool(true),
                 );
             }
@@ -3067,7 +3057,7 @@ impl ICalendarComponent {
         path: &[&str],
         value: Value<'_, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
     ) -> bool {
-        self.insert_encoded_jsprop(JsonPointer::<JSCalendarProperty<I>>::encode(path), value)
+        self.insert_encoded_jsprop(String::from_pointer(path.iter().copied()), value)
     }
 
     fn insert_encoded_jsprop<I: JSCalendarId, B: JSCalendarId>(
@@ -3337,5 +3327,135 @@ impl ICalendarComponent {
         }
 
         pending
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::jscalendar::{
+        JSCalendar, JSCalendarProperty, export::ExportOptions, overrides::OverrideTemplate,
+    };
+    use jmap_tools::{Key, Value};
+
+    const START: &str = r#""@type": "Event", "start": "2025-01-01T09:00:00""#;
+    const CONVERTED: &str = r#""iCalendar": {"convertedProperties": {"recurrenceOverrides/2025-01-02T09:00:00": {"name": "rdate"}}}"#;
+
+    fn uses(json: &str) -> usize {
+        let Ok(JSCalendar(Value::Object(entries))) = JSCalendar::<String, String>::parse(json)
+        else {
+            panic!("invalid test object {json}");
+        };
+        match entries.get(&Key::Property(JSCalendarProperty::RecurrenceOverrides)) {
+            Some(Value::Object(overrides)) => {
+                OverrideTemplate::<String, String>::uses(&entries, overrides)
+            }
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn template_uses_skip_patches_that_never_become_instances() {
+        const PERIOD: &str = r#""2025-01-02T09:00:00": {"duration": "PT1H"}"#;
+        for (overrides, converted, expected) in [
+            (PERIOD, CONVERTED, 0),
+            (PERIOD, r#""x": 1"#, 1),
+            (
+                r#""2025-01-02T09:00:00": {"duration": "PT1H", "title": "a"}"#,
+                CONVERTED,
+                1,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"duration": "PT1H", "excluded": false}"#,
+                CONVERTED,
+                0,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"duration": "PT1H", "excluded": true}"#,
+                CONVERTED,
+                0,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"duration": "PT1H", "privacy": "private", "uid": "u"}"#,
+                CONVERTED,
+                0,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"estimatedDuration": "PT1H"}"#,
+                CONVERTED,
+                1,
+            ),
+            (r#""2025-01-02T09:00:00": {"duration": "x"}"#, CONVERTED, 1),
+            (
+                PERIOD,
+                r#""iCalendar": {"convertedProperties": {"/recurrenceOverrides/2025-01-02T09:00:00": {}}}"#,
+                0,
+            ),
+            (
+                PERIOD,
+                r#""iCalendar": {"convertedProperties": {"recurrenceOverrides/2025-01-02T09:00:00/duration": {}}}"#,
+                0,
+            ),
+            (
+                PERIOD,
+                r#""iCalendar": {"convertedProperties": {"recurrenceOverrides/2025-01-03T09:00:00": {}}}"#,
+                1,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"duration": "PT1H"}, "2025-01-03T09:00:00": {"duration": "PT2H"}"#,
+                r#""iCalendar": {"convertedProperties": {"recurrenceOverrides/2025-01-02T09:00:00": {}, "recurrenceOverrides/2025-01-03T09:00:00": {}}}"#,
+                0,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"duration": "PT1H"}, "2025-01-03T09:00:00": {"title": "a"}"#,
+                CONVERTED,
+                2,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"duration": "PT1H"}, "2025-01-03T09:00:00": {"excluded": true}, "2025-01-04T09:00:00": {}"#,
+                CONVERTED,
+                0,
+            ),
+            (
+                r#""2025-01-02T09:00:00": {"title": "a"}}, "recurrenceOverrides": {"2025-01-02T09:00:00": {"duration": "PT1H"}"#,
+                CONVERTED,
+                1,
+            ),
+        ] {
+            let json =
+                format!(r#"{{{START}, "recurrenceOverrides": {{{overrides}}}, {converted}}}"#);
+            assert_eq!(uses(&json), expected, "{json}");
+        }
+    }
+
+    #[test]
+    fn period_rdates_do_not_resolve_template_blobs_again() {
+        let json = format!(
+            r#"{{"@type": "Group", "entries": [{{{START}, "uid": "a", "title": "b",
+                "links": {{"l1": {{"@type": "Link", "blobId": "b1", "rel": "enclosure"}}}},
+                "recurrenceOverrides": {{
+                    "2025-01-02T09:00:00": {{"duration": "PT1H"}},
+                    "2025-01-03T09:00:00": {{"duration": "PT2H"}},
+                    "2025-01-04T09:00:00": {{"title": "moved"}}
+                }},
+                "iCalendar": {{"convertedProperties": {{
+                    "recurrenceOverrides/2025-01-02T09:00:00": {{"name": "rdate", "parameters": {{"value": "PERIOD"}}}},
+                    "recurrenceOverrides/2025-01-03T09:00:00": {{"name": "rdate", "parameters": {{"value": "PERIOD"}}}}
+                }}}}}}]}}"#
+        );
+        let mut calls = Vec::new();
+        let ical = JSCalendar::<String, String>::parse(&json)
+            .expect("valid json")
+            .into_icalendar_with(ExportOptions::new().with_blob_resolver(|id: &String| {
+                calls.push(id.clone());
+                Some(b"data".to_vec())
+            }))
+            .expect("converts")
+            .to_string();
+        assert_eq!(calls, ["b1"]);
+        assert_eq!(ical.matches("RDATE;VALUE=PERIOD:").count(), 2, "{ical}");
+        assert!(ical.contains("RDATE:20250104T090000"), "{ical}");
+        assert_eq!(ical.matches("BEGIN:VEVENT").count(), 2, "{ical}");
+        assert_eq!(ical.matches("ATTACH;").count(), 2, "{ical}");
+        assert!(ical.contains("SUMMARY:moved"), "{ical}");
     }
 }

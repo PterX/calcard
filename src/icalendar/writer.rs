@@ -11,52 +11,72 @@ use super::{
 use crate::{
     common::{
         CalendarScale, IanaString, PartialDateTime,
+        format::{AsciiPush, BufferedWrite, DurationParts},
+        stack::ComponentStack,
         writer::{
-            FoldingWriter, LineWriter, write_bytes, write_param_text, write_param_value,
-            write_quoted_param_value, write_text, write_uri,
+            DOCUMENT_BUFFER, ENTRY_BUFFER, FoldingWriter, LineWriter, VisitedComponents,
+            write_param_text, write_param_value, write_quoted_param_value, write_text, write_uri,
         },
     },
     icalendar::{
-        ICalendarMonth, ICalendarParameterName, ICalendarParameterValue, ICalendarValue, Uri,
-        ValueSeparator,
+        ICalendarMonth, ICalendarParameterName, ICalendarParameterValue, ICalendarProperty,
+        ICalendarValue, Uri, ValueSeparator,
     },
 };
 use std::{
-    fmt::{Display, Write},
+    fmt::{self, Display, Write},
     slice::Iter,
 };
 
+pub(crate) const RRULE_BUFFER: usize = 256;
+pub(crate) const DURATION_BUFFER: usize = 64;
+pub(crate) const DATE_BUFFER: usize = 32;
+pub(crate) const PERIOD_BUFFER: usize = 96;
+
 impl ICalendar {
-    pub fn write_to(&self, out: &mut impl Write) -> std::fmt::Result {
+    pub fn write_to(&self, out: &mut impl Write) -> fmt::Result {
+        out.write_buffered::<DOCUMENT_BUFFER>(|buf| {
+            self.write_components(&mut FoldingWriter::new(buf))
+        })
+    }
+
+    fn write_components<W: Write + AsciiPush + ?Sized>(
+        &self,
+        out: &mut FoldingWriter<'_, W>,
+    ) -> fmt::Result {
         let mut component_iter: Iter<'_, u32> = [0].iter();
-        let mut component_stack = Vec::with_capacity(4);
-        let mut visited = vec![false; self.components.len()];
+        let mut component_stack = ComponentStack::new();
+        let mut visited = VisitedComponents::new(self.components.len());
 
         loop {
             if let Some(component_id) = component_iter.next() {
-                let Some((component, visited)) = self
+                let component_id = *component_id as usize;
+                let Some(component) = self
                     .components
-                    .get(*component_id as usize)
-                    .zip(visited.get_mut(*component_id as usize))
-                    .filter(|(_, visited)| !**visited)
+                    .get(component_id)
+                    .filter(|_| visited.insert(component_id))
                 else {
                     continue;
                 };
-                *visited = true;
-                write_boundary(out, "BEGIN:", component.component_type.as_str())?;
+                out.write_boundary("BEGIN:", component.component_type.as_str())?;
 
                 for entry in &component.entries {
-                    entry.write_to(out)?;
+                    if !matches!(
+                        entry.name,
+                        ICalendarProperty::Begin | ICalendarProperty::End
+                    ) {
+                        entry.write_line(out, true)?;
+                    }
                 }
 
                 if !component.component_ids.is_empty() {
                     component_stack.push((component, component_iter));
                     component_iter = component.component_ids.iter();
                 } else {
-                    write_boundary(out, "END:", component.component_type.as_str())?;
+                    out.write_boundary("END:", component.component_type.as_str())?;
                 }
             } else if let Some((component, iter)) = component_stack.pop() {
-                write_boundary(out, "END:", component.component_type.as_str())?;
+                out.write_boundary("END:", component.component_type.as_str())?;
                 component_iter = iter;
             } else {
                 break;
@@ -68,14 +88,21 @@ impl ICalendar {
 }
 
 impl ICalendarEntry {
-    pub fn write_to(&self, out: &mut impl Write) -> std::fmt::Result {
+    pub fn write_to(&self, out: &mut impl Write) -> fmt::Result {
         self.write_with_value(out, true)
     }
 
-    pub fn write_with_value(&self, out: &mut impl Write, with_value: bool) -> std::fmt::Result {
-        let mut folded = FoldingWriter::new(out);
-        let out = &mut folded;
+    pub fn write_with_value(&self, out: &mut impl Write, with_value: bool) -> fmt::Result {
+        out.write_buffered::<ENTRY_BUFFER>(|buf| {
+            self.write_line(&mut FoldingWriter::new(buf), with_value)
+        })
+    }
 
+    pub(crate) fn write_line<W: Write + AsciiPush + ?Sized>(
+        &self,
+        out: &mut FoldingWriter<'_, W>,
+        with_value: bool,
+    ) -> fmt::Result {
         out.write_atomic(self.name.as_str())?;
 
         if matches!(self.values.first(), Some(ICalendarValue::Binary(_))) {
@@ -114,7 +141,7 @@ impl ICalendarEntry {
                     write_param_value(out, v, true)?;
                 }
                 ICalendarParameterValue::Integer(i) => {
-                    write!(out, "{i}")?;
+                    out.push_u64(*i)?;
                 }
                 ICalendarParameterValue::Bool(v) => {
                     let v = if !matches!(param.name, ICalendarParameterName::Range) {
@@ -164,7 +191,7 @@ impl ICalendarEntry {
                     write_param_value(out, v.as_str(), true)?;
                 }
                 ICalendarParameterValue::Duration(v) => {
-                    write!(out, "{v}")?;
+                    out.push_duration(v.parts())?;
                 }
                 ICalendarParameterValue::Linkrel(v) => {
                     write_param_value(out, v.as_str(), true)?;
@@ -196,7 +223,7 @@ impl ICalendarEntry {
 
             let text = match value {
                 ICalendarValue::Binary(v) => {
-                    write_bytes(out, v)?;
+                    out.write_base64(v)?;
                     continue;
                 }
                 ICalendarValue::Boolean(v) => {
@@ -208,19 +235,19 @@ impl ICalendarEntry {
                     continue;
                 }
                 ICalendarValue::PartialDateTime(v) => {
-                    v.format_as_ical(out, types.unwrap_or(&default_type))?;
+                    v.push_ical(out, types.unwrap_or(&default_type))?;
                     continue;
                 }
                 ICalendarValue::Duration(v) => {
-                    write!(out, "{}", v)?;
+                    out.push_duration(v.parts())?;
                     continue;
                 }
                 ICalendarValue::RecurrenceRule(v) => {
-                    write!(out, "{}", v)?;
+                    v.push_to(out)?;
                     continue;
                 }
                 ICalendarValue::Period(v) => {
-                    write!(out, "{}", v)?;
+                    v.push_to(out)?;
                     continue;
                 }
                 ICalendarValue::Float(v) => {
@@ -228,7 +255,7 @@ impl ICalendarEntry {
                     continue;
                 }
                 ICalendarValue::Integer(v) => {
-                    write!(out, "{v}")?;
+                    out.push_i64(*v)?;
                     continue;
                 }
                 ICalendarValue::Text(v) => {
@@ -261,48 +288,31 @@ impl ICalendarEntry {
 }
 
 impl Uri {
-    fn write_value(&self, out: &mut impl LineWriter) -> std::fmt::Result {
+    fn write_value(&self, out: &mut impl LineWriter) -> fmt::Result {
         match self {
             Uri::Data(v) => {
                 out.write_str("data:")?;
                 out.write_str(v.content_type.as_deref().unwrap_or_default())?;
                 out.write_str(";")?;
                 out.write_atomic("base64,")?;
-                write_bytes(out, &v.data)
+                out.write_base64(&v.data)
             }
             Uri::Location(v) => write_uri(out, v),
         }
     }
 
-    fn write_param_text(&self, out: &mut impl LineWriter) -> std::fmt::Result {
+    fn write_param_text(&self, out: &mut impl LineWriter) -> fmt::Result {
         match self {
             Uri::Data(v) => {
                 out.write_str("data:")?;
                 write_param_text(out, v.content_type.as_deref().unwrap_or_default(), true)?;
                 out.write_str(";")?;
                 out.write_atomic("base64,")?;
-                write_bytes(out, &v.data)
+                out.write_base64(&v.data)
             }
             Uri::Location(v) => write_param_text(out, v, true),
         }
     }
-}
-
-fn write_boundary(out: &mut impl Write, keyword: &str, name: &str) -> std::fmt::Result {
-    let mut folded = FoldingWriter::new(out);
-    folded.write_atomic(keyword)?;
-    folded.write_atomic(name)?;
-    folded.end_line()
-}
-
-#[cfg(feature = "rkyv")]
-pub(crate) fn write_component_begin(out: &mut impl Write, name: &str) -> std::fmt::Result {
-    write_boundary(out, "BEGIN:", name)
-}
-
-#[cfg(feature = "rkyv")]
-pub(crate) fn write_component_end(out: &mut impl Write, name: &str) -> std::fmt::Result {
-    write_boundary(out, "END:", name)
 }
 
 impl Uri {
@@ -321,13 +331,14 @@ impl Uri {
     }
 }
 
-impl Display for ICalendarRecurrenceRule {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FREQ={}", self.freq.as_str())?;
+impl ICalendarRecurrenceRule {
+    pub(crate) fn push_to(&self, buf: &mut impl AsciiPush) -> fmt::Result {
+        buf.push_ascii_str("FREQ=")?;
+        buf.push_ascii_str(self.freq.as_str())?;
         if let Some(until) = &self.until {
-            write!(f, ";UNTIL=")?;
-            until.format_as_ical(
-                f,
+            buf.push_ascii_str(";UNTIL=")?;
+            until.push_ical(
+                buf,
                 if until.has_date_and_time() {
                     &ICalendarValueType::DateTime
                 } else {
@@ -336,222 +347,169 @@ impl Display for ICalendarRecurrenceRule {
             )?;
         }
         if let Some(count) = self.count.filter(|c| *c > 0) {
-            write!(f, ";COUNT={}", count)?;
+            buf.push_ascii_str(";COUNT=")?;
+            buf.push_u64(count.into())?;
         }
         if let Some(interval) = self.interval {
-            write!(f, ";INTERVAL={}", interval)?;
+            buf.push_ascii_str(";INTERVAL=")?;
+            buf.push_u64(interval.into())?;
         }
-        if !self.bysecond.is_empty() {
-            write!(f, ";BYSECOND=")?;
-            for (pos, item) in self.bysecond.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.byminute.is_empty() {
-            write!(f, ";BYMINUTE=")?;
-            for (pos, item) in self.byminute.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.byhour.is_empty() {
-            write!(f, ";BYHOUR=")?;
-            for (pos, item) in self.byhour.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.byday.is_empty() {
-            write!(f, ";BYDAY=")?;
-            for (pos, item) in self.byday.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.bymonthday.is_empty() {
-            write!(f, ";BYMONTHDAY=")?;
-            for (pos, item) in self.bymonthday.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.byyearday.is_empty() {
-            write!(f, ";BYYEARDAY=")?;
-            for (pos, item) in self.byyearday.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.byweekno.is_empty() {
-            write!(f, ";BYWEEKNO=")?;
-            for (pos, item) in self.byweekno.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.bymonth.is_empty() {
-            write!(f, ";BYMONTH=")?;
-            for (pos, item) in self.bymonth.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
-        if !self.bysetpos.is_empty() {
-            write!(f, ";BYSETPOS=")?;
-            for (pos, item) in self.bysetpos.iter().enumerate() {
-                if pos > 0 {
-                    write!(f, ",")?;
-                }
-                write!(f, "{}", item)?;
-            }
-        }
+        buf.push_list(";BYSECOND=", &self.bysecond, |buf, item| {
+            buf.push_u64((*item).into())
+        })?;
+        buf.push_list(";BYMINUTE=", &self.byminute, |buf, item| {
+            buf.push_u64((*item).into())
+        })?;
+        buf.push_list(";BYHOUR=", &self.byhour, |buf, item| {
+            buf.push_u64((*item).into())
+        })?;
+        buf.push_list(";BYDAY=", &self.byday, |buf, item| item.push_to(buf))?;
+        buf.push_list(";BYMONTHDAY=", &self.bymonthday, |buf, item| {
+            buf.push_i64((*item).into())
+        })?;
+        buf.push_list(";BYYEARDAY=", &self.byyearday, |buf, item| {
+            buf.push_i64((*item).into())
+        })?;
+        buf.push_list(";BYWEEKNO=", &self.byweekno, |buf, item| {
+            buf.push_i64((*item).into())
+        })?;
+        buf.push_list(";BYMONTH=", &self.bymonth, |buf, item| item.push_to(buf))?;
+        buf.push_list(";BYSETPOS=", &self.bysetpos, |buf, item| {
+            buf.push_i64((*item).into())
+        })?;
         if let Some(wkst) = self.wkst {
-            write!(f, ";WKST={}", wkst.as_str())?;
+            buf.push_ascii_str(";WKST=")?;
+            buf.push_ascii_str(wkst.as_str())?;
         }
         if let Some(rscale) = &self.rscale {
-            write!(f, ";RSCALE={}", rscale.as_str())?;
+            buf.push_ascii_str(";RSCALE=")?;
+            buf.push_ascii_str(rscale.as_str())?;
         } else if self.skip.is_some() {
-            write!(f, ";RSCALE={}", CalendarScale::Gregorian.as_str())?;
+            buf.push_ascii_str(";RSCALE=")?;
+            buf.push_ascii_str(CalendarScale::Gregorian.as_str())?;
         }
         if let Some(skip) = &self.skip {
-            write!(f, ";SKIP={}", skip.as_str())?;
+            buf.push_ascii_str(";SKIP=")?;
+            buf.push_ascii_str(skip.as_str())?;
         }
 
         Ok(())
     }
 }
 
-impl Display for ICalendarDay {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for ICalendarRecurrenceRule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_buffered::<RRULE_BUFFER>(|buf| self.push_to(buf))
+    }
+}
+
+impl ICalendarDay {
+    fn push_to(&self, buf: &mut impl AsciiPush) -> fmt::Result {
         if let Some(ordwk) = self.ordwk {
-            write!(f, "{}", ordwk)?;
+            buf.push_i64(ordwk.into())?;
         }
-        write!(f, "{}", self.weekday.as_str())
+        buf.push_ascii_str(self.weekday.as_str())
+    }
+}
+
+impl Display for ICalendarDay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_buffered::<DATE_BUFFER>(|buf| self.push_to(buf))
+    }
+}
+
+impl ICalendarMonth {
+    fn push_to(&self, buf: &mut impl AsciiPush) -> fmt::Result {
+        buf.push_u64(self.month().into())?;
+        if self.is_leap() {
+            buf.push_byte(b'L')?;
+        }
+        Ok(())
     }
 }
 
 impl Display for ICalendarMonth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if !self.is_leap() {
-            write!(f, "{}", self.month())
-        } else {
-            write!(f, "{}L", self.month())
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_buffered::<DATE_BUFFER>(|buf| self.push_to(buf))
+    }
+}
+
+impl ICalendarPeriod {
+    fn push_to(&self, buf: &mut impl AsciiPush) -> fmt::Result {
+        match self {
+            ICalendarPeriod::Range { start, end } => {
+                start.push_ical(buf, &ICalendarValueType::DateTime)?;
+                buf.push_byte(b'/')?;
+                end.push_ical(buf, &ICalendarValueType::DateTime)
+            }
+            ICalendarPeriod::Duration { start, duration } => {
+                start.push_ical(buf, &ICalendarValueType::DateTime)?;
+                buf.push_byte(b'/')?;
+                buf.push_duration(duration.parts())
+            }
         }
     }
 }
 
 impl Display for ICalendarPeriod {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ICalendarPeriod::Range { start, end } => {
-                start.format_as_ical(f, &ICalendarValueType::DateTime)?;
-                write!(f, "/")?;
-                end.format_as_ical(f, &ICalendarValueType::DateTime)
-            }
-            ICalendarPeriod::Duration { start, duration } => {
-                start.format_as_ical(f, &ICalendarValueType::DateTime)?;
-                write!(f, "/{}", duration)
-            }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_buffered::<PERIOD_BUFFER>(|buf| self.push_to(buf))
+    }
+}
+
+impl ICalendarDuration {
+    pub(crate) fn parts(&self) -> DurationParts {
+        DurationParts {
+            neg: self.neg,
+            weeks: self.weeks,
+            days: self.days,
+            hours: self.hours,
+            minutes: self.minutes,
+            seconds: self.seconds,
         }
     }
 }
 
 impl Display for ICalendarDuration {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.neg {
-            write!(f, "-")?;
-        }
-        write!(f, "P")?;
-        if self.is_empty() {
-            return write!(f, "T0S");
-        }
-        if self.weeks != 0 {
-            write!(f, "{}W", self.weeks)?;
-        }
-        if self.days != 0 {
-            write!(f, "{}D", self.days)?;
-        }
-        if self.hours != 0 || self.minutes != 0 || self.seconds != 0 {
-            write!(f, "T")?;
-            if self.hours != 0 {
-                write!(f, "{}H", self.hours)?;
-            }
-            if self.minutes != 0 {
-                write!(f, "{}M", self.minutes)?;
-            }
-            if self.seconds != 0 {
-                write!(f, "{}S", self.seconds)?;
-            }
-        }
-
-        Ok(())
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_buffered::<DURATION_BUFFER>(|buf| buf.push_duration(self.parts()))
     }
 }
 
 impl PartialDateTime {
-    pub fn format_as_ical(
+    pub fn format_as_ical(&self, out: &mut impl Write, fmt: &ICalendarValueType) -> fmt::Result {
+        out.write_buffered::<DATE_BUFFER>(|buf| self.push_ical(buf, fmt))
+    }
+
+    pub(crate) fn push_ical(
         &self,
-        out: &mut impl Write,
+        buf: &mut impl AsciiPush,
         fmt: &ICalendarValueType,
-    ) -> std::fmt::Result {
+    ) -> fmt::Result {
         if matches!(fmt, ICalendarValueType::Date | ICalendarValueType::DateTime) {
-            write!(
-                out,
-                "{:04}{:02}{:02}",
-                self.year.unwrap_or_default(),
-                self.month.unwrap_or_default(),
-                self.day.unwrap_or_default()
-            )?;
+            buf.push_4_digits(self.year.unwrap_or_default())?;
+            buf.push_2_digits(self.month.unwrap_or_default())?;
+            buf.push_2_digits(self.day.unwrap_or_default())?;
         }
 
         if matches!(fmt, ICalendarValueType::DateTime) {
-            write!(out, "T")?;
+            buf.push_byte(b'T')?;
         }
 
         if matches!(fmt, ICalendarValueType::DateTime | ICalendarValueType::Time) {
-            write!(
-                out,
-                "{:02}{:02}{:02}",
-                self.hour.unwrap_or_default(),
-                self.minute.unwrap_or_default(),
-                self.second.unwrap_or_default()
-            )?;
+            buf.push_2_digits(self.hour.unwrap_or_default())?;
+            buf.push_2_digits(self.minute.unwrap_or_default())?;
+            buf.push_2_digits(self.second.unwrap_or_default())?;
 
             if matches!((self.tz_hour, self.tz_minute), (Some(0), Some(0))) {
-                write!(out, "Z")?;
+                buf.push_byte(b'Z')?;
             }
         }
 
         if matches!(fmt, ICalendarValueType::UtcOffset) {
-            if self.tz_minus {
-                write!(out, "-")?;
-            } else {
-                write!(out, "+")?;
-            }
-
-            write!(
-                out,
-                "{:02}{:02}",
-                self.tz_hour.unwrap_or_default(),
-                self.tz_minute.unwrap_or_default(),
-            )?;
+            buf.push_byte(if self.tz_minus { b'-' } else { b'+' })?;
+            buf.push_2_digits(self.tz_hour.unwrap_or_default())?;
+            buf.push_2_digits(self.tz_minute.unwrap_or_default())?;
         }
 
         Ok(())
@@ -559,7 +517,7 @@ impl PartialDateTime {
 }
 
 impl Display for ICalendar {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write_to(f)
     }
 }
@@ -595,6 +553,99 @@ mod tests {
         }
 
         out
+    }
+
+    fn fold(line: &str) -> String {
+        let (first, rest) = line.split_at(line.len().min(75));
+        rest.as_bytes()
+            .chunks(74)
+            .fold(first.to_string(), |mut out, chunk| {
+                out.push_str("\r\n ");
+                out.push_str(std::str::from_utf8(chunk).unwrap());
+                out
+            })
+            + "\r\n"
+    }
+
+    #[test]
+    fn test_write_escapes_at_every_word_lane() {
+        for offset in 0..=17 {
+            let (head, tail) = ("x".repeat(offset), "y".repeat(17 - offset));
+            for escaped in [r"\,", r"\;", r"\\", r"\n", r"\r"] {
+                let line = format!("SUMMARY:{head}{escaped}{tail}\r\n");
+                let out = write(&event(&line));
+                assert!(out.contains(&line), "{line:?}\n{out}");
+            }
+            for encoded in ["\t", "^^", "^'", "^n"] {
+                let param = format!("CN=\"{head}{encoded}{tail} z\":");
+                let out = write(&event(&format!("ATTENDEE;{param}mailto:a@example.com\r\n")));
+                assert!(out.contains(&param), "{param:?}\n{out}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_write_fold_points() {
+        let x = |len: usize| "x".repeat(len);
+        let y = |len: usize| "y".repeat(len);
+        for (line, expected) in [
+            (
+                format!("DESCRIPTION:{}\\,z", x(61)),
+                format!("DESCRIPTION:{}\\,\r\n z\r\n", x(61)),
+            ),
+            (
+                format!("DESCRIPTION:{}\\,z", x(62)),
+                format!("DESCRIPTION:{}\r\n \\,z\r\n", x(62)),
+            ),
+            (
+                format!("DESCRIPTION:{}\\,z", x(63)),
+                format!("DESCRIPTION:{}\r\n \\,z\r\n", x(63)),
+            ),
+            (
+                format!("DESCRIPTION:{}\u{65e5}\u{672c}\u{8a9e}", x(62)),
+                format!("DESCRIPTION:{}\r\n \u{65e5}\u{672c}\u{8a9e}\r\n", x(62)),
+            ),
+            (
+                format!("DESCRIPTION:{}\u{e9}{}", x(61), y(80)),
+                format!("DESCRIPTION:{}\u{e9}\r\n {}\r\n {}\r\n", x(61), y(74), y(6)),
+            ),
+            (
+                format!(r"DESCRIPTION:{}\;{}", x(135), y(10)),
+                format!(
+                    "DESCRIPTION:{}\r\n {}{}\r\n {}\r\n",
+                    x(63),
+                    x(72),
+                    r"\;",
+                    y(10)
+                ),
+            ),
+            (
+                format!("ATTENDEE;CN=\"{}^'{}\":mailto:a@example.com", x(58), y(20)),
+                format!(
+                    "ATTENDEE;CN=\"{}^'yy\r\n {}\":mailto:a@example.com\r\n",
+                    x(58),
+                    y(18)
+                ),
+            ),
+        ] {
+            let out = write(&event(&format!("{line}\r\n")));
+            assert!(out.contains(&expected), "{line:?}\n{out}");
+        }
+    }
+
+    #[test]
+    fn test_write_long_values_fold_every_75_octets() {
+        for line in [
+            format!("SUMMARY:{}", "0123456789".repeat(30)),
+            format!("ATTACH;ENCODING=BASE64;VALUE=BINARY:{}", "QUJD".repeat(257)),
+            format!(
+                "ATTACH;ENCODING=BASE64;VALUE=BINARY:{}",
+                "QUJD".repeat(1100)
+            ),
+        ] {
+            let out = write(&event(&format!("{line}\r\n")));
+            assert!(out.contains(&fold(&line)), "{line:?}\n{out}");
+        }
     }
 
     #[test]
@@ -840,6 +891,52 @@ mod tests {
             out.contains("ATTACH;ENCODING=BASE64;VALUE=BINARY:aGVsbG8=\r\n"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn test_write_skips_component_boundary_entries() {
+        let text = |name, value: &str| {
+            ICalendarEntry::new(name).with_value(ICalendarValue::Text(value.to_string()))
+        };
+        let mut event = component(ICalendarComponentType::VEvent, &[]);
+        event.entries = vec![
+            text(ICalendarProperty::End, "VEVENT"),
+            text(ICalendarProperty::Begin, "VTODO"),
+            text(ICalendarProperty::Summary, "injected"),
+        ];
+        let ical = ICalendar {
+            components: vec![component(ICalendarComponentType::VCalendar, &[1]), event],
+        };
+
+        let out = write(&ical);
+        assert_eq!(
+            out,
+            concat!(
+                "BEGIN:VCALENDAR\r\n",
+                "BEGIN:VEVENT\r\n",
+                "SUMMARY:injected\r\n",
+                "END:VEVENT\r\n",
+                "END:VCALENDAR\r\n"
+            )
+        );
+        assert_eq!(parse(&out).components.len(), ical.components.len());
+    }
+
+    #[cfg(feature = "jmap")]
+    #[test]
+    fn jscalendar_properties_cannot_inject_component_boundaries() {
+        use crate::jscalendar::JSCalendar;
+
+        let ical = JSCalendar::<String, String>::parse(concat!(
+            r#"{"@type":"Event","uid":"a","start":"2024-01-01T10:00:00","iCalendar":{"name":"vevent","#,
+            r#""properties":[["end",{},"text","VEVENT"],["begin",{},"text","VTODO"],"#,
+            r#"["summary",{},"text","injected"]]}}"#
+        ))
+        .expect("the event parses")
+        .into_icalendar()
+        .expect("the event exports");
+        let reparsed = ICalendar::parse(write(&ical)).expect("the export parses");
+        assert_eq!(reparsed.components.len(), ical.components.len());
     }
 
     #[test]

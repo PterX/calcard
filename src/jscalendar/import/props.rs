@@ -8,6 +8,7 @@ use crate::{
     common::{
         Data, IanaString, IanaType, LinkRelation,
         blob::GeneratedBlobId,
+        jsprop::text::{IntoAsciiLowercase, PointerString},
         timezone::{Tz, ZonedDateTime},
     },
     icalendar::{
@@ -18,18 +19,18 @@ use crate::{
     jscalendar::{
         JSCalendarDateTime, JSCalendarId, JSCalendarPrivacy, JSCalendarProperty, JSCalendarType,
         JSCalendarValue,
-        ext::{JSCalendarKeyExt, JSCalendarValueExt},
+        ext::{JSCalendarKeyExt, JSCalendarObjectExt, JSCalendarValueExt},
         import::{
-            EntryState, ICalendarConvertedProperty, ICalendarParams, LinkId, LinkIds, State,
-            params::ExtractParams,
+            ConvertedTo, EntryState, ICalendarConvertedProperty, ICalendarParams, LinkId, LinkIds,
+            State, params::ExtractParams,
         },
         overrides::{Inherited, OverrideDiff},
         uuid5,
     },
 };
 use ahash::AHashMap;
-use jmap_tools::{JsonPointer, JsonPointerItem, Key, Map, Property, Value};
-use std::{borrow::Cow, collections::hash_map::Entry};
+use jmap_tools::{JsonPointerItem, Key, Map, Property, Value};
+use std::{borrow::Cow, collections::hash_map::Entry, mem};
 
 impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
     pub(super) fn map_named_entry(
@@ -70,8 +71,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             }
         };
 
-        // Obtain or calculate JSID
-        let mut parameters = Map::from(Vec::new());
+        let mut parameters = mem::take(&mut self.parameters);
         let is_link = top_property_name == JSCalendarProperty::Links;
         let js_id = match parameters.extract_params(&mut entry.entry, extract) {
             Some(js_id) => js_id,
@@ -85,46 +85,49 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             }
         };
 
-        // Set converted props
-        entry.set_converted_to::<I>(&[
-            top_property_name.to_cow().as_ref(),
-            js_id.as_str(),
-            property.to_string().as_ref(),
-        ]);
+        entry.set_converted_to(|| {
+            String::from_pointer([
+                top_property_name.to_cow().as_ref(),
+                js_id.as_str(),
+                property.to_string().as_ref(),
+            ])
+        });
 
-        let Some(objects) = self
+        let capacity = values.size_hint().1.unwrap_or_default() + parameters.len();
+        let new_object = || Value::Object(Map::from(Vec::with_capacity(capacity)));
+        if let Some(obj) = self
             .entries
             .entry(Key::Property(top_property_name))
             .or_insert_with(Value::new_object)
             .as_object_mut()
-        else {
-            return;
-        };
-        let Some(obj) = (if is_link {
-            self.link_ids.entry(objects, js_id)
-        } else {
-            Some(objects.insert_or_get_mut(Key::Owned(js_id), Value::new_object()))
-        })
-        .and_then(Value::as_object_mut) else {
-            return;
-        };
-
-        for (key, value) in values.chain(parameters.into_vec()) {
-            if let Some(current_value) = obj.get_mut(&key) {
-                match (value, current_value) {
-                    (Value::Object(new_obj), Value::Object(existing_obj)) => {
-                        for (key, value) in new_obj.into_vec() {
-                            existing_obj.insert(key, value);
+            .and_then(|objects| {
+                if is_link {
+                    self.link_ids.entry(objects, js_id, new_object)
+                } else {
+                    Some(objects.upsert_or_get_mut(Key::Owned(js_id), new_object))
+                }
+            })
+            .and_then(Value::as_object_mut)
+        {
+            for (key, value) in values.chain(parameters.as_mut_vec().drain(..)) {
+                if let Some(current_value) = obj.lookup_mut(&key) {
+                    match (value, current_value) {
+                        (Value::Object(new_obj), Value::Object(existing_obj)) => {
+                            for (key, value) in new_obj.into_vec() {
+                                existing_obj.upsert(key, value);
+                            }
+                        }
+                        (value, current_value) => {
+                            *current_value = value;
                         }
                     }
-                    (value, current_value) => {
-                        *current_value = value;
-                    }
+                } else {
+                    obj.insert_unchecked(key, value);
                 }
-            } else {
-                obj.insert_unchecked(key, value);
             }
         }
+        parameters.as_mut_vec().clear();
+        self.parameters = parameters;
     }
 
     pub(super) fn map_blob_link(
@@ -179,6 +182,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
                 ICalendarParameterName::Value | ICalendarParameterName::Size
             )
         });
+        entry.set_map_name();
 
         self.map_named_entry_with_id(
             entry,
@@ -212,7 +216,6 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             .flatten(),
             default_id,
         );
-        entry.set_map_name();
     }
 
     pub(super) fn insert_recurrence_override(
@@ -225,7 +228,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             .or_insert_with(Value::new_object)
             .as_object_mut()
             .unwrap()
-            .insert(key, value);
+            .upsert(key, value);
     }
 
     pub(super) fn add_period_conversion_prop(&mut self, converted_to: String) {
@@ -235,12 +238,13 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
                 ICalendarParameterName::Value,
                 Value::Str(ICalendarValueType::Period.as_str().into()),
             );
-            self.ical_converted_properties
-                .entry(converted_to)
-                .or_insert(ICalendarConvertedProperty {
+            self.ical_converted_properties.insert_if_absent(
+                converted_to,
+                ICalendarConvertedProperty {
                     name: Some(ICalendarProperty::Rdate),
                     params,
-                });
+                },
+            );
         }
     }
 
@@ -250,11 +254,12 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
                 if entry.map_name || !entry.entry.params.is_empty() {
                     let mut value_type = None;
 
-                    match self.ical_converted_properties.entry(converted_to) {
-                        Entry::Occupied(mut conv_prop) => {
-                            entry.jcal_parameters(&mut conv_prop.get_mut().params, &mut value_type);
+                    let converted_to = converted_to.into_string();
+                    match self.ical_converted_properties.get_mut(&converted_to) {
+                        Some(conv_prop) => {
+                            entry.jcal_parameters(&mut conv_prop.params, &mut value_type);
                         }
-                        Entry::Vacant(conv_prop) => {
+                        None => {
                             let mut params = ICalendarParams::default();
                             entry.jcal_parameters(&mut params, &mut value_type);
                             if let Some(value_type) = value_type {
@@ -264,14 +269,17 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
                                 );
                             }
                             if !params.is_empty() || entry.map_name {
-                                conv_prop.insert(ICalendarConvertedProperty {
-                                    name: if entry.map_name {
-                                        Some(entry.entry.name)
-                                    } else {
-                                        None
+                                self.ical_converted_properties.push(
+                                    converted_to,
+                                    ICalendarConvertedProperty {
+                                        name: if entry.map_name {
+                                            Some(entry.entry.name)
+                                        } else {
+                                            None
+                                        },
+                                        params,
                                     },
-                                    params,
-                                });
+                                );
                             }
                         }
                     }
@@ -293,15 +301,15 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             for (converted_to, props) in self.ical_converted_properties {
                 let mut obj = Map::from(Vec::with_capacity(2));
                 if let Some(params) = props.params.into_jscalendar_value() {
-                    obj.insert(
+                    obj.upsert(
                         Key::Property(JSCalendarProperty::Parameters),
                         Value::Object(params),
                     );
                 }
                 if let Some(name) = props.name {
-                    obj.insert(
+                    obj.upsert(
                         Key::Property(JSCalendarProperty::Name),
-                        Value::Str(name.into_string().to_ascii_lowercase().into()),
+                        Value::Str(name.into_string().into_ascii_lowercase().into()),
                     );
                 }
 
@@ -396,7 +404,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             );
         }
 
-        let mut obj = Value::Object(self.entries.into_iter().collect());
+        let mut obj = Value::Object(self.entries.into_map());
         let (override_patches, patches): (Vec<_>, Vec<_>) =
             self.patch_objects.into_iter().partition(|(pointer, _)| {
                 !self.recurrence_overrides.is_empty()
@@ -415,11 +423,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             && let Value::Object(base) = &mut obj
         {
             let overrides_key = Key::Property(JSCalendarProperty::RecurrenceOverrides);
-            let mut overrides = match base
-                .as_vec()
-                .iter()
-                .position(|(key, _)| key == &overrides_key)
-            {
+            let mut overrides = match base.key_position(&overrides_key) {
                 Some(pos) => base.as_mut_vec().remove(pos).1,
                 None => Value::new_object(),
             };
@@ -437,7 +441,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
                                 position,
                                 value
                                     .as_object()
-                                    .and_then(|period| period.get(&duration_key))
+                                    .and_then(|period| period.lookup(&duration_key))
                                     .cloned(),
                             ),
                         )),
@@ -454,7 +458,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
                             if inherited == Inherited::StartAndEnd
                                 && let Some(duration) = period_duration
                             {
-                                patch.insert(duration_key.clone(), duration.clone());
+                                patch.upsert(duration_key.clone(), duration.clone());
                             }
                             if let Some((_, value)) = overrides.as_mut_vec().get_mut(*position) {
                                 *value = Value::Object(patch);
@@ -629,7 +633,7 @@ impl<I: JSCalendarId, B: JSCalendarId> State<I, B> {
             .find_map(|(key, value)| {
                 match value
                     .as_object()?
-                    .get(&Key::Property(JSCalendarProperty::CalendarAddress))?
+                    .lookup(&Key::Property(JSCalendarProperty::CalendarAddress))?
                 {
                     Value::Str(value) if value == address => Some(key.to_string().into_owned()),
                     _ => None,
@@ -664,16 +668,33 @@ impl JSCalendarDateTime {
 }
 
 impl EntryState {
-    pub(super) fn new(entry: ICalendarEntry) -> Self {
+    pub(super) fn new(entry: ICalendarEntry, keep_converted_path: bool) -> Self {
         Self {
             entry,
             converted_to: None,
             map_name: false,
+            keep_converted_path,
         }
     }
 
-    pub(super) fn set_converted_to<I: JSCalendarId>(&mut self, converted_to: &[&str]) {
-        self.converted_to = Some(JsonPointer::<JSCalendarProperty<I>>::encode(converted_to));
+    pub(super) fn set_converted_to(&mut self, converted_to: impl FnOnce() -> String) {
+        self.converted_to = Some(ConvertedTo::Pointer(
+            if self.keep_converted_path && (self.map_name || !self.entry.params.is_empty()) {
+                converted_to()
+            } else {
+                String::new()
+            },
+        ));
+    }
+
+    pub(super) fn set_converted_to_property<I: JSCalendarId>(
+        &mut self,
+        property: &JSCalendarProperty<I>,
+    ) {
+        self.converted_to = Some(match property.static_name() {
+            Some(name) => ConvertedTo::Name(name),
+            None => ConvertedTo::Pointer(String::from_pointer([property.to_string().as_ref()])),
+        });
     }
 
     pub(super) fn set_map_name(&mut self) {
@@ -703,7 +724,7 @@ impl EntryState {
             Value::Array(values)
         };
         Value::Array(vec![
-            Value::Str(self.entry.name.as_str().to_ascii_lowercase().into()),
+            Value::Str(self.entry.name.into_string().into_ascii_lowercase().into()),
             Value::Object(
                 params
                     .into_jscalendar_value()
@@ -749,6 +770,15 @@ impl EntryState {
     }
 }
 
+impl ConvertedTo {
+    fn into_string(self) -> String {
+        match self {
+            ConvertedTo::Name(name) => String::from_pointer([name]),
+            ConvertedTo::Pointer(pointer) => pointer,
+        }
+    }
+}
+
 impl LinkIds {
     fn unique(&mut self, base: String) -> String {
         let Some(mut suffix) = self.0.get(&base).map(|link| link.next_suffix) else {
@@ -771,12 +801,13 @@ impl LinkIds {
         &mut self,
         links: &'x mut Map<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
         key: String,
+        value: impl FnOnce() -> Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>,
     ) -> Option<&'x mut Value<'static, JSCalendarProperty<I>, JSCalendarValue<I, B>>> {
         let position = match self.0.get(&key) {
             Some(link) => link.position,
             None => {
                 let position = links.len();
-                links.insert_unchecked(Key::Owned(key.clone()), Value::new_object());
+                links.insert_unchecked(Key::Owned(key.clone()), value());
                 self.0.insert(
                     key,
                     LinkId {
@@ -820,10 +851,10 @@ pub(super) struct ICalendarBinary {
 impl ICalendarBinary {
     pub(super) fn into_value(self) -> ICalendarValue {
         if self.is_data_uri {
-            ICalendarValue::Uri(Uri::Data(Data {
+            ICalendarValue::Uri(Uri::Data(Box::new(Data {
                 content_type: self.content_type,
                 data: self.data,
-            }))
+            })))
         } else {
             ICalendarValue::Binary(self.data)
         }
@@ -855,10 +886,10 @@ impl ICalendarValue {
         match self {
             ICalendarValue::Uri(uri) => ICalendarValue::Text(uri.into_unwrapped_string()),
             ICalendarValue::Binary(data) => ICalendarValue::Text(
-                Uri::Data(Data {
+                Uri::Data(Box::new(Data {
                     content_type: media_type,
                     data,
-                })
+                }))
                 .into_unwrapped_string(),
             ),
             other => other,

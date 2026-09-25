@@ -8,7 +8,7 @@ use super::{VCard, VCardEntry, VCardParameterName, VCardProperty, VCardValue, VC
 use crate::{
     common::{
         CalendarScale, Data, IanaString, IanaType, PartialDateTime,
-        writer::{write_bytes, write_jscomps},
+        writer::{LineWriter, write_jscomps},
     },
     vcard::{
         Jscomp, VCardLevel, VCardParameter, VCardParameterValue, VCardPhonetic, VCardType,
@@ -230,7 +230,7 @@ impl Data {
         let media_type = self.content_type.as_deref().unwrap_or_default();
         let mut out = String::with_capacity(self.data.len().div_ceil(4) + media_type.len() + 14);
         let _ = write!(&mut out, "data:{media_type};base64,");
-        let _ = write_bytes(&mut out, &self.data);
+        let _ = out.write_base64(&self.data);
         out
     }
 }

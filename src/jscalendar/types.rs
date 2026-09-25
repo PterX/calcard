@@ -4,9 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::jscalendar::*;
+use crate::{common::jsprop::text::PointerProperty, jscalendar::*};
 use jmap_tools::{JsonPointer, JsonPointerItem, Key};
 use std::str::FromStr;
+
+impl<I: JSCalendarId> PointerProperty for JSCalendarProperty<I> {
+    fn into_pointer(self) -> Result<JsonPointer<Self>, Self> {
+        match self {
+            JSCalendarProperty::Pointer(pointer) => Ok(pointer),
+            property => Err(property),
+        }
+    }
+}
 
 impl<I: JSCalendarId> FromStr for JSCalendarProperty<I> {
     type Err = ();
@@ -258,13 +267,159 @@ impl<I: JSCalendarId> JSCalendarProperty<I> {
             JSCalendarProperty::VirtualLocationFeature(v) => v.as_str(),
             JSCalendarProperty::ParticipantRole(v) => v.as_str(),
             JSCalendarProperty::RelationValue(v) => v.as_str(),
-            JSCalendarProperty::LinkRelation(v) => return v.as_str().to_string().into(),
+            JSCalendarProperty::LinkRelation(v) => v.as_str(),
             JSCalendarProperty::DateTime(dt) => return dt.to_rfc3339().into(),
             JSCalendarProperty::Pointer(pointer) => return Cow::Owned(pointer.to_string()),
             JSCalendarProperty::IdValue(id) => return id.to_string().into(),
             JSCalendarProperty::IdReference(s) => return format!("#{}", s).into(),
         }
         .into()
+    }
+
+    #[inline]
+    pub(crate) fn static_name(&self) -> Option<&'static str> {
+        match self {
+            JSCalendarProperty::DateTime(_)
+            | JSCalendarProperty::Pointer(_)
+            | JSCalendarProperty::IdValue(_)
+            | JSCalendarProperty::IdReference(_) => None,
+            JSCalendarProperty::LinkRelation(v) => Some(v.as_str()),
+            property => match property.to_string() {
+                Cow::Borrowed(name) => Some(name),
+                Cow::Owned(_) => None,
+            },
+        }
+    }
+
+    #[inline]
+    pub(crate) fn has_data(&self) -> bool {
+        match self {
+            JSCalendarProperty::DateTime(_)
+            | JSCalendarProperty::LinkDisplay(_)
+            | JSCalendarProperty::VirtualLocationFeature(_)
+            | JSCalendarProperty::ParticipantRole(_)
+            | JSCalendarProperty::RelationValue(_)
+            | JSCalendarProperty::LinkRelation(_)
+            | JSCalendarProperty::Pointer(_)
+            | JSCalendarProperty::IdValue(_)
+            | JSCalendarProperty::IdReference(_) => true,
+            JSCalendarProperty::Id
+            | JSCalendarProperty::BaseEventId
+            | JSCalendarProperty::CalendarIds
+            | JSCalendarProperty::IsDraft
+            | JSCalendarProperty::IsOrigin
+            | JSCalendarProperty::UtcStart
+            | JSCalendarProperty::UtcEnd
+            | JSCalendarProperty::UseDefaultAlerts
+            | JSCalendarProperty::MayInviteSelf
+            | JSCalendarProperty::MayInviteOthers
+            | JSCalendarProperty::HideAttendees
+            | JSCalendarProperty::BlobId
+            | JSCalendarProperty::Type
+            | JSCalendarProperty::Acknowledged
+            | JSCalendarProperty::Action
+            | JSCalendarProperty::Alerts
+            | JSCalendarProperty::ByDay
+            | JSCalendarProperty::ByHour
+            | JSCalendarProperty::ByMinute
+            | JSCalendarProperty::ByMonth
+            | JSCalendarProperty::ByMonthDay
+            | JSCalendarProperty::BySecond
+            | JSCalendarProperty::BySetPosition
+            | JSCalendarProperty::ByWeekNo
+            | JSCalendarProperty::ByYearDay
+            | JSCalendarProperty::CalendarAddress
+            | JSCalendarProperty::Categories
+            | JSCalendarProperty::Color
+            | JSCalendarProperty::ContentType
+            | JSCalendarProperty::Coordinates
+            | JSCalendarProperty::Count
+            | JSCalendarProperty::Created
+            | JSCalendarProperty::Day
+            | JSCalendarProperty::DelegatedFrom
+            | JSCalendarProperty::DelegatedTo
+            | JSCalendarProperty::Description
+            | JSCalendarProperty::DescriptionContentType
+            | JSCalendarProperty::Display
+            | JSCalendarProperty::Due
+            | JSCalendarProperty::Duration
+            | JSCalendarProperty::Email
+            | JSCalendarProperty::Entries
+            | JSCalendarProperty::EstimatedDuration
+            | JSCalendarProperty::Excluded
+            | JSCalendarProperty::ExpectReply
+            | JSCalendarProperty::Features
+            | JSCalendarProperty::FirstDayOfWeek
+            | JSCalendarProperty::FreeBusyStatus
+            | JSCalendarProperty::Frequency
+            | JSCalendarProperty::Href
+            | JSCalendarProperty::Interval
+            | JSCalendarProperty::InvitedBy
+            | JSCalendarProperty::Keywords
+            | JSCalendarProperty::Kind
+            | JSCalendarProperty::Links
+            | JSCalendarProperty::Locale
+            | JSCalendarProperty::Locations
+            | JSCalendarProperty::LocationTypes
+            | JSCalendarProperty::MemberOf
+            | JSCalendarProperty::Method
+            | JSCalendarProperty::Name
+            | JSCalendarProperty::NthOfPeriod
+            | JSCalendarProperty::Offset
+            | JSCalendarProperty::Participants
+            | JSCalendarProperty::ParticipationComment
+            | JSCalendarProperty::ParticipationStatus
+            | JSCalendarProperty::PercentComplete
+            | JSCalendarProperty::Priority
+            | JSCalendarProperty::Privacy
+            | JSCalendarProperty::ProdId
+            | JSCalendarProperty::Progress
+            | JSCalendarProperty::RecurrenceId
+            | JSCalendarProperty::RecurrenceIdTimeZone
+            | JSCalendarProperty::RecurrenceOverrides
+            | JSCalendarProperty::Rel
+            | JSCalendarProperty::RelatedTo
+            | JSCalendarProperty::Relation
+            | JSCalendarProperty::RelativeTo
+            | JSCalendarProperty::ReplyTo
+            | JSCalendarProperty::RequestStatus
+            | JSCalendarProperty::Roles
+            | JSCalendarProperty::Rscale
+            | JSCalendarProperty::SentBy
+            | JSCalendarProperty::ScheduleAgent
+            | JSCalendarProperty::ScheduleForceSend
+            | JSCalendarProperty::ScheduleSequence
+            | JSCalendarProperty::ScheduleStatus
+            | JSCalendarProperty::ScheduleUpdated
+            | JSCalendarProperty::SendTo
+            | JSCalendarProperty::Sequence
+            | JSCalendarProperty::ShowWithoutTime
+            | JSCalendarProperty::Size
+            | JSCalendarProperty::Skip
+            | JSCalendarProperty::Source
+            | JSCalendarProperty::Start
+            | JSCalendarProperty::Status
+            | JSCalendarProperty::TimeZone
+            | JSCalendarProperty::Title
+            | JSCalendarProperty::Trigger
+            | JSCalendarProperty::Uid
+            | JSCalendarProperty::Until
+            | JSCalendarProperty::Updated
+            | JSCalendarProperty::Uri
+            | JSCalendarProperty::Version
+            | JSCalendarProperty::VirtualLocations
+            | JSCalendarProperty::When
+            | JSCalendarProperty::EndTimeZone
+            | JSCalendarProperty::MainLocationId
+            | JSCalendarProperty::OrganizerCalendarAddress
+            | JSCalendarProperty::RecurrenceRule
+            | JSCalendarProperty::ICalendar
+            | JSCalendarProperty::Properties
+            | JSCalendarProperty::Parameters
+            | JSCalendarProperty::ConvertedProperties
+            | JSCalendarProperty::ValueType
+            | JSCalendarProperty::Components => false,
+        }
     }
 
     pub(crate) fn is_forbidden_override_patch(&self) -> bool {

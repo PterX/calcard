@@ -15,17 +15,22 @@ use crate::{
         VCardEntry, VCardGramGender, VCardKind, VCardParameterName, VCardValue, VCardValueType,
     },
 };
-use jmap_tools::{JsonPointer, Key, Map, Value};
+use jmap_tools::{Key, Map, Value};
 use std::borrow::Cow;
 
 #[allow(clippy::wrong_self_convention)]
 impl EntryState {
-    pub(super) fn new(entry: VCardEntry) -> Self {
+    pub(super) fn new(entry: VCardEntry, keep_converted_path: bool) -> Self {
         Self {
             entry,
             converted_to: None,
             map_name: false,
+            keep_converted_path,
         }
+    }
+
+    pub(super) fn has_conversion_params(&self) -> bool {
+        self.map_name || !self.entry.params.is_empty() || self.entry.group.is_some()
     }
 
     pub(super) fn jcal_parameters<I: JSContactId, B: JSContactId>(
@@ -80,18 +85,22 @@ impl EntryState {
                 _ => Value::Str(param.value.into_text()),
             };
 
-            params.0.entry(param.name).or_default().push(value);
+            params.push(param.name, value);
         }
 
         if let Some(group) = self.entry.group.take() {
-            params
-                .0
-                .insert(VCardParameterName::Group, vec![group.into()]);
+            params.set(VCardParameterName::Group, vec![group.into()]);
         }
     }
 
-    pub(super) fn set_converted_to<I: JSContactId>(&mut self, converted_to: &[&str]) {
-        self.converted_to = Some(JsonPointer::<JSContactProperty<I>>::encode(converted_to));
+    pub(super) fn set_converted_to(&mut self, converted_to: impl FnOnce() -> String) {
+        self.converted_to = Some(
+            if self.keep_converted_path && self.has_conversion_params() {
+                converted_to()
+            } else {
+                String::new()
+            },
+        );
     }
 
     pub(super) fn set_map_name(&mut self) {

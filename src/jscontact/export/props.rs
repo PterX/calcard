@@ -19,6 +19,16 @@ use crate::{
 use jmap_tools::{JsonPointerItem, Key, Map, Value};
 use std::{borrow::Cow, iter::Peekable, vec::IntoIter};
 
+impl VCardValue {
+    pub(super) fn from_components(components: Option<Vec<String>>) -> Self {
+        match components {
+            Some(components) if components.len() > 1 => VCardValue::Component(components),
+            Some(components) => VCardValue::Text(components.into_iter().next().unwrap_or_default()),
+            None => VCardValue::Text(String::new()),
+        }
+    }
+}
+
 pub(super) fn build_path<'x, I, B>(
     obj: &mut Value<'x, JSContactProperty<I>, JSContactValue<I, B>>,
     mut ptr: Peekable<IntoIter<JsonPointerItem<JSContactProperty<I>>>>,

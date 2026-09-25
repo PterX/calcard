@@ -16,7 +16,8 @@ use crate::{
     },
 };
 use jmap_tools::{Element, JsonPointer, Key, Property, Value};
-use std::borrow::Cow;
+use smallvec::{SmallVec, smallvec};
+use std::{borrow::Cow, mem};
 
 impl<'x, I, B> State<'x, I, B>
 where
@@ -70,56 +71,60 @@ where
 
             let skip_tz_geo = matches!(entry.name, VCardProperty::Adr);
             let mut matched_once = false;
+            let may_match = path
+                .first()
+                .is_none_or(|head| self.converted_heads.contains_key(head));
 
-            'outer: for (keys, value) in self.converted_props.iter_mut() {
-                let is_localized_key = keys
-                    .first()
-                    .is_some_and(|k| matches!(k, Key::Property(JSContactProperty::Localizations)));
+            if may_match {
+                'outer: for (keys, value) in self.converted_props.iter_mut() {
+                    let is_localized_key = keys.first().is_some_and(|k| {
+                        matches!(k, Key::Property(JSContactProperty::Localizations))
+                    });
 
-                if let Some(lang) = &self.language {
-                    if !is_localized_key || keys.get(1).is_none_or(|k| &k.to_string() != lang) {
+                    if let Some(lang) = &self.language {
+                        if !is_localized_key || keys.get(1).is_none_or(|k| *k != lang.as_str()) {
+                            continue;
+                        }
+                    } else if is_localized_key {
                         continue;
                     }
-                } else if is_localized_key {
-                    continue;
-                }
-                if matches!(value, Value::Null) {
-                    continue;
-                }
-
-                for (pos, item) in path.iter().enumerate() {
-                    if !keys
-                        .iter()
-                        .any(|k| matches!(k, Key::Property(p) if p == item))
-                    {
-                        if pos == 0 && matched_once {
-                            // Array is sorted, so if we didn't match the first item,
-                            // we won't match any further.
-                            break 'outer;
-                        } else {
-                            continue 'outer;
-                        }
-                    } else {
-                        matched_once = true;
+                    if matches!(value, Value::Null) {
+                        continue;
                     }
-                }
 
-                if prop_id
-                    .map(Key::Borrowed)
-                    .is_none_or(|prop_id| keys.iter().any(|k| k == &prop_id))
-                    && (!skip_tz_geo
-                        || !keys.iter().any(|k| {
-                            matches!(
-                                k,
-                                Key::Property(
-                                    JSContactProperty::TimeZone | JSContactProperty::Coordinates
+                    for (pos, item) in path.iter().enumerate() {
+                        if !keys
+                            .iter()
+                            .any(|k| matches!(k, Key::Property(p) if p == item))
+                        {
+                            if pos == 0 && matched_once {
+                                break 'outer;
+                            } else {
+                                continue 'outer;
+                            }
+                        } else {
+                            matched_once = true;
+                        }
+                    }
+
+                    if prop_id
+                        .map(Key::Borrowed)
+                        .is_none_or(|prop_id| keys.iter().any(|k| k == &prop_id))
+                        && (!skip_tz_geo
+                            || !keys.iter().any(|k| {
+                                matches!(
+                                    k,
+                                    Key::Property(
+                                        JSContactProperty::TimeZone
+                                            | JSContactProperty::Coordinates
+                                    )
                                 )
-                            )
-                        }))
-                {
-                    entry.import_converted_properties(std::mem::take(value));
-                    self.converted_props_count += 1;
-                    break;
+                            }))
+                    {
+                        entry.import_converted_properties(mem::take(value));
+                        self.converted_props_count += 1;
+                        break;
+                    }
                 }
             }
         }
@@ -225,37 +230,41 @@ where
     ) {
         for prop in props.into_iter().flat_map(|prop| prop.into_array()) {
             let mut prop = prop.into_iter();
-            let Some(name) = prop.next().and_then(|v| v.into_string()).map(|name| {
-                VCardProperty::parse(name.as_bytes())
-                    .unwrap_or(VCardProperty::Other(name.to_ascii_uppercase()))
-            }) else {
+            let Some(name) = prop
+                .next()
+                .and_then(|v| v.into_string())
+                .map(|name| {
+                    VCardProperty::parse(name.as_bytes()).unwrap_or_else(|| {
+                        let mut name = name.into_owned();
+                        name.make_ascii_uppercase();
+                        VCardProperty::Other(name)
+                    })
+                })
+                .filter(|name| !matches!(name, VCardProperty::Begin | VCardProperty::End))
+            else {
                 continue;
             };
             let Some(params) = prop.next() else {
                 continue;
             };
-            let Some(value_type) = prop.next().and_then(|v| v.into_string()).map(|v| {
-                match VCardValueType::parse(v.as_bytes()) {
-                    Some(v) => IanaType::Iana(v),
-                    None => IanaType::Other(v.to_ascii_uppercase()),
-                }
-            }) else {
+            let Some(value_type) = prop
+                .next()
+                .and_then(|v| v.into_string())
+                .map(|v| VCardValueType::parse(v.as_bytes()))
+            else {
                 continue;
             };
 
             let (default_type, _) = name.default_types();
-            let convert_type = value_type
-                .iana()
-                .map(|v| ValueType::Vcard(*v))
-                .unwrap_or(default_type);
+            let convert_type = value_type.map(ValueType::Vcard).unwrap_or(default_type);
 
             let Some(values) = prop.next().and_then(|v| match v {
                 Value::Array(arr) => Some(
                     arr.into_iter()
                         .filter_map(|v| convert_value(v, &convert_type).ok())
-                        .collect::<Vec<_>>(),
+                        .collect::<SmallVec<_>>(),
                 ),
-                v => convert_value(v, &convert_type).ok().map(|v| vec![v]),
+                v => convert_value(v, &convert_type).ok().map(|v| smallvec![v]),
             }) else {
                 continue;
             };
@@ -263,8 +272,12 @@ where
             let mut entry = VCardEntry::new(name);
             entry.import_jcard_params(params);
             entry.values = values;
-            if convert_type != default_type {
-                entry.params.push(VCardParameter::value(value_type));
+            if convert_type != default_type
+                && let Some(value_type) = value_type
+            {
+                entry.params.push(VCardParameter::value(
+                    IanaType::<VCardValueType, String>::Iana(value_type),
+                ));
             }
             self.vcard.entries.push(entry);
         }
