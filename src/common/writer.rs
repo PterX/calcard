@@ -9,7 +9,7 @@ use super::{
     parser::Timestamp,
 };
 use crate::vcard::Jscomp;
-use mail_builder::encoders::base64::base64_encode_slice;
+use encodify::{Fold, base64};
 use mail_parser::DateTime;
 use std::fmt::{self, Display, Write};
 
@@ -18,8 +18,6 @@ const FOLD: &str = "\r\n ";
 
 pub(crate) const DOCUMENT_BUFFER: usize = 4096;
 pub(crate) const ENTRY_BUFFER: usize = 512;
-const BASE64_CHUNK_INPUT: usize = 768;
-const BASE64_CHUNK_OUTPUT: usize = BASE64_CHUNK_INPUT / 3 * 4;
 
 const TEXT: u8 = 1;
 const TEXT_SEMICOLON: u8 = 1 << 1;
@@ -256,14 +254,14 @@ impl<W: Write + AsciiPush + ?Sized> LineWriter for FoldingWriter<'_, W> {
     }
 
     fn write_base64(&mut self, data: &[u8]) -> fmt::Result {
-        let mut encoded = [0u8; BASE64_CHUNK_OUTPUT];
-
-        for chunk in data.chunks(BASE64_CHUNK_INPUT) {
-            let encoded_len = base64_encode_slice(chunk, &mut encoded);
-            self.push_ascii(encoded.get(..encoded_len).unwrap_or_default())?;
-        }
-
-        Ok(())
+        let mut result = Ok(());
+        let out = &mut *self.out;
+        base64::STANDARD.encode_folded(data, &mut self.line_len, Fold::CONTENT_LINE, |piece| {
+            if result.is_ok() {
+                result = out.push_ascii(piece);
+            }
+        });
+        result
     }
 }
 
@@ -274,14 +272,7 @@ impl LineWriter for String {
     }
 
     fn write_base64(&mut self, data: &[u8]) -> fmt::Result {
-        let mut encoded = [0u8; BASE64_CHUNK_OUTPUT];
-        self.reserve(data.len().div_ceil(3) * 4);
-
-        for chunk in data.chunks(BASE64_CHUNK_INPUT) {
-            let encoded_len = base64_encode_slice(chunk, &mut encoded);
-            self.push_ascii(encoded.get(..encoded_len).unwrap_or_default())?;
-        }
-
+        base64::STANDARD.encode_append(data, self);
         Ok(())
     }
 }

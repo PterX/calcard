@@ -22,10 +22,12 @@ impl XorShift {
         (self.next() % bound.max(1) as u64) as usize
     }
 
+    #[cfg(feature = "jmap")]
     pub(crate) fn one_in(&mut self, bound: usize) -> bool {
         self.below(bound) == 0
     }
 
+    #[cfg(feature = "jmap")]
     pub(crate) fn pick<'x, T>(&mut self, items: &'x [T]) -> &'x T {
         &items[self.below(items.len())]
     }

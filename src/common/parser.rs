@@ -10,7 +10,8 @@ use crate::{
     common::{IanaParse, IanaString, IanaType},
     icalendar::Uri,
 };
-use mail_parser::{DateTime, decoders::hex::decode_hex};
+use encodify::hex;
+use mail_parser::DateTime;
 use std::{borrow::Cow, iter::Peekable, slice::Iter, str::FromStr};
 
 impl<'x> Parser<'x> {
@@ -103,10 +104,9 @@ impl Data {
                 .filter(|media_type| !media_type.is_empty())
                 .map(str::to_string),
             data: if is_base64 {
-                Encoding::Base64.decode(data)?
+                Encoding::Base64.decode(data)?.into_owned()
             } else {
-                let (success, bytes) = decode_hex(data);
-                success.then_some(bytes)?
+                hex::PERCENT.decode(data).ok()?.into_owned()
             },
         })
     }

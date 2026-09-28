@@ -25,6 +25,8 @@ features = ["rkyv"]
 
 [patch.crates-io]
 jmap-tools = { path = "../../jmap-tools" }
+encodify = { path = "../../encodify" }
+mail-parser = { path = "../../mail-parser" }
 
 [workspace]
 members = ["."]

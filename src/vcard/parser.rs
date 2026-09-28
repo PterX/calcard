@@ -223,7 +223,11 @@ impl Parser<'_> {
                         decoded: None,
                     };
                     if let Some(decoder) = &decoder {
-                        match decoder.decode(text.token.text.as_ref(), payload.take()) {
+                        match decoder.decode(
+                            text.token.text.as_ref(),
+                            text.token.stop_char,
+                            payload.take(),
+                        ) {
                             Decoded::Binary(data) => {
                                 entry.values.push(VCardValue::Binary(Box::new(Data {
                                     data,
@@ -900,7 +904,7 @@ mod tests {
     use crate::Entry;
 
     use super::*;
-    use mail_parser::decoders::quoted_printable::quoted_printable_decode;
+    use encodify::qp;
     use std::io::Write;
 
     #[test]
@@ -1679,7 +1683,7 @@ mod tests {
                     Some(head) => {
                         let whitespace = fold.trim_start_matches(['\r', '\n']);
                         let text = format!("{head}{whitespace}{tail}");
-                        value(quoted_printable_decode(text.as_bytes()).expect("valid"))
+                        value(qp::BODY.decode(&text).expect("valid").into_owned())
                     }
                     None => decoded.clone(),
                 };

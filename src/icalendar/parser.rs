@@ -64,7 +64,7 @@ impl Params {
             charset: self.charset.as_deref(),
             binary,
         };
-        match decoder.decode(&token.text, payload) {
+        match decoder.decode(&token.text, token.stop_char, payload) {
             Decoded::Text(text) => {
                 token.text = text.into();
                 None

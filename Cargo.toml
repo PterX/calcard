@@ -18,9 +18,8 @@ ahash = "0.8.11"
 jiff = "0.2.37"
 hashify = "0.3"
 memchr = "2.7"
-fearless_simd = "1.0"
-mail-builder = { version = "1.0.0", default-features = false }
-mail-parser = "0.11"
+encodify = "1.0"
+mail-parser = "1.0"
 simdutf8 = "0.1.5"
 smallvec = { version = "1.16", features = ["union"] }
 uuid = { version = "1.26", default-features = false, optional = true }
@@ -51,3 +50,5 @@ doctest = false
 
 [patch.crates-io]
 jmap-tools = { path = "../jmap-tools" }
+encodify = { path = "../encodify" }
+mail-parser = { path = "../mail-parser" }

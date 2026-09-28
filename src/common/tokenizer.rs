@@ -8,12 +8,13 @@ use crate::{
     Parser,
     common::{
         Encoding, IanaParse,
-        decode::Base64Decoder,
         scan::{self, Mask},
     },
 };
-use memchr::memchr;
-use std::ops::Deref;
+use encodify::base64;
+use std::ops::{Deref, Range};
+
+const SPARE_BYTES: usize = 64;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Token<'x> {
@@ -588,58 +589,22 @@ impl<'x> Parser<'x> {
         }
         let start = self.pos;
         let value = self.input.get(start..)?;
-        let mut decoder = Base64Decoder::with_capacity(FoldedLines(value).len_hint() / 4 * 3);
-        let mut first = usize::MAX;
-        let mut end = 0;
-        let mut rest = value;
-        let next = loop {
-            let offset = value.len() - rest.len();
-            rest = decoder.decode_quads(rest);
-            let consumed = value.len() - rest.len();
-            if consumed != offset {
-                first = first.min(offset);
-                end = consumed;
-            }
-            let Some((&ch, tail)) = rest.split_first() else {
-                break consumed;
-            };
-            rest = match ch {
-                b'\r' | b'\n' => {
-                    let after = match rest {
-                        [b'\n', after @ ..] | [b'\r', b'\n', after @ ..] => after,
-                        _ => return None,
-                    };
-                    match after {
-                        [b' ' | b'\t', after @ ..] => after,
-                        _ => {
-                            let next = value.len() - after.len();
-                            if self.mode.contains(Mode::UNFOLD_B64)
-                                && self.is_base64_continuation(start + next - 1)
-                            {
-                                return None;
-                            }
-                            break next;
-                        }
-                    }
-                }
-                _ => {
-                    if !decoder.push(ch) {
-                        match ch {
-                            b'=' => decoder.flush(),
-                            b' ' | b'\t' => {}
-                            _ => return None,
-                        }
-                    }
-                    first = first.min(consumed);
-                    end = consumed + 1;
-                    tail
-                }
-            };
-        };
-        if first >= end {
+        let mut bytes = Vec::new();
+        let folded = base64::STANDARD.decode_folded(value, &mut bytes).ok()?;
+        if folded.next != folded.end
+            && self.mode.contains(Mode::UNFOLD_B64)
+            && self.is_base64_continuation(start + folded.next - 1)
+        {
             return None;
         }
-        let (first, end) = (start + first, start + end);
+        let span = FoldedContent(value.get(..folded.end)?).span();
+        if span.is_empty() {
+            return None;
+        }
+        if bytes.capacity() > 2 * bytes.len() + SPARE_BYTES {
+            bytes.shrink_to_fit();
+        }
+        let (first, end) = (start + span.start, start + span.end);
         Some((
             Token {
                 text: TokenText::Borrowed(self.source.get(first..end)?),
@@ -647,8 +612,8 @@ impl<'x> Parser<'x> {
                 end: end - 1,
                 stop_char: StopChar::Lf,
             },
-            start + next,
-            decoder.finish_trimmed(),
+            start + folded.next,
+            bytes,
         ))
     }
 
@@ -700,48 +665,24 @@ impl<'x> Parser<'x> {
     }
 }
 
-struct FoldedLines<'x>(&'x [u8]);
+struct FoldedContent<'x>(&'x [u8]);
 
-impl FoldedLines<'_> {
-    #[inline(never)]
-    fn len_hint(&self) -> usize {
-        let value = self.0;
-        let Some(first) = memchr(b'\n', value) else {
-            return value.len();
-        };
-        let lines = value.get(first + 1..).unwrap_or_default();
-        let Some(period) = lines
-            .first()
-            .filter(|ch| matches!(ch, b' ' | b'\t'))
-            .and_then(|_| memchr(b'\n', lines))
-            .map(|len| len + 1)
-        else {
-            return first + 1;
-        };
-        let folded = |line: usize| {
-            lines
-                .chunks_exact(period)
-                .nth(line)
-                .is_some_and(|line| matches!(line, [b' ' | b'\t', .., b'\n']))
-        };
-        let mut known = 0;
-        let mut step = 1;
-        while folded(known + step) {
-            known += step;
-            step *= 2;
+impl FoldedContent<'_> {
+    fn span(&self) -> Range<usize> {
+        let mut rest = self.0;
+        loop {
+            rest = match rest {
+                [b'\r', b'\n', b' ' | b'\t', tail @ ..] | [b'\n', b' ' | b'\t', tail @ ..] => tail,
+                _ => break,
+            };
         }
-        while step > 1 {
-            step /= 2;
-            if folded(known + step) {
-                known += step;
-            }
-        }
-        let last = first + (known + 1) * period;
-        match value.get(last + 1..) {
-            Some(line @ [b' ' | b'\t', ..]) => {
-                memchr(b'\n', line).map_or(value.len(), |len| last + 2 + len)
-            }
-            _ => last + 1,
+        let first = self.0.len() - rest.len();
+        loop {
+            rest = match rest {
+                [head @ .., b'\r', b'\n', b' ' | b'\t'] => head,
+                [head @ .., b'\n', b' ' | b'\t'] => head,
+                _ => return first..first + rest.len(),
+            };
         }
     }
 }
@@ -844,7 +785,6 @@ impl<'x> Token<'x> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mail_parser::decoders::base64::base64_decode;
 
     #[derive(Debug, PartialEq, Eq)]
     enum TextOwner<'x> {
@@ -1123,7 +1063,11 @@ mod tests {
                     (expected.start, expected.end, expected.stop_char),
                     "{input:?}"
                 );
-                assert_eq!(Some(bytes), base64_decode(&expected.text), "{input:?}");
+                assert_eq!(
+                    Some(bytes),
+                    base64::LENIENT.decode(&expected.text).ok(),
+                    "{input:?}"
+                );
                 let content = |text: &[u8]| {
                     text.iter()
                         .filter(|ch| !matches!(ch, b' ' | b'\t' | b'\r' | b'\n'))

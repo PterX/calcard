@@ -6,15 +6,13 @@
 
 use super::{VCard, VCardEntry, VCardParameterName, VCardProperty, VCardValue, VCardVersion};
 use crate::{
-    common::{
-        CalendarScale, Data, IanaString, IanaType, PartialDateTime,
-        writer::{LineWriter, write_jscomps},
-    },
+    common::{CalendarScale, Data, IanaString, IanaType, PartialDateTime, writer::write_jscomps},
     vcard::{
         Jscomp, VCardLevel, VCardParameter, VCardParameterValue, VCardPhonetic, VCardType,
         VCardValueType, media_type::media_type_from_legacy,
     },
 };
+use encodify::base64;
 use std::borrow::Cow;
 
 impl VCard {
@@ -226,11 +224,19 @@ impl VCardValue {
 
 impl Data {
     pub fn to_unwrapped_string(&self) -> String {
-        use std::fmt::Write;
+        const SCHEME: &str = "data:";
+        const BASE64_MARKER: &str = ";base64,";
         let media_type = self.content_type.as_deref().unwrap_or_default();
-        let mut out = String::with_capacity(self.data.len().div_ceil(4) + media_type.len() + 14);
-        let _ = write!(&mut out, "data:{media_type};base64,");
-        let _ = out.write_base64(&self.data);
+        let mut out = String::with_capacity(
+            SCHEME.len()
+                + media_type.len()
+                + BASE64_MARKER.len()
+                + base64::STANDARD.encoded_len(self.data.len()),
+        );
+        out.push_str(SCHEME);
+        out.push_str(media_type);
+        out.push_str(BASE64_MARKER);
+        base64::STANDARD.encode_append(&self.data, &mut out);
         out
     }
 }
