@@ -225,6 +225,7 @@ impl<I: JSCalendarId> jmap_tools::Property for JSCalendarProperty<I> {
         depth: PointerDepth,
     ) -> Option<Self> {
         match key {
+            Some(Key::Property(key)) if key.is_metadata() => None,
             Some(Key::Property(key)) => match key.patch_or_prop() {
                 JSCalendarProperty::RecurrenceOverrides => {
                     JSCalendarDateTime::from_rfc3339(value, true).map(JSCalendarProperty::DateTime)
@@ -247,18 +248,26 @@ impl<I: JSCalendarId> jmap_tools::Property for JSCalendarProperty<I> {
                 JSCalendarProperty::DateTime(_) if value.contains('/') => {
                     JsonPointer::parse_nested(value, depth).map(JSCalendarProperty::Pointer)
                 }
+                JSCalendarProperty::DateTime(_) | JSCalendarProperty::Entries => {
+                    JSCalendarProperty::parse_name(value)
+                }
                 JSCalendarProperty::CalendarIds => match IdReference::parse(value) {
                     IdReference::Value(value) => JSCalendarProperty::IdValue(value).into(),
                     IdReference::Reference(value) => JSCalendarProperty::IdReference(value).into(),
                     IdReference::Error => None,
                 },
-                _ => JSCalendarProperty::from_str(value).ok(),
+                _ => JSCalendarProperty::parse_nested_name(value),
             },
             None if value.contains('/') => {
                 JsonPointer::parse_nested(value, depth).map(JSCalendarProperty::Pointer)
             }
-            _ => JSCalendarProperty::from_str(value).ok(),
+            None => JSCalendarProperty::parse_name(value),
+            Some(_) => JSCalendarProperty::parse_nested_name(value),
         }
+    }
+
+    fn is_opaque(&self) -> bool {
+        self.is_metadata()
     }
 
     fn to_cow(&self) -> Cow<'static, str> {

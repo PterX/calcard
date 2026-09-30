@@ -22,10 +22,10 @@ use std::{
 };
 
 const ROUNDS: usize = 2_000;
-const CALENDAR_PROPERTY_VARIANTS: usize = 125;
-const CALENDAR_UNIT_PROPERTIES: usize = 116;
-const CONTACT_PROPERTY_VARIANTS: usize = 83;
-const CONTACT_UNIT_PROPERTIES: usize = 77;
+const CALENDAR_PROPERTY_VARIANTS: usize = 127;
+const CALENDAR_UNIT_PROPERTIES: usize = 118;
+const CONTACT_PROPERTY_VARIANTS: usize = 85;
+const CONTACT_UNIT_PROPERTIES: usize = 79;
 const CALENDAR_VALUE_VARIANTS: usize = 22;
 const CONTACT_VALUE_VARIANTS: usize = 11;
 const MIN_PER_VARIANT: usize = 10;

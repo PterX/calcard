@@ -249,7 +249,9 @@ impl<P: PointerProperty> ConvertedKeys<P> for &str {
         }
         let mut keys: Vec<Key<'static, P>> = Vec::with_capacity(CONVERTED_KEYS_CAPACITY);
         let mut parent_is_key = false;
-        for (position, segment) in self.split('/').enumerate() {
+        let first = usize::from(self.starts_with('/'));
+        let mut segments = self.split('/').enumerate();
+        for (position, segment) in segments.by_ref() {
             let parent = if parent_is_key { keys.last() } else { None };
             let (key, is_key) = match segment {
                 "" if position == 0 => continue,
@@ -268,9 +270,17 @@ impl<P: PointerProperty> ConvertedKeys<P> for &str {
                     ),
                 },
             };
+            let opaque = position == first
+                && key
+                    .as_property()
+                    .is_some_and(|property| property.is_opaque());
             keys.push(key);
             parent_is_key = is_key;
+            if opaque {
+                break;
+            }
         }
+        keys.extend(segments.map(|(_, segment)| Key::Owned(segment.to_string())));
         keys
     }
 }
@@ -317,6 +327,8 @@ mod tests {
         "localizations",
         "name",
         "components",
+        "metadata",
+        "privateMetadata",
     ];
 
     impl XorShift {

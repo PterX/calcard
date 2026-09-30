@@ -12,6 +12,28 @@ pub(crate) mod text;
 
 const KEY_CAPACITY: usize = 16;
 
+macro_rules! property_names {
+    ($property:ident, $($name:literal => $variant:ident,)*) => {
+        pub(crate) fn parse_name(s: &str) -> Option<Self> {
+            hashify::fnc_map!(s.as_bytes(),
+                $($name => Some($property::$variant),)*
+                "metadata" => Some($property::Metadata),
+                "privateMetadata" => Some($property::PrivateMetadata),
+                _ => None,
+            )
+        }
+
+        pub(crate) fn parse_nested_name(s: &str) -> Option<Self> {
+            hashify::fnc_map!(s.as_bytes(),
+                $($name => Some($property::$variant),)*
+                _ => None,
+            )
+        }
+    };
+}
+
+pub(crate) use property_names;
+
 pub(crate) trait JSPropPointer<P: Property> {
     fn parse_jsprop_value<E: Element<Property = P>>(
         &self,

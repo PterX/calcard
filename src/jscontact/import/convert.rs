@@ -1457,6 +1457,9 @@ impl VCard {
                     {
                         let ptr = JsonPointer::<JSContactProperty<I>>::parse(ptr);
 
+                        if JSContactProperty::is_metadata_pointer(&ptr) {
+                            continue;
+                        }
                         if let Some(VCardValue::Text(text)) = entry.entry.values.first()
                             && let Some(patch) = ptr.parse_jsprop_value(text)
                         {

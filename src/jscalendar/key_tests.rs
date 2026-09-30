@@ -136,6 +136,8 @@ const PROPERTY_NAMES: &[&str] = &[
     "parameters",
     "iCalendar",
     "blobId",
+    "metadata",
+    "privateMetadata",
 ];
 
 type Prop = JSCalendarProperty<String>;
@@ -504,6 +506,18 @@ fn converted_keys_split_like_json_pointer_parse() {
             r#"[Property(CalendarIds), Property(IdValue("abc"))]"#,
         ),
         ("x~0y/1", r#"[Owned("x~y"), Owned("1")]"#),
+        (
+            "metadata/title/start",
+            r#"[Property(Metadata), Owned("title"), Owned("start")]"#,
+        ),
+        (
+            "privateMetadata/x.example/0/*/",
+            r#"[Property(PrivateMetadata), Owned("x.example"), Owned("0"), Owned("*"), Owned("")]"#,
+        ),
+        (
+            "*/metadata/title/start",
+            r#"[Property(Metadata), Owned("title"), Property(Start)]"#,
+        ),
     ] {
         for key in [
             TestKey::Owned(text.to_string()),

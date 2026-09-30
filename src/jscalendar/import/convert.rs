@@ -2052,24 +2052,30 @@ impl ICalendar {
                 (ICalendarProperty::Jsid, _, _) => {
                     continue;
                 }
-                (ICalendarProperty::Jsprop, Some(ICalendarValue::Text(value)), _) => {
-                    if let Some(ptr) = entry
-                        .entry
-                        .params
-                        .iter()
-                        .find_map(|param| match param {
-                            ICalendarParameter {
-                                name: ICalendarParameterName::Jsptr,
-                                value: ICalendarParameterValue::Text(ptr),
-                            } => Some(JsonPointer::<JSCalendarProperty<I>>::parse(ptr)),
-                            _ => None,
+                (ICalendarProperty::Jsprop, Some(ICalendarValue::Text(value)), component_type) => {
+                    let ptr = entry.entry.params.iter().find_map(|param| match param {
+                        ICalendarParameter {
+                            name: ICalendarParameterName::Jsptr,
+                            value: ICalendarParameterValue::Text(ptr),
+                        } => Some(JsonPointer::<JSCalendarProperty<I>>::parse(ptr)),
+                        _ => None,
+                    });
+                    if matches!(
+                        component_type,
+                        ICalendarComponentType::VCalendar
+                            | ICalendarComponentType::VEvent
+                            | ICalendarComponentType::VTodo
+                    ) && ptr
+                        .as_ref()
+                        .is_some_and(JSCalendarProperty::is_metadata_pointer)
+                    {
+                        continue;
+                    }
+                    if let Some(ptr) = ptr.filter(|ptr| {
+                        ptr.as_slice().iter().all(|item| {
+                            matches!(item, JsonPointerItem::Key(_) | JsonPointerItem::Number(_))
                         })
-                        .filter(|ptr| {
-                            ptr.as_slice().iter().all(|item| {
-                                matches!(item, JsonPointerItem::Key(_) | JsonPointerItem::Number(_))
-                            })
-                        })
-                        && let Some(patch) = ptr.parse_jsprop_value(&value)
+                    }) && let Some(patch) = ptr.parse_jsprop_value(&value)
                     {
                         state.patch_objects.push((ptr, patch));
                         continue;

@@ -164,6 +164,7 @@ impl<I: JSContactId> jmap_tools::Property for JSContactProperty<I> {
         depth: PointerDepth,
     ) -> Option<Self> {
         match key {
+            Some(Key::Property(key)) if key.is_metadata() => None,
             Some(Key::Property(key)) => match key.patch_or_prop() {
                 JSContactProperty::Contexts => Context::from_str(value)
                     .ok()
@@ -182,13 +183,26 @@ impl<I: JSContactId> jmap_tools::Property for JSContactProperty<I> {
                     IdReference::Reference(value) => JSContactProperty::IdReference(value).into(),
                     IdReference::Error => None,
                 },
-                _ => JSContactProperty::from_str(value).ok(),
+                JSContactProperty::Pointer(language)
+                    if matches!(
+                        language.as_slice(),
+                        [JsonPointerItem::Key(Key::Borrowed(_) | Key::Owned(_))]
+                    ) =>
+                {
+                    JSContactProperty::parse_name(value)
+                }
+                _ => JSContactProperty::parse_nested_name(value),
             },
             None if value.contains('/') => {
                 JsonPointer::parse_nested(value, depth).map(JSContactProperty::Pointer)
             }
-            _ => JSContactProperty::from_str(value).ok(),
+            None => JSContactProperty::parse_name(value),
+            Some(_) => JSContactProperty::parse_nested_name(value),
         }
+    }
+
+    fn is_opaque(&self) -> bool {
+        self.is_metadata()
     }
 
     fn to_cow(&self) -> Cow<'static, str> {
@@ -354,7 +368,9 @@ impl<I: JSContactId> JSContactProperty<I> {
             | JSContactProperty::VCard
             | JSContactProperty::Value
             | JSContactProperty::Version
-            | JSContactProperty::Year => false,
+            | JSContactProperty::Year
+            | JSContactProperty::Metadata
+            | JSContactProperty::PrivateMetadata => false,
         }
     }
 

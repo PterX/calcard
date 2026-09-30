@@ -66,6 +66,12 @@ where
                         .filter_map(|(_, value)| value.as_array())
                         .map(<[_]>::len)
                         .sum(),
+                    (
+                        Key::Property(
+                            JSContactProperty::Metadata | JSContactProperty::PrivateMetadata,
+                        ),
+                        _,
+                    ) => 0,
                     (_, Value::Object(obj)) => obj.len(),
                     _ => 1,
                 })
@@ -2110,7 +2116,7 @@ where
                     | JSContactProperty::Localizations
                     | JSContactProperty::VCard => (),
                     _ => {
-                        if !matches!(value, Value::Null) {
+                        if !matches!(value, Value::Null) && !property.is_metadata() {
                             state.insert_jsprop(&[property.to_string().as_ref()], value);
                         }
                     }

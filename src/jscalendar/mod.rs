@@ -96,6 +96,8 @@ pub enum JSCalendarProperty<I: JSCalendarId> {
     MayInviteOthers,
     HideAttendees,
     BlobId,
+    Metadata,
+    PrivateMetadata,
 
     // JSCalendar Properties
     #[default]

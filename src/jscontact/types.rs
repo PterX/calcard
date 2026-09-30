@@ -4,7 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::{common::jsprop::text::PointerProperty, jscontact::*};
+use crate::{
+    common::jsprop::{property_names, text::PointerProperty},
+    jscontact::*,
+};
+use jmap_tools::JsonPointerItem;
 use std::str::FromStr;
 
 impl<I: JSContactId> PointerProperty for JSContactProperty<I> {
@@ -19,91 +23,116 @@ impl<I: JSContactId> PointerProperty for JSContactProperty<I> {
 impl<I: JSContactId> FromStr for JSContactProperty<I> {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        hashify::fnc_map!(s.as_bytes(),
-            "@type" => Some(JSContactProperty::Type),
-            "address" => Some(JSContactProperty::Address),
-            "addressBookIds" => Some(JSContactProperty::AddressBookIds),
-            "addresses" => Some(JSContactProperty::Addresses),
-            "anniversaries" => Some(JSContactProperty::Anniversaries),
-            "author" => Some(JSContactProperty::Author),
-            "blobId" => Some(JSContactProperty::BlobId),
-            "calendars" => Some(JSContactProperty::Calendars),
-            "calendarScale" => Some(JSContactProperty::CalendarScale),
-            "components" => Some(JSContactProperty::Components),
-            "contexts" => Some(JSContactProperty::Contexts),
-            "convertedProperties" => Some(JSContactProperty::ConvertedProperties),
-            "coordinates" => Some(JSContactProperty::Coordinates),
-            "countryCode" => Some(JSContactProperty::CountryCode),
-            "created" => Some(JSContactProperty::Created),
-            "cryptoKeys" => Some(JSContactProperty::CryptoKeys),
-            "date" => Some(JSContactProperty::Date),
-            "day" => Some(JSContactProperty::Day),
-            "defaultSeparator" => Some(JSContactProperty::DefaultSeparator),
-            "directories" => Some(JSContactProperty::Directories),
-            "emails" => Some(JSContactProperty::Emails),
-            "extra" => Some(JSContactProperty::Extra),
-            "features" => Some(JSContactProperty::Features),
-            "full" => Some(JSContactProperty::Full),
-            "grammaticalGender" => Some(JSContactProperty::GrammaticalGender),
-            "id" => Some(JSContactProperty::Id),
-            "isOrdered" => Some(JSContactProperty::IsOrdered),
-            "keywords" => Some(JSContactProperty::Keywords),
-            "kind" => Some(JSContactProperty::Kind),
-            "label" => Some(JSContactProperty::Label),
-            "language" => Some(JSContactProperty::Language),
-            "level" => Some(JSContactProperty::Level),
-            "links" => Some(JSContactProperty::Links),
-            "listAs" => Some(JSContactProperty::ListAs),
-            "localizations" => Some(JSContactProperty::Localizations),
-            "media" => Some(JSContactProperty::Media),
-            "mediaType" => Some(JSContactProperty::MediaType),
-            "members" => Some(JSContactProperty::Members),
-            "month" => Some(JSContactProperty::Month),
-            "name" => Some(JSContactProperty::Name),
-            "nicknames" => Some(JSContactProperty::Nicknames),
-            "note" => Some(JSContactProperty::Note),
-            "notes" => Some(JSContactProperty::Notes),
-            "number" => Some(JSContactProperty::Number),
-            "onlineServices" => Some(JSContactProperty::OnlineServices),
-            "organizationId" => Some(JSContactProperty::OrganizationId),
-            "organizations" => Some(JSContactProperty::Organizations),
-            "parameters" => Some(JSContactProperty::Parameters),
-            "personalInfo" => Some(JSContactProperty::PersonalInfo),
-            "phones" => Some(JSContactProperty::Phones),
-            "phonetic" => Some(JSContactProperty::Phonetic),
-            "phoneticScript" => Some(JSContactProperty::PhoneticScript),
-            "phoneticSystem" => Some(JSContactProperty::PhoneticSystem),
-            "place" => Some(JSContactProperty::Place),
-            "pref" => Some(JSContactProperty::Pref),
-            "preferredLanguages" => Some(JSContactProperty::PreferredLanguages),
-            "prodId" => Some(JSContactProperty::ProdId),
-            "pronouns" => Some(JSContactProperty::Pronouns),
-            "properties" => Some(JSContactProperty::Properties),
-            "relatedTo" => Some(JSContactProperty::RelatedTo),
-            "relation" => Some(JSContactProperty::Relation),
-            "schedulingAddresses" => Some(JSContactProperty::SchedulingAddresses),
-            "service" => Some(JSContactProperty::Service),
-            "sortAs" => Some(JSContactProperty::SortAs),
-            "speakToAs" => Some(JSContactProperty::SpeakToAs),
-            "timeZone" => Some(JSContactProperty::TimeZone),
-            "titles" => Some(JSContactProperty::Titles),
-            "uid" => Some(JSContactProperty::Uid),
-            "units" => Some(JSContactProperty::Units),
-            "updated" => Some(JSContactProperty::Updated),
-            "uri" => Some(JSContactProperty::Uri),
-            "user" => Some(JSContactProperty::User),
-            "utc" => Some(JSContactProperty::Utc),
-            "value" => Some(JSContactProperty::Value),
-            "vCard" => Some(JSContactProperty::VCard),
-            "version" => Some(JSContactProperty::Version),
-            "year" => Some(JSContactProperty::Year),
-            _ => None,
-        )
-        .ok_or(())
+        JSContactProperty::parse_name(s)
+            .or_else(|| JSContactProperty::parse_metadata_selector(s))
+            .ok_or(())
     }
 }
 
 impl<I: JSContactId> JSContactProperty<I> {
+    property_names!(
+        JSContactProperty,
+        "@type" => Type,
+        "address" => Address,
+        "addressBookIds" => AddressBookIds,
+        "addresses" => Addresses,
+        "anniversaries" => Anniversaries,
+        "author" => Author,
+        "blobId" => BlobId,
+        "calendars" => Calendars,
+        "calendarScale" => CalendarScale,
+        "components" => Components,
+        "contexts" => Contexts,
+        "convertedProperties" => ConvertedProperties,
+        "coordinates" => Coordinates,
+        "countryCode" => CountryCode,
+        "created" => Created,
+        "cryptoKeys" => CryptoKeys,
+        "date" => Date,
+        "day" => Day,
+        "defaultSeparator" => DefaultSeparator,
+        "directories" => Directories,
+        "emails" => Emails,
+        "extra" => Extra,
+        "features" => Features,
+        "full" => Full,
+        "grammaticalGender" => GrammaticalGender,
+        "id" => Id,
+        "isOrdered" => IsOrdered,
+        "keywords" => Keywords,
+        "kind" => Kind,
+        "label" => Label,
+        "language" => Language,
+        "level" => Level,
+        "links" => Links,
+        "listAs" => ListAs,
+        "localizations" => Localizations,
+        "media" => Media,
+        "mediaType" => MediaType,
+        "members" => Members,
+        "month" => Month,
+        "name" => Name,
+        "nicknames" => Nicknames,
+        "note" => Note,
+        "notes" => Notes,
+        "number" => Number,
+        "onlineServices" => OnlineServices,
+        "organizationId" => OrganizationId,
+        "organizations" => Organizations,
+        "parameters" => Parameters,
+        "personalInfo" => PersonalInfo,
+        "phones" => Phones,
+        "phonetic" => Phonetic,
+        "phoneticScript" => PhoneticScript,
+        "phoneticSystem" => PhoneticSystem,
+        "place" => Place,
+        "pref" => Pref,
+        "preferredLanguages" => PreferredLanguages,
+        "prodId" => ProdId,
+        "pronouns" => Pronouns,
+        "properties" => Properties,
+        "relatedTo" => RelatedTo,
+        "relation" => Relation,
+        "schedulingAddresses" => SchedulingAddresses,
+        "service" => Service,
+        "sortAs" => SortAs,
+        "speakToAs" => SpeakToAs,
+        "timeZone" => TimeZone,
+        "titles" => Titles,
+        "uid" => Uid,
+        "units" => Units,
+        "updated" => Updated,
+        "uri" => Uri,
+        "user" => User,
+        "utc" => Utc,
+        "value" => Value,
+        "vCard" => VCard,
+        "version" => Version,
+        "year" => Year,
+    );
+
+    fn parse_metadata_selector(s: &str) -> Option<Self> {
+        s.split_once('/')
+            .and_then(|(root, _)| JSContactProperty::<I>::parse_name(root))
+            .filter(JSContactProperty::is_metadata)
+            .map(|_| JSContactProperty::Pointer(JsonPointer::parse(s)))
+    }
+
+    pub(crate) fn is_metadata(&self) -> bool {
+        match self {
+            JSContactProperty::Metadata | JSContactProperty::PrivateMetadata => true,
+            JSContactProperty::Pointer(pointer) => JSContactProperty::is_metadata_pointer(pointer),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_metadata_pointer(pointer: &JsonPointer<Self>) -> bool {
+        pointer
+            .first()
+            .and_then(JsonPointerItem::as_property_key)
+            .is_some_and(JSContactProperty::is_metadata)
+    }
+
     pub fn to_string(&self) -> Cow<'static, str> {
         match self {
             JSContactProperty::Type => "@type",
@@ -183,6 +212,8 @@ impl<I: JSContactId> JSContactProperty<I> {
             JSContactProperty::VCard => "vCard",
             JSContactProperty::Version => "version",
             JSContactProperty::Year => "year",
+            JSContactProperty::Metadata => "metadata",
+            JSContactProperty::PrivateMetadata => "privateMetadata",
             JSContactProperty::Context(context) => context.as_str(),
             JSContactProperty::Feature(feature) => feature.as_str(),
             JSContactProperty::SortAsKind(kind) => kind.as_str(),

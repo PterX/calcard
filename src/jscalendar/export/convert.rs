@@ -2178,7 +2178,9 @@ impl ICalendar {
                 )
                 | (_, Value::Null, _) => {}
                 (property, value, _) => {
-                    component.insert_jsprop(&[property.to_string().as_ref()], value);
+                    if !property.is_metadata() {
+                        component.insert_jsprop(&[property.to_string().as_ref()], value);
+                    }
                 }
             }
         }

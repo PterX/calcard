@@ -238,6 +238,8 @@ const CALENDAR_NAMES: &[&str] = &[
     "parameters",
     "iCalendar",
     "blobId",
+    "metadata",
+    "privateMetadata",
 ];
 
 const CONTACT_NAMES: &[&str] = &[
@@ -318,6 +320,8 @@ const CONTACT_NAMES: &[&str] = &[
     "vCard",
     "version",
     "year",
+    "metadata",
+    "privateMetadata",
 ];
 
 const LINK_RELATIONS: &[&str] = &[
